@@ -1,8 +1,9 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const Product = require('./models/Product'); // nếu cùng thư mục thì sửa lại path tương ứng
+const Product = require('./models/Product'); // Giữ dòng này
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
@@ -10,11 +11,12 @@ mongoose.connect('mongodb+srv://admin:Hunt3rlov3151220041512@taphoa.mx0zl2l.mong
   .then(() => console.log('Connected to MongoDB'))
   .catch(err => console.error(err));
 
-const Product = mongoose.model('Product', {
-  name: String,
-  price: Number,
-  image: String,
-});
+// ❌ XÓA phần này ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+// const Product = mongoose.model('Product', {
+//   name: String,
+//   price: Number,
+//   image: String,
+// });
 
 app.get('/products', async (req, res) => {
   const products = await Product.find();
