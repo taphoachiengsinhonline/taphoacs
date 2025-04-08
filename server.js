@@ -86,10 +86,6 @@ mongoose.connect('mongodb+srv://admin:Hunt3rlov3151220041512@taphoa.mx0zl2l.mong
   .then(() => console.log('Connected to MongoDB'))
   .catch(err => console.error(err));
 
-app.get('/products', async (req, res) => {
-  const products = await Product.find();
-  res.json(products);
-});
 
 app.post('/products', async (req, res) => {
   const product = new Product(req.body);
