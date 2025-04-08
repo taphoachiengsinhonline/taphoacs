@@ -7,6 +7,31 @@ const Product = require('./models/Product');
 const app = express();
 const Order = require('./models/Order'); // Tạo file Order.js tương tự User.js
 
+// Lấy tất cả danh mục
+app.get('/categories', async (req, res) => {
+  try {
+    const categories = await Category.find();
+    res.json(categories);
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi server khi lấy danh mục' });
+  }
+});
+
+// Tạo mới danh mục
+app.post('/categories', async (req, res) => {
+  const { name } = req.body;
+  try {
+    const existing = await Category.findOne({ name });
+    if (existing) return res.status(400).json({ message: 'Danh mục đã tồn tại' });
+
+    const newCategory = new Category({ name });
+    await newCategory.save();
+    res.status(201).json(newCategory);
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi server khi tạo danh mục' });
+  }
+});
+
 app.get('/products', async (req, res) => {
   const { category } = req.query;
   const filter = category ? { category } : {};
