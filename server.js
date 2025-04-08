@@ -3,8 +3,17 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const Product = require('./models/Product');
-
 const app = express();
+const Order = require('./models/Order'); // Tạo file Order.js tương tự User.js
+app.post('/orders', async (req, res) => {
+  try {
+    const order = new Order(req.body);
+    await order.save();
+    res.status(201).json({ message: 'Đơn hàng đã được lưu' });
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi lưu đơn hàng' });
+  }
+});
 
 app.use(cors());
 app.use(express.json()); // 👈 Di chuyển lên đây
