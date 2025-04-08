@@ -2,8 +2,13 @@ const User = require('./models/User');
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const Product = require('./models/Product'); // Giữ dòng này
+const Product = require('./models/Product');
+
 const app = express();
+
+app.use(cors());
+app.use(express.json()); // 👈 Di chuyển lên đây
+
 // Đăng ký
 app.post('/register', async (req, res) => {
   const { name, email, password } = req.body;
@@ -15,6 +20,7 @@ app.post('/register', async (req, res) => {
     await user.save();
     res.status(201).json({ message: 'Đăng ký thành công' });
   } catch (err) {
+    console.error('Lỗi register:', err);
     res.status(500).json({ message: 'Lỗi server' });
   }
 });
@@ -29,23 +35,14 @@ app.post('/login', async (req, res) => {
     }
     res.status(200).json({ message: 'Đăng nhập thành công', user });
   } catch (err) {
+    console.error('Lỗi login:', err);
     res.status(500).json({ message: 'Lỗi server' });
   }
 });
 
-app.use(cors());
-app.use(express.json());
-
 mongoose.connect('mongodb+srv://admin:Hunt3rlov3151220041512@taphoa.mx0zl2l.mongodb.net/?retryWrites=true&w=majority&appName=taphoa')
   .then(() => console.log('Connected to MongoDB'))
   .catch(err => console.error(err));
-
-// ❌ XÓA phần này ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
-// const Product = mongoose.model('Product', {
-//   name: String,
-//   price: Number,
-//   image: String,
-// });
 
 app.get('/products', async (req, res) => {
   const products = await Product.find();
