@@ -1,7 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-
+const Product = require('./models/Product'); // nếu cùng thư mục thì sửa lại path tương ứng
 const app = express();
 app.use(cors());
 app.use(express.json());
