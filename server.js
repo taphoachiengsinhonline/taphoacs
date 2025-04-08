@@ -5,6 +5,13 @@ const cors = require('cors');
 const Product = require('./models/Product');
 const app = express();
 const Order = require('./models/Order'); // Tạo file Order.js tương tự User.js
+
+app.get('/products', async (req, res) => {
+  const { category } = req.query;
+  const filter = category ? { category } : {};
+  const products = await Product.find(filter);
+  res.json(products);
+});
 app.post('/orders', async (req, res) => {
   try {
     const order = new Order(req.body);
