@@ -12,7 +12,7 @@ app.use(express.json()); // 👈 Di chuyển lên đây
 app.use((req, res, next) => {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   next();
-
+}
 // Lấy tất cả danh mục
 app.get('/categories', async (req, res) => {
   try {
