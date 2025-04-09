@@ -11,8 +11,10 @@ const Order = require('./models/Order'); // Tạo file Order.js tương tự Use
 app.get('/categories', async (req, res) => {
   try {
     const categories = await Category.find();
+    console.log('>> Trả danh mục:', categories); // 👈 Log debug ở đây
     res.json(categories);
   } catch (err) {
+    console.error('>> Lỗi lấy danh mục:', err); // 👈 Log lỗi chi tiết
     res.status(500).json({ message: 'Lỗi server khi lấy danh mục' });
   }
 });
