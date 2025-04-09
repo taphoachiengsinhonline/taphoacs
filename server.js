@@ -7,6 +7,8 @@ const Product = require('./models/Product');
 const app = express();
 const Order = require('./models/Order'); // Tạo file Order.js tương tự User.js
 
+app.use(cors());
+app.use(express.json()); // 👈 Di chuyển lên đây
 // Lấy tất cả danh mục
 app.get('/categories', async (req, res) => {
   try {
@@ -53,8 +55,7 @@ app.post('/orders', async (req, res) => {
   }
 });
 
-app.use(cors());
-app.use(express.json()); // 👈 Di chuyển lên đây
+
 
 // Đăng ký
 app.post('/register', async (req, res) => {
