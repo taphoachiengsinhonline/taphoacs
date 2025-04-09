@@ -28,11 +28,14 @@ app.post('/categories', async (req, res) => {
 
     const newCategory = new Category({ name });
     await newCategory.save();
+    console.log('>> Danh mục mới:', newCategory); // 👈 Log khi tạo thành công
     res.status(201).json(newCategory);
   } catch (err) {
+    console.error('>> Lỗi tạo danh mục:', err); // 👈 Log lỗi
     res.status(500).json({ message: 'Lỗi server khi tạo danh mục' });
   }
 });
+
 
 app.get('/products', async (req, res) => {
   const { category } = req.query;
