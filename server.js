@@ -27,20 +27,43 @@ app.get('/categories', async (req, res) => {
 
 // Tạo mới danh mục
 app.post('/categories', async (req, res) => {
-  const { name } = req.body;
+  const { name, parent } = req.body;
   try {
-    const existing = await Category.findOne({ name });
-    if (existing) return res.status(400).json({ message: 'Danh mục đã tồn tại' });
-
-    const newCategory = new Category({ name });
+    const newCategory = new Category({ name, parent: parent || null });
     await newCategory.save();
-    console.log('>> Danh mục mới:', newCategory); // 👈 Log khi tạo thành công
     res.status(201).json(newCategory);
   } catch (err) {
-    console.error('>> Lỗi tạo danh mục:', err); // 👈 Log lỗi
+    console.error('Lỗi tạo danh mục:', err);
     res.status(500).json({ message: 'Lỗi server khi tạo danh mục' });
   }
 });
+
+app.get('/categories', async (req, res) => {
+  try {
+    const categories = await Category.find().populate('parent', 'name');
+    res.json(categories);
+  } catch (err) {
+    console.error('Lỗi lấy danh mục:', err);
+    res.status(500).json({ message: 'Lỗi server khi lấy danh mục' });
+  }
+});
+
+app.delete('/categories/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Xoá danh mục con trước (nếu có)
+    await Category.deleteMany({ parent: id });
+
+    // Xoá chính danh mục đó
+    await Category.findByIdAndDelete(id);
+    res.json({ message: 'Đã xoá danh mục và danh mục con (nếu có)' });
+  } catch (err) {
+    console.error('Lỗi xoá danh mục:', err);
+    res.status(500).json({ message: 'Lỗi server khi xoá danh mục' });
+  }
+});
+
 
 
 app.get('/products', async (req, res) => {
