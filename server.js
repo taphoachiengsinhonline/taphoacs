@@ -26,17 +26,22 @@ app.get('/categories', async (req, res) => {
 });
 
 // Tạo mới danh mục
+
 app.post('/categories', async (req, res) => {
   const { name, parent } = req.body;
   try {
+    const existing = await Category.findOne({ name });
+    if (existing) return res.status(400).json({ message: 'Danh mục đã tồn tại' });
+
     const newCategory = new Category({ name, parent: parent || null });
     await newCategory.save();
     res.status(201).json(newCategory);
   } catch (err) {
-    console.error('Lỗi tạo danh mục:', err);
+    console.error('>> Lỗi tạo danh mục:', err);
     res.status(500).json({ message: 'Lỗi server khi tạo danh mục' });
   }
 });
+
 
 app.get('/categories', async (req, res) => {
   try {
