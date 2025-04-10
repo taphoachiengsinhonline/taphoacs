@@ -13,3 +13,19 @@ router.post('/products', isAdminMiddleware, async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
+// Lấy tất cả sản phẩm, có thể lọc theo danh mục
+router.get('/products', async (req, res) => {
+  try {
+    const { category } = req.query;
+    let filter = {};
+
+    if (category && category !== 'Tất cả') {
+      filter.category = category;
+    }
+
+    const products = await Product.find(filter);
+    res.json(products);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
