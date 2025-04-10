@@ -1,24 +1,15 @@
-// routes/productRoutes.js
 const express = require('express');
 const router = express.Router();
 const Product = require('../models/Product');
+const { isAdminMiddleware } = require('../middleware/authMiddleware'); // bạn cần có middleware này
 
-router.post('/products', async (req, res) => {
+router.post('/products', isAdminMiddleware, async (req, res) => {
   try {
-    const { name, category, quantity, price, variants } = req.body;
-    const product = new Product({
-      name,
-      category,
-      quantity,
-      price,
-      variants
-    });
-    await product.save();
-    res.status(201).json(product);
+    const { name, category, price, stock, attributes } = req.body;
+    const newProduct = new Product({ name, category, price, stock, attributes });
+    await newProduct.save();
+    res.status(201).json(newProduct);
   } catch (err) {
-    console.error('Lỗi thêm sản phẩm:', err);
-    res.status(500).json({ error: 'Lỗi khi thêm sản phẩm' });
+    res.status(400).json({ error: err.message });
   }
 });
-
-module.exports = router;
