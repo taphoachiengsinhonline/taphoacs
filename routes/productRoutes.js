@@ -4,23 +4,26 @@ const Product = require('../models/Product');
 const Category = require('../models/Category');
 const User = require('../models/User');
 
-// Middleware kiểm tra admin
+// Middleware kiểm tra quyền admin
 const isAdmin = async (req, res, next) => {
   try {
-    const userId = req.header('x-user-id'); // Bạn có thể thay bằng xác thực JWT hoặc token khác nếu có
+    const userId = req.header('x-user-id');
 
     if (!userId) {
-      return res.status(401).json({ message: 'Không có user ID' });
+      return res.status(401).json({ message: 'Không có user ID trong header' });
     }
 
     const user = await User.findById(userId);
+
     if (!user || !user.isAdmin) {
-      return res.status(403).json({ message: 'Không có quyền admin' });
+      return res.status(403).json({ message: 'Bạn không có quyền thực hiện thao tác này' });
     }
 
+    req.user = user; // lưu user vào req để các middleware khác dùng nếu cần
     next();
   } catch (err) {
-    res.status(500).json({ error: 'Lỗi xác thực admin' });
+    console.error('❌ Lỗi xác thực admin:', err);
+    res.status(500).json({ message: 'Lỗi server khi kiểm tra quyền admin' });
   }
 };
 
@@ -41,26 +44,27 @@ router.get('/products', async (req, res) => {
   }
 });
 
-// ✅ POST /products - Thêm sản phẩm mới
+// ✅ POST /products - Thêm sản phẩm mới (chỉ admin)
 router.post('/products', isAdmin, async (req, res) => {
   try {
     const { name, price, category, image } = req.body;
 
     if (!name || !price || !category) {
-      return res.status(400).json({ message: 'Thiếu thông tin sản phẩm' });
+      return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin sản phẩm' });
     }
 
     const newProduct = new Product({
       name,
       price,
       category,
-      image, // có thể là URL ảnh
+      image, // ảnh là URL, sẽ hiển thị ở frontend
     });
 
-    const savedProduct = await newProduct.save();
-    res.status(201).json(savedProduct);
+    const saved = await newProduct.save();
+    res.status(201).json(saved);
   } catch (err) {
-    res.status(500).json({ error: 'Lỗi khi thêm sản phẩm' });
+    console.error('❌ Lỗi khi thêm sản phẩm:', err);
+    res.status(500).json({ message: 'Lỗi server khi thêm sản phẩm' });
   }
 });
 
