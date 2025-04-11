@@ -7,7 +7,7 @@ const Product = require('./models/Product');
 const app = express();
 const Order = require('./models/Order'); // Tạo file Order.js tương tự User.js
 
-app.use('/products', require('./routes/product'));
+app.use('/products', require('./routes/productRoutes'));
 app.use(cors());
 app.use(express.json()); // 👈 Di chuyển lên đây
 app.use((req, res, next) => {
