@@ -1,3 +1,4 @@
+// productRoutes.js
 const express = require('express');
 const router = express.Router();
 const Product = require('../models/Product');
@@ -19,7 +20,7 @@ const isAdmin = async (req, res, next) => {
       return res.status(403).json({ message: 'Bạn không có quyền thực hiện thao tác này' });
     }
 
-    req.user = user; // lưu user vào req để các middleware khác dùng nếu cần
+    req.user = user;
     next();
   } catch (err) {
     console.error('❌ Lỗi xác thực admin:', err);
@@ -57,7 +58,7 @@ router.post('/products', isAdmin, async (req, res) => {
       name,
       price,
       category,
-      image, // ảnh là URL, sẽ hiển thị ở frontend
+      image,
     });
 
     const saved = await newProduct.save();
@@ -65,6 +66,17 @@ router.post('/products', isAdmin, async (req, res) => {
   } catch (err) {
     console.error('❌ Lỗi khi thêm sản phẩm:', err);
     res.status(500).json({ message: 'Lỗi server khi thêm sản phẩm' });
+  }
+});
+
+// ✅ DELETE /products/:id - Xoá sản phẩm (chỉ admin)
+router.delete('/products/:id', isAdmin, async (req, res) => {
+  try {
+    const product = await Product.findByIdAndDelete(req.params.id);
+    if (!product) return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+    res.json({ message: 'Đã xoá sản phẩm thành công' });
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi server' });
   }
 });
 
