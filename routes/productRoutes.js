@@ -28,8 +28,8 @@ const isAdmin = async (req, res, next) => {
   }
 };
 
-// GET /products?category=ID
-router.get('/products', async (req, res) => {
+// ✅ GET /api/products?category=ID
+router.get('/', async (req, res) => {
   try {
     const { category } = req.query;
 
@@ -45,8 +45,8 @@ router.get('/products', async (req, res) => {
   }
 });
 
-// ✅ POST /products - Thêm sản phẩm mới (chỉ admin)
-router.post('/products', isAdmin, async (req, res) => {
+// ✅ POST /api/products - Thêm sản phẩm mới (chỉ admin)
+router.post('/', isAdmin, async (req, res) => {
   try {
     const { name, price, category, image } = req.body;
 
@@ -69,8 +69,8 @@ router.post('/products', isAdmin, async (req, res) => {
   }
 });
 
-// ✅ DELETE /products/:id - Xoá sản phẩm (chỉ admin)
-router.delete('/products/:id', isAdmin, async (req, res) => {
+// ✅ DELETE /api/products/:id - Xoá sản phẩm (chỉ admin)
+router.delete('/:id', isAdmin, async (req, res) => {
   try {
     const product = await Product.findByIdAndDelete(req.params.id);
     if (!product) return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
