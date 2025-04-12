@@ -49,7 +49,7 @@ router.get('/', async (req, res) => {
 router.post('/', isAdmin, async (req, res) => {
   try {
     const { name, price, category, image } = req.body;
-
+    console.log('📦 Thông tin sản phẩm nhận được:', req.body); // 👈 Thêm log
     if (!name || !price || !category) {
       return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin sản phẩm' });
     }
