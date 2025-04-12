@@ -86,11 +86,63 @@ app.get('/products', async (req, res) => {
 });
 app.post('/orders', async (req, res) => {
   try {
-    const order = new Order(req.body);
-    await order.save();
-    res.status(201).json({ message: 'Đơn hàng đã được lưu' });
+    const { items, total, phone, shippingAddress, userId } = req.body;
+
+    // 1. Validate input
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: 'Danh sách sản phẩm không hợp lệ' });
+    }
+    
+    if (!total || total <= 0) {
+      return res.status(400).json({ message: 'Tổng tiền không hợp lệ' });
+    }
+
+    // 2. Check product existence
+    const productIds = items.map(i => i.productId);
+    const products = await Product.find({ _id: { $in: productIds } });
+    
+    if (products.length !== items.length) {
+      return res.status(400).json({ message: 'Một số sản phẩm không tồn tại' });
+    }
+
+    // 3. Create order
+    const order = new Order({
+      user: userId,
+      items: items.map(item => ({
+        product: item.productId,
+        quantity: item.quantity,
+        price: item.price
+      })),
+      total,
+      phone,
+      shippingAddress,
+      status: 'pending'
+    });
+
+    // 4. Save order
+    const savedOrder = await order.save();
+    console.log('Đã lưu đơn hàng:', savedOrder);
+
+    // 5. Update stock
+    const bulkOps = items.map(item => ({
+      updateOne: {
+        filter: { _id: item.productId },
+        update: { $inc: { stock: -item.quantity } }
+      }
+    }));
+    
+    await Product.bulkWrite(bulkOps);
+
+    res.status(201).json(savedOrder);
+
   } catch (err) {
-    res.status(500).json({ message: 'Lỗi lưu đơn hàng' });
+    console.error('Lỗi chi tiết:', err);
+    res.status(500).json({ 
+      message: err.message.includes('validation') 
+        ? 'Dữ liệu không hợp lệ' 
+        : 'Lỗi server khi tạo đơn hàng',
+      error: err.message
+    });
   }
 });
 
