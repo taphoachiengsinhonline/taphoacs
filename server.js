@@ -178,6 +178,19 @@ app.post('/login', async (req, res) => {
     res.status(500).json({ message: 'Lỗi server' });
   }
 });
+app.put('/users/:id', async (req, res) => {
+  try {
+    const { name, phone, address } = req.body;
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.id,
+      { $set: { name, phone, address } },
+      { new: true }
+    );
+    res.json(updatedUser);
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi cập nhật người dùng' });
+  }
+});
 
 mongoose.connect('mongodb+srv://admin:Hunt3rlov3151220041512@taphoa.mx0zl2l.mongodb.net/?retryWrites=true&w=majority&appName=taphoa')
   .then(() => console.log('Connected to MongoDB'))
