@@ -26,6 +26,12 @@ app.get('/categories', async (req, res) => {
   }
 });
 
+app.get('/orders', async (req, res) => {
+  const { userId } = req.query;
+  const orders = await Order.find({ userId }).populate('items.product');
+  res.json(orders);
+});
+
 // Tạo mới danh mục
 
 app.post('/categories', async (req, res) => {
