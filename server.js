@@ -27,9 +27,14 @@ app.get('/categories', async (req, res) => {
 });
 
 app.get('/orders', async (req, res) => {
-  const { userId } = req.query;
-  const orders = await Order.find({ userId }).populate('items.product');
-  res.json(orders);
+  try {
+    const orders = await Order.find({ user: req.query.userId })
+      .populate('items.product')
+      .sort({ createdAt: -1 });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi server' });
+  }
 });
 
 // Tạo mới danh mục
