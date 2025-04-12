@@ -183,17 +183,27 @@ app.post('/login', async (req, res) => {
     res.status(500).json({ message: 'Lỗi server' });
   }
 });
+// server.js
 app.put('/users/:id', async (req, res) => {
   try {
     const { name, phone, address } = req.body;
+    
+    // Cập nhật và trả về user mới
     const updatedUser = await User.findByIdAndUpdate(
       req.params.id,
-      { $set: { name, phone, address } },
-      { new: true }
-    );
+      { name, phone, address },
+      { new: true } // <- Quan trọng: trả về document sau khi update
+    ).select('-password'); // Loại bỏ trường password
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'User không tồn tại' });
+    }
+
     res.json(updatedUser);
+
   } catch (err) {
-    res.status(500).json({ message: 'Lỗi cập nhật người dùng' });
+    console.error('Lỗi cập nhật user:', err);
+    res.status(500).json({ message: 'Lỗi server' });
   }
 });
 
