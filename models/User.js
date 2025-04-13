@@ -35,7 +35,7 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  pushToken: {
+  expoPushToken: {
     type: String,
     default: null // 👈 token dùng cho thông báo đẩy (Expo Push)
   }
