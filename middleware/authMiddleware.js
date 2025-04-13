@@ -1,6 +1,6 @@
 // authMiddleware.js
 const jwt = require('jsonwebtoken');
-const User = require('../models/user'); // hoặc đúng đường dẫn đến model User
+const User = require('../models/User'); // hoặc đúng đường dẫn đến model User
 
 // Middleware xác minh token và gán user vào req
 exports.verifyToken = async (req, res, next) => {
