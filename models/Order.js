@@ -54,6 +54,11 @@ const orderSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  paymentMethod: {
+    type: String,
+    enum: ['COD', 'BankTransfer', 'Momo'],
+    default: 'COD'
+  },
   status: {
     type: String,
     enum: ['pending', 'confirmed', 'shipping', 'delivered', 'cancelled'],
