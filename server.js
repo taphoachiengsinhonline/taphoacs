@@ -8,6 +8,7 @@ const app = express();
 const Order = require('./models/Order'); // Tạo file Order.js tương tự User.js
 const notificationRoutes = require('./routes/NotificationRoutes');
 
+app.use('/auth', require('./routes/authRoutes'));
 app.use('/notifications', notificationRoutes);
 app.use('/api/products', require('./routes/productRoutes'));
 app.use(cors());
