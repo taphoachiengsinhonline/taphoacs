@@ -6,7 +6,9 @@ const cors = require('cors');
 const Product = require('./models/Product');
 const app = express();
 const Order = require('./models/Order'); // Tạo file Order.js tương tự User.js
+const notificationRoutes = require('./routes/NotificationRoutes');
 
+app.use('/notifications', notificationRoutes);
 app.use('/api/products', require('./routes/productRoutes'));
 app.use(cors());
 app.use(express.json()); // 👈 Di chuyển lên đây
