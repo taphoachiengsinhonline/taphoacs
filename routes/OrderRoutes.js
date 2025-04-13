@@ -1,11 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
-const auth = require('../middlewares/auth'); // kiểm tra đăng nhập
-const isAdmin = require('../middlewares/isAdmin'); // kiểm tra admin
+const { verifyToken, isAdminMiddleware } = require('../middleware/authMiddleware'); // middleware đúng
 
-// Tạo đơn hàng mới
-router.post('/', auth, async (req, res) => {
+// Tạo đơn hàng mới (người dùng đã đăng nhập)
+router.post('/', verifyToken, async (req, res) => {
   try {
     const { items, total, phone, shippingAddress, note, paymentMethod } = req.body;
 
@@ -31,7 +30,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // Lấy đơn hàng của người dùng đã đăng nhập
-router.get('/my-orders', auth, async (req, res) => {
+router.get('/my-orders', verifyToken, async (req, res) => {
   try {
     const orders = await Order.find({ user: req.user._id }).sort({ createdAt: -1 });
     res.json(orders);
@@ -40,8 +39,8 @@ router.get('/my-orders', auth, async (req, res) => {
   }
 });
 
-// Lấy tất cả đơn hàng (chỉ admin)
-router.get('/', auth, isAdmin, async (req, res) => {
+// Lấy tất cả đơn hàng (chỉ admin mới xem được)
+router.get('/', verifyToken, isAdminMiddleware, async (req, res) => {
   try {
     const orders = await Order.find().populate('user', 'name email').sort({ createdAt: -1 });
     res.json(orders);
@@ -51,4 +50,3 @@ router.get('/', auth, isAdmin, async (req, res) => {
 });
 
 module.exports = router;
-
