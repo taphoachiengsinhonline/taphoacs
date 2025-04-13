@@ -1,29 +1,32 @@
-// routes/NotificationRoutes.js
+// routes/notificationRoutes.js
 const express = require('express');
 const router = express.Router();
-const User = require('../models/User');
+const User = require('../models/User'); // để lưu push token
+const { verifyToken } = require('../middleware/authMiddleware');
 
-router.post('/save-push-token', async (req, res) => {
-  const userId = req.headers['x-user-id'];
+// Lưu Push Token khi user đăng nhập
+router.post('/save-push-token', verifyToken, async (req, res) => {
+  const userId = req.user._id;
   const { token } = req.body;
 
-  if (!userId || !token) {
-    return res.status(400).json({ message: 'Thiếu userId hoặc token' });
+  if (!token) {
+    return res.status(400).json({ message: 'Thiếu token' });
   }
 
   try {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: 'Không tìm thấy người dùng' });
 
-    user.pushToken = token;
-    await user.save();
+    // Lưu token (nếu khác thì mới cập nhật)
+    if (user.pushToken !== token) {
+      user.pushToken = token;
+      await user.save();
+    }
 
-    res.json({ message: 'Đã lưu token thành công' });
-  } catch (error) {
-    console.error('Lỗi khi lưu token:', error);
-    res.status(500).json({ message: 'Lỗi server' });
+    res.json({ message: 'Lưu token thành công' });
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi server', error: err.message });
   }
 });
 
 module.exports = router;
-
