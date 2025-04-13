@@ -1,16 +1,16 @@
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
-  name: { 
-    type: String, 
-    required: [true, 'Vui lòng nhập tên'] 
+  name: {
+    type: String,
+    required: [true, 'Vui lòng nhập tên']
   },
-  email: { 
-    type: String, 
+  email: {
+    type: String,
     required: [true, 'Vui lòng nhập email'],
     unique: true,
     match: [
-      /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 
+      /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
       'Email không hợp lệ'
     ]
   },
@@ -18,7 +18,7 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Vui lòng nhập số điện thoại'],
     match: [
-      /^(0[35789]|84[35789]|01[2689])([0-9]{8})$/, // ✅ Sửa regex
+      /^(0[35789]|84[35789]|01[2689])([0-9]{8})$/,
       'Số điện thoại phải bắt đầu bằng: 03/05/07/08/09/012/016/018/019 hoặc +84'
     ]
   },
@@ -27,22 +27,26 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Vui lòng nhập địa chỉ'],
     minlength: [10, 'Địa chỉ phải có ít nhất 10 ký tự']
   },
-  password: { 
-    type: String, 
-    required: [true, 'Vui lòng nhập mật khẩu'] 
+  password: {
+    type: String,
+    required: [true, 'Vui lòng nhập mật khẩu']
   },
-  isAdmin: { 
-    type: Boolean, 
-    default: false 
+  isAdmin: {
+    type: Boolean,
+    default: false
+  },
+  pushToken: {
+    type: String,
+    default: null // 👈 token dùng cho thông báo đẩy (Expo Push)
   }
-}, { 
+}, {
   timestamps: true,
-  toJSON: { virtuals: true },  // Ẩn các trường nhạy cảm
+  toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
 
-// Ẩn trường password khi trả về JSON
-userSchema.methods.toJSON = function() {
+// Ẩn trường nhạy cảm khi trả về client
+userSchema.methods.toJSON = function () {
   const user = this.toObject();
   delete user.password;
   delete user.__v;
