@@ -1,32 +1,40 @@
 const express = require('express');
 const router = express.Router();
-const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const User = require('../models/user');
 
-router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+// Đăng ký
+router.post('/register', async (req, res) => {
+  const { name, email, phone, address, password } = req.body;
 
   try {
-    const user = await User.findOne({ email });
+    // Kiểm tra email đã tồn tại chưa
+    const existingUser = await User.findOne({ email });
+    if (existingUser) return res.status(400).json({ message: 'Email đã được sử dụng' });
 
-    if (!user) return res.status(400).json({ message: 'Email hoặc mật khẩu không đúng' });
+    // Mã hoá mật khẩu
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: 'Email hoặc mật khẩu không đúng' });
+    // Tạo user mới
+    const user = new User({
+      name,
+      email,
+      phone,
+      address,
+      password: hashedPassword,
+    });
 
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    await user.save();
 
-    const userSafe = user.toJSON(); // đã loại bỏ password trong toJSON
-    res.json({ user: userSafe, token });
-  } catch (error) {
-    res.status(500).json({ message: 'Đã xảy ra lỗi server' });
+    // Tạo token sau khi đăng ký thành công
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    res.status(201).json({ user: user.toJSON(), token });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Đã xảy ra lỗi server khi đăng ký' });
   }
 });
 
 module.exports = router;
-
