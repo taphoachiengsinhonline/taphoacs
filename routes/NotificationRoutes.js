@@ -1,8 +1,8 @@
 // routes/notificationRoutes.js
 const express = require('express');
 const router = express.Router();
-const User = require('./models/User'); // để lưu push token
-const { verifyToken } = require('./middleware/authMiddleware');
+const User = require('../models/User'); // để lưu push token
+const { verifyToken } = require('../middleware/authMiddleware');
 
 // Lưu Push Token khi user đăng nhập
 router.post('/save-push-token', async (req, res) => {
