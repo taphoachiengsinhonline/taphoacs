@@ -34,13 +34,19 @@ router.get('/', async (req, res) => {
     const { category } = req.query;
 
     let filter = {};
+
     if (category && category !== 'Tất cả') {
-      filter.category = category;
+      // Lấy tất cả danh mục con (nếu có)
+      const childCategories = await Category.find({ parent: category }).select('_id');
+      const categoryIds = [category, ...childCategories.map(cat => cat._id.toString())];
+
+      filter.category = { $in: categoryIds };
     }
 
     const products = await Product.find(filter);
     res.json(products);
   } catch (err) {
+    console.error('❌ Lỗi khi lọc sản phẩm:', err);
     res.status(500).json({ error: err.message });
   }
 });
