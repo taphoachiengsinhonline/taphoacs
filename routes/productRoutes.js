@@ -28,25 +28,34 @@ const isAdmin = async (req, res, next) => {
   }
 };
 
+// 👉 Hàm đệ quy lấy tất cả category con
+const getAllChildCategoryIds = async (parentId) => {
+  const children = await Category.find({ parent: parentId }).select('_id');
+  let allChildIds = children.map(c => c._id.toString());
+
+  for (const child of children) {
+    const subChildren = await getAllChildCategoryIds(child._id);
+    allChildIds = allChildIds.concat(subChildren);
+  }
+
+  return allChildIds;
+};
+
 // ✅ GET /api/products?category=ID
 router.get('/', async (req, res) => {
   try {
     const { category } = req.query;
 
     let filter = {};
-
     if (category && category !== 'Tất cả') {
-      // Lấy tất cả danh mục con (nếu có)
-      const childCategories = await Category.find({ parent: category }).select('_id');
-      const categoryIds = [category, ...childCategories.map(cat => cat._id.toString())];
-
+      const categoryIds = [category, ...(await getAllChildCategoryIds(category))];
       filter.category = { $in: categoryIds };
     }
 
-    const products = await Product.find(filter);
+    const products = await Product.find(filter).populate('category');
     res.json(products);
   } catch (err) {
-    console.error('❌ Lỗi khi lọc sản phẩm:', err);
+    console.error('❌ Lỗi khi lấy sản phẩm:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -55,7 +64,7 @@ router.get('/', async (req, res) => {
 router.post('/', isAdmin, async (req, res) => {
   try {
     const { name, price, category, image } = req.body;
-    console.log('📦 Thông tin sản phẩm nhận được:', req.body); // 👈 Thêm log
+    console.log('📦 Thông tin sản phẩm nhận được:', req.body);
     if (!name || !price || !category) {
       return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin sản phẩm' });
     }
