@@ -1,78 +1,106 @@
-// models/Order.js
-const mongoose = require('mongoose');
+// routes/orderRoutes.js
+const express = require('express');
+const router = express.Router();
+const Order = require('../models/Order');
+const { verifyToken, isAdminMiddleware } = require('../middleware/authMiddleware');
 
-// Schema cho từng sản phẩm trong đơn hàng
-const orderItemSchema = new mongoose.Schema({
-  product: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Product',
-    required: true
-  },
-  quantity: {
-    type: Number,
-    required: true,
-    min: [1, 'Số lượng phải lớn hơn 0']
-  },
-  price: {
-    type: Number,
-    required: true,
-    min: [0, 'Giá phải lớn hơn hoặc bằng 0']
-  }
-}, { _id: false }); // Không tạo _id cho từng item
+// Tạo đơn hàng
+router.post('/', verifyToken, async (req, res) => {
+  const { items, total, phone, shippingAddress, note, paymentMethod } = req.body;
 
-// Schema chính của đơn hàng
-const orderSchema = new mongoose.Schema({
-  user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  items: {
-    type: [orderItemSchema],
-    required: true,
-    validate: [arr => arr.length > 0, 'Đơn hàng phải có ít nhất 1 sản phẩm']
-  },
-  total: {
-    type: Number,
-    required: true,
-    min: [0, 'Tổng tiền phải lớn hơn hoặc bằng 0']
-  },
-  phone: {
-    type: String,
-    required: [true, 'Vui lòng nhập số điện thoại'],
-    match: [
-      /^(0[35789]|84[35789]|01[2689])([0-9]{8})$/,
-      'Số điện thoại không hợp lệ'
-    ]
-  },
-  shippingAddress: {
-    type: String,
-    required: [true, 'Vui lòng nhập địa chỉ giao hàng'],
-    minlength: [10, 'Địa chỉ phải có ít nhất 10 ký tự']
-  },
-  note: {
-    type: String,
-    default: ''
-  },
-  paymentMethod: {
-    type: String,
-    enum: ['COD', 'BankTransfer', 'Momo'],
-    default: 'COD'
-  },
-  status: {
-    type: String,
-    enum: ['pending', 'confirmed', 'shipping', 'delivered', 'cancelled'],
-    default: 'pending'
+  if (!items || items.length === 0) {
+    return res.status(400).json({ message: 'Đơn hàng phải có ít nhất 1 sản phẩm' });
   }
-}, {
-  timestamps: true
+
+  try {
+    const order = new Order({
+      user: req.user._id,
+      items,
+      total,
+      phone,
+      shippingAddress,
+      note,
+      paymentMethod
+    });
+
+    const savedOrder = await order.save();
+    res.status(201).json(savedOrder);
+  } catch (error) {
+    res.status(500).json({ message: 'Lỗi tạo đơn hàng', error: error.message });
+  }
 });
 
-// Tự động bỏ __v khi trả JSON
-orderSchema.methods.toJSON = function () {
-  const order = this.toObject();
-  delete order.__v;
-  return order;
-};
+// Lấy đơn hàng của người dùng hiện tại
+router.get('/my-orders', verifyToken, async (req, res) => {
+  try {
+    const orders = await Order.find({ user: req.user._id })
+      .sort({ createdAt: -1 })
+      .populate('items.product', 'name thumbnail');
 
-module.exports = mongoose.model('Order', orderSchema);
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ message: 'Lỗi lấy đơn hàng của bạn', error: error.message });
+  }
+});
+
+// Lấy tất cả đơn hàng (admin)
+router.get('/admin', verifyToken, isAdminMiddleware, async (req, res) => {
+  try {
+    const orders = await Order.find()
+      .sort({ createdAt: -1 })
+      .populate('user', 'name email phone')
+      .populate('items.product', 'name thumbnail');
+
+    res.json(orders);
+  } catch (error) {
+    res.status(500).json({ message: 'Lỗi lấy danh sách đơn hàng', error: error.message });
+  }
+});
+
+// Lấy chi tiết đơn hàng theo ID (admin hoặc chính chủ)
+router.get('/:id', verifyToken, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id)
+      .populate('user', 'name email phone')
+      .populate('items.product', 'name thumbnail');
+
+    if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+
+    // Nếu không phải admin và không phải chủ đơn
+    if (!req.user.isAdmin && String(order.user._id) !== String(req.user._id)) {
+      return res.status(403).json({ message: 'Bạn không có quyền xem đơn hàng này' });
+    }
+
+    res.json(order);
+  } catch (error) {
+    res.status(500).json({ message: 'Lỗi lấy chi tiết đơn hàng', error: error.message });
+  }
+});
+
+// Cập nhật trạng thái đơn hàng (admin)
+router.put('/:id/status', verifyToken, isAdminMiddleware, async (req, res) => {
+  const { status } = req.body;
+  const validStatuses = ['pending', 'confirmed', 'shipping', 'delivered', 'cancelled'];
+
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ message: 'Trạng thái không hợp lệ' });
+  }
+
+  try {
+    const order = await Order.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true }
+    )
+      .populate('user', 'name email')
+      .populate('items.product', 'name thumbnail');
+
+    if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+
+    res.json(order);
+  } catch (error) {
+    res.status(500).json({ message: 'Lỗi cập nhật trạng thái', error: error.message });
+  }
+});
+
+module.exports = router;
