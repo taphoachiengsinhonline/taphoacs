@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 // Register
 router.post('/register', async (req, res) => {
   try {
+    console.log('📥 Dữ liệu nhận được:', req.body);
     const { email, password, name } = req.body;
 
     const existing = await User.findOne({ email });
