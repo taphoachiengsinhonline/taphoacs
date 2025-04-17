@@ -1,71 +1,41 @@
 // routes/authRoutes.js
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const bcrypt = require('bcryptjs');
 
-// Đăng ký
+// Register
 router.post('/register', async (req, res) => {
-  const { name, email, phone, address, password, expoPushToken } = req.body;
-
   try {
-    // Kiểm tra email đã tồn tại chưa
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: 'Email đã được sử dụng' });
-    }
+    const { email, password, name } = req.body;
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(400).json({ message: 'Email đã tồn tại' });
 
-    // Mã hoá mật khẩu
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashed = await bcrypt.hash(password, 10);
+    const user = await User.create({ email, password: hashed, name });
+    res.status(201).json({ message: 'Đăng ký thành công', user: { ...user.toObject(), password: undefined } });
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi server khi đăng ký', error: err.message });
+  }
+});
 
-    // Tạo user mới
-    const user = new User({
-      name,
-      email,
-      phone,
-      address,
-      password: hashedPassword,
-      expoPushToken // 👈 Lưu token thông báo đẩy nếu có
-    });
+// Login
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password, expoPushToken } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(401).json({ message: 'Sai tài khoản hoặc mật khẩu' });
 
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(401).json({ message: 'Sai tài khoản hoặc mật khẩu' });
+
+    user.expoPushToken = expoPushToken;
     await user.save();
 
-    // Tạo JWT token
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-
-    res.status(201).json({ user: user.toJSON(), token });
+    res.json({ message: 'Đăng nhập thành công', user: { ...user.toObject(), password: undefined } });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Đã xảy ra lỗi server khi đăng ký' });
+    res.status(500).json({ message: 'Lỗi server khi đăng nhập', error: err.message });
   }
 });
-// Đăng nhập
-router.post('/login', async (req, res) => {
-  const { email, password, expoPushToken } = req.body;
 
-  try {
-    // Tìm người dùng theo email
-    const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: 'Email hoặc mật khẩu không đúng' });
-
-    // So sánh mật khẩu
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: 'Email hoặc mật khẩu không đúng' });
-
-    // Nếu client gửi expoPushToken mới => cập nhật
-    if (expoPushToken && expoPushToken !== user.expoPushToken) {
-      user.expoPushToken = expoPushToken;
-      await user.save(); // Cập nhật vào DB
-    }
-
-    // Tạo JWT token
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-
-    res.status(200).json({ user: user.toJSON(), token });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Đã xảy ra lỗi server khi đăng nhập' });
-  }
-});
 module.exports = router;
