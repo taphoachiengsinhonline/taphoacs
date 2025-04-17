@@ -4,51 +4,64 @@ const mongoose = require('mongoose');
 const authRoutes = require('./routes/authRoutes');
 require('dotenv').config();
 
+// 1. Khởi tạo ứng dụng
 const app = express();
 
-// Middleware
+// 2. Middleware cốt lõi
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Debug environment variables
-console.log('🔍 ENV Variables:', {
-  NODE_ENV: process.env.NODE_ENV,
-  PORT: process.env.PORT,
-  MONGODB_URI: process.env.MONGODB_URI ? '***' : 'MISSING - FATAL ERROR!'
+// 3. Kiểm tra biến môi trường (Critical check)
+console.log('🔧 Environment Check:', {
+  NODE_ENV: process.env.NODE_ENV || 'undefined',
+  PORT: process.env.PORT || 'undefined',
+  MONGODB_URI: process.env.MONGODB_URI ? '***' : 'MISSING - KILLING PROCESS'
 });
 
-// Kết nối MongoDB (đã remove deprecated options)
+// 4. Kết nối MongoDB Atlas
 const connectDB = async () => {
   try {
     if (!process.env.MONGODB_URI) {
-      throw new Error('MONGODB_URI is required in environment variables');
+      throw new Error('[FATAL] MONGODB_URI not found in .env');
     }
 
-    await mongoose.connect(process.env.MONGODB_URI);
-    console.log('✅ Đã kết nối MongoDB thành công');
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 3000,
+      socketTimeoutMS: 20000
+    });
+    console.log('✅ MongoDB Atlas Connected');
   } catch (err) {
-    console.error('❌ Lỗi MongoDB nghiêm trọng:', {
+    console.error('❌ DATABASE CONNECTION FAILED:', {
       error: err.name,
       message: err.message,
       stack: err.stack
     });
-    process.exit(1); // Thoát ứng dụng ngay lập tức
+    process.exit(1); // Force exit
   }
 };
 
+// 5. Khởi động kết nối DB
 connectDB();
 
-// Routes
-app.use('/api/auth', authRoutes);
+// 6. Route chính
+app.use('/api/v1/auth', authRoutes);
 
-// Error handler
+// 7. Xử lý lỗi toàn cục
 app.use((err, req, res, next) => {
-  console.error('🔥 Error:', err.stack);
-  res.status(500).json({ error: 'Internal Server Error' });
+  console.error('💥 ERROR:', {
+    path: req.path,
+    method: req.method,
+    error: err.stack
+  });
+  res.status(500).json({ 
+    status: 'error',
+    message: 'Internal Server Error' 
+  });
 });
 
-// Server
+// 8. Khởi động server
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server ready on port ${PORT}`);
+  console.log(`🚀 Server UP: http://localhost:${PORT}`);
+  console.log(`📡 Mode: ${process.env.NODE_ENV || 'development'}`);
 });
