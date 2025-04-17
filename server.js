@@ -1,36 +1,31 @@
 // server.js
 const express = require('express');
 const mongoose = require('mongoose');
-const cors = require('cors');
+const authRoutes = require('./routes/authRoutes'); // Đảm bảo đường dẫn đúng
 require('dotenv').config();
 
 const app = express();
 
-// Middleware
-app.use(cors({ origin: '*' }));
-app.use(express.json());
-app.use((req, res, next) => {
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  next();
-});
+// Middleware quan trọng cần thêm
+app.use(express.json()); 
+app.use(express.urlencoded({ extended: true }));
+
+// Kết nối MongoDB
+mongoose.connect(process.env.MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+.then(() => console.log('✅ Đã kết nối MongoDB'))
+.catch(err => console.error('❌ Lỗi MongoDB:', err));
 
 // Routes
-app.use('/auth', require('./routes/authRoutes'));
-app.use('/users', require('./routes/userRoutes'));
-app.use('/api/products', require('./routes/productRoutes'));
-app.use('/categories', require('./routes/categoryRoutes'));
-app.use('/orders', require('./routes/OrderRoutes'));
-app.use('/notifications', require('./routes/NotificationRoutes')); // ✅ Đã có route để gửi notification
+app.use('/auth', authRoutes); // Đảm bảo authRoutes là router hợp lệ
 
-// 404 fallback
-app.use((req, res) => {
-  res.status(404).json({ message: 'API không tồn tại' });
+// Xử lý lỗi tập trung
+app.use((err, req, res, next) => {
+  console.error('🔥 Error stack:', err.stack);
+  res.status(500).json({ error: 'Lỗi server' });
 });
 
-// DB + Server
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('✅ Connected to MongoDB'))
-  .catch(err => console.error('❌ MongoDB error:', err));
-
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server chạy trên port ${PORT}`));
