@@ -6,12 +6,14 @@ const User = require('../models/User');
 
 // Đăng ký
 router.post('/register', async (req, res) => {
-  const { name, email, phone, address, password } = req.body;
+  const { name, email, phone, address, password, expoPushToken } = req.body;
 
   try {
     // Kiểm tra email đã tồn tại chưa
     const existingUser = await User.findOne({ email });
-    if (existingUser) return res.status(400).json({ message: 'Email đã được sử dụng' });
+    if (existingUser) {
+      return res.status(400).json({ message: 'Email đã được sử dụng' });
+    }
 
     // Mã hoá mật khẩu
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -23,11 +25,12 @@ router.post('/register', async (req, res) => {
       phone,
       address,
       password: hashedPassword,
+      expoPushToken // 👈 Lưu token thông báo đẩy nếu có
     });
 
     await user.save();
 
-    // Tạo token sau khi đăng ký thành công
+    // Tạo JWT token
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
     res.status(201).json({ user: user.toJSON(), token });
