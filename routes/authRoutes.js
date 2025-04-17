@@ -1,44 +1,48 @@
+// routes/authRoutes.js
 const express = require('express');
-const router = express.Router();
-const User = require('../models/User');
+const router = express.Router(); // Khởi tạo router đúng cách
 const bcrypt = require('bcryptjs');
+const User = require('../models/User');
 
-// Thêm middleware router-specific
-router.use((req, res, next) => {
-  console.log('🕒 Thời gian request:', new Date().toISOString());
-  next();
-});
-
-// Đăng ký - Phiên bản đã fix
+// Đăng ký
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, name } = req.body;
-
+    const { name, email, password } = req.body;
+    
     // Validate input
-    if (!email || !password || !name) {
-      return res.status(400).json({ message: 'Thiếu thông tin đăng ký' });
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'All fields are required' });
     }
 
-    const existing = await User.findOne({ email });
-    if (existing) return res.status(400).json({ message: 'Email đã tồn tại' });
+    // Check existing user
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(409).json({ message: 'Email already exists' });
+    }
 
-    const hashed = await bcrypt.hash(password, 10);
-    const user = await User.create({ 
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Create user
+    const user = await User.create({
+      name,
       email: email.toLowerCase().trim(),
-      password: hashed,
-      name: name.trim()
+      password: hashedPassword
     });
 
+    // Return response
     res.status(201).json({
-      message: 'Đăng ký thành công',
-      user: { ...user.toObject(), password: undefined },
+      _id: user._id,
+      name: user.name,
+      email: user.email
     });
+
   } catch (err) {
-    console.error('❌ Lỗi đăng ký:', {
-      message: err.message,
-      stack: err.stack
+    console.error('Registration error:', err);
+    res.status(500).json({ 
+      message: 'Server error',
+      error: err.message 
     });
-    res.status(500).json({ message: 'Lỗi server', error: err.message });
   }
 });
 
