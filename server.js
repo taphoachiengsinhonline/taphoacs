@@ -19,8 +19,8 @@ app.use('/auth', require('./routes/authRoutes'));
 app.use('/users', require('./routes/userRoutes'));
 app.use('/api/products', require('./routes/productRoutes'));
 app.use('/categories', require('./routes/categoryRoutes'));
-app.use('/orders', require('./routes/orderRoutes'));
-app.use('/notifications', require('./routes/notificationRoutes'));
+app.use('/orders', require('./routes/OrderRoutes'));
+app.use('/notifications', require('./routes/NotificationRoutes'));
 
 // 404 fallback
 app.use((req, res) => {
