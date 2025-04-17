@@ -1,3 +1,4 @@
+// models/User.js
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
@@ -35,9 +36,9 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  expoPushToken: {
+  fcmToken: {
     type: String,
-    default: null // 👉 Token dùng để gửi thông báo đẩy (FCM hoặc Expo Push)
+    default: null // ✅ Đổi tên từ expoPushToken ➜ fcmToken
   }
 }, {
   timestamps: true,
