@@ -6,7 +6,7 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 
 // Thêm middleware kiểm tra JSON
-//router.use(express.json());
+router.use(express.json());
 
 // Register - Phiên bản đã sửa
 router.post('/register', async (req, res) => {
