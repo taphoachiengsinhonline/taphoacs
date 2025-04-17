@@ -2,57 +2,53 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const authRoutes = require('./routes/authRoutes');
-require('dotenv').config(); // Load biến môi trường
+require('dotenv').config();
 
-// Khởi tạo app Express
 const app = express();
 
-// Middleware quan trọng
+// Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Debug biến môi trường
+// Debug environment variables
 console.log('🔍 ENV Variables:', {
   NODE_ENV: process.env.NODE_ENV,
   PORT: process.env.PORT,
-  MONGODB_URI: process.env.MONGODB_URI ? '***' : 'MISSING!'
+  MONGODB_URI: process.env.MONGODB_URI ? '***' : 'MISSING - FATAL ERROR!'
 });
 
-// Kết nối MongoDB với xử lý lỗi chi tiết
-mongoose.connect(
-  process.env.MONGODB_URI || 'mongodb://localhost:27017/taphoa', // Fallback local
-  {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000 // Timeout sau 5s
+// Kết nối MongoDB (đã remove deprecated options)
+const connectDB = async () => {
+  try {
+    if (!process.env.MONGODB_URI) {
+      throw new Error('MONGODB_URI is required in environment variables');
+    }
+
+    await mongoose.connect(process.env.MONGODB_URI);
+    console.log('✅ Đã kết nối MongoDB thành công');
+  } catch (err) {
+    console.error('❌ Lỗi MongoDB nghiêm trọng:', {
+      error: err.name,
+      message: err.message,
+      stack: err.stack
+    });
+    process.exit(1); // Thoát ứng dụng ngay lập tức
   }
-)
-.then(() => console.log('✅ Đã kết nối MongoDB thành công'))
-.catch(err => {
-  console.error('❌ Lỗi kết nối MongoDB:', {
-    message: err.message,
-    code: err.code,
-    codeName: err.codeName,
-    reason: err.reason
-  });
-  process.exit(1); // Thoát ứng dụng nếu kết nối thất bại
-});
+};
+
+connectDB();
 
 // Routes
 app.use('/api/auth', authRoutes);
 
-// Xử lý lỗi tập trung
+// Error handler
 app.use((err, req, res, next) => {
-  console.error('🔥 Error stack:', err.stack);
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: err.message
-  });
+  console.error('🔥 Error:', err.stack);
+  res.status(500).json({ error: 'Internal Server Error' });
 });
 
-// Khởi động server
-const PORT = process.env.PORT || 3000;
+// Server
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server đang chạy trên port ${PORT}`);
-  console.log(`📡 Chế độ: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🚀 Server ready on port ${PORT}`);
 });
