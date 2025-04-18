@@ -3,6 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const authRoutes = require('./routes/authRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
+const productRoutes  = require('./routes/productRoutes');
 require('dotenv').config();
 
 // 1. Khởi tạo ứng dụng
@@ -47,7 +49,8 @@ connectDB();
 
 // 6. Route chính
 app.use('/api/v1/auth', authRoutes);
-
+app.use('/api/v1/categories', categoryRoutes);
+app.use('/api/v1/products',   productRoutes);
 // 7. Xử lý lỗi toàn cục
 app.use((err, req, res, next) => {
   console.error('💥 ERROR:', {
