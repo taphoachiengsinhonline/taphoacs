@@ -1,5 +1,6 @@
 // server.js
 const express = require('express');
+const cors = require('cors');
 const mongoose = require('mongoose');
 const authRoutes = require('./routes/authRoutes');
 require('dotenv').config();
@@ -7,6 +8,7 @@ require('dotenv').config();
 // 1. Khởi tạo ứng dụng
 const app = express();
 
+app.use(cors()); 
 // 2. Middleware cốt lõi
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
