@@ -11,13 +11,13 @@ router.post('/register', async (req, res) => {
     
     // Validate input
     if (!name || !email || !password) {
-      return res.status(400).json({ message: 'All fields are required' });
+      return res.status(400).json({ message: 'Vui lòng điền đầy đủ các mục' });
     }
 
     // Check existing user
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(409).json({ message: 'Email already exists' });
+      return res.status(409).json({ message: 'Email đã tồn tại' });
     }
 
     // Hash password
@@ -40,7 +40,7 @@ router.post('/register', async (req, res) => {
   } catch (err) {
     console.error('Registration error:', err);
     res.status(500).json({ 
-      message: 'Server error',
+      message: 'Lỗi server',
       error: err.message 
     });
   }
