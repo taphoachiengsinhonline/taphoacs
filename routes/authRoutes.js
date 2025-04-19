@@ -6,6 +6,7 @@ const User = require('../models/User');
 
 // Đăng ký
 router.post('/register', async (req, res) => {
+  console.log('Dữ liệu nhận từ client:', req.body);
   try {
     const { name, email, password } = req.body;
     
