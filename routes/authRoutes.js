@@ -107,7 +107,7 @@ router.post('/login', async (req, res) => {
             process.env.JWT_SECRET || 'fallback_secret_key',
             { expiresIn: '1h' }
         );
-
+        console.log('Generated Token:', token); // [!] Thêm dòng này để debug
         // Trả về response
         res.setHeader('Content-Type', 'application/json');
         res.status(200).json({
