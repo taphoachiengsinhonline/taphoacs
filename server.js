@@ -9,8 +9,12 @@ require('dotenv').config();
 
 // 1. Khởi tạo ứng dụng
 const app = express();
-
-app.use(cors()); 
+app.use(cors({
+  origin: '*', // Hoặc domain cụ thể của frontend
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  exposedHeaders: ['Authorization']
+}));
 // 2. Middleware cốt lõi
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
