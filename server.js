@@ -7,9 +7,10 @@ const categoryRoutes = require('./routes/categoryRoutes');
 const productRoutes  = require('./routes/productRoutes');
 require('dotenv').config();
 const orderRoutes = require('./routes/orderRoutes');
-app.use('/api/v1/orders', orderRoutes);
+
 // 1. Khởi tạo ứng dụng
 const app = express();
+app.use('/api/v1/orders', orderRoutes);
 app.use(cors({
   origin: '*', // Hoặc domain cụ thể của frontend
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
