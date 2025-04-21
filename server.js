@@ -15,7 +15,8 @@ app.use(cors({
   origin: '*', // Hoặc domain cụ thể của frontend
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-  exposedHeaders: ['Authorization']
+  exposedHeaders: ['Authorization'],
+  credentials: true,
 }));
 // 2. Middleware cốt lõi
 app.use(express.json());
