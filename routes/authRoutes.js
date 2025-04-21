@@ -97,11 +97,12 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ 
                 status: 'error',
                 message: 'Email hoặc mật khẩu không đúng' 
-            });
-        }
-        catch (err) {
+                catch (err) {
     console.error('Login error:', err); // [!] Đảm bảo có dòng này
   }
+            });
+        }
+        
 
         // Tạo JWT token
         const token = jwt.sign(
