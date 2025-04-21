@@ -68,9 +68,10 @@ router.post('/register', async (req, res) => {
 
 // Đăng nhập
 router.post('/login', async (req, res) => {
+    console.log('Login attempt:', req.body); // [!] Thêm dòng này
     try {
         const { email, password } = req.body;
-
+        console.log('Searching for user:', email); // [!] Thêm dòng này
         // Validate input
         if (!email || !password) {
             return res.status(400).json({ 
@@ -81,6 +82,7 @@ router.post('/login', async (req, res) => {
 
         // Find user
         const user = await User.findOne({ email });
+        console.log('User found:', user); // [!] Thêm dòng này
         if (!user) {
             return res.status(401).json({ 
                 status: 'error',
@@ -90,12 +92,16 @@ router.post('/login', async (req, res) => {
 
         // Verify password
         const isMatch = await bcrypt.compare(password, user.password);
+         console.log('Password match:', isMatch); // [!] Quan trọng
         if (!isMatch) {
             return res.status(401).json({ 
                 status: 'error',
                 message: 'Email hoặc mật khẩu không đúng' 
             });
         }
+        catch (err) {
+    console.error('Login error:', err); // [!] Đảm bảo có dòng này
+  }
 
         // Tạo JWT token
         const token = jwt.sign(
