@@ -6,7 +6,8 @@ const authRoutes = require('./routes/authRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const productRoutes  = require('./routes/productRoutes');
 require('dotenv').config();
-
+const orderRoutes = require('./routes/orderRoutes');
+app.use('/api/v1/orders', orderRoutes);
 // 1. Khởi tạo ứng dụng
 const app = express();
 app.use(cors({
