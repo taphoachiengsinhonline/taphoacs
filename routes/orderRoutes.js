@@ -2,7 +2,6 @@ const express = require('express');
  const router = express.Router();
  const Order = require('../models/Order');
  const { verifyToken, isAdminMiddleware } = require('../middleware/authMiddleware'); // middleware đúng
- const { verifyToken, isAdminMiddleware } = require('../middleware/authMiddleware');
  const sendPushNotification = require('../utils/sendPushNotification'); // thêm dòng này
  const User = require('../models/User'); // để lấy token admin
  
