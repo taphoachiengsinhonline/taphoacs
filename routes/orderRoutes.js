@@ -7,7 +7,7 @@ const express = require('express');
  
  // Tạo đơn hàng mới (người dùng đã đăng nhập)
  router.post('/', verifyToken, async (req, res) => {
- @@ -23,8 +25,21 @@ router.post('/', verifyToken, async (req, res) => {
+ router.post('/', verifyToken, async (req, res) => {
      });
  
      const savedOrder = await newOrder.save();
@@ -29,7 +29,7 @@ const express = require('express');
      res.status(500).json({ message: 'Lỗi tạo đơn hàng', error: err.message });
    }
  });
- @@ -39,10 +54,12 @@ router.get('/my-orders', verifyToken, async (req, res) => {
+ router.get('/my-orders', verifyToken, async (req, res) => {
    }
  });
  
