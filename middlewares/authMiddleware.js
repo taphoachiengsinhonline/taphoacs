@@ -28,14 +28,14 @@ exports.verifyToken = async (req, res, next) => {
 
     // Xác thực token bằng JWT
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
+        
     // Kiểm tra xem decoded có chứa id không
     if (!decoded?.id) {
       return res.status(401).json({ message: 'Token không hợp lệ (thiếu ID)' });
     }
 
     // Tìm người dùng từ DB
-    const user = await User.findById(decoded.id);
+    const user = await User.findById(decoded.userId); // <-- đổi từ id thành userId
     if (!user) {
       return res.status(401).json({ message: 'Người dùng không tồn tại' });
     }
