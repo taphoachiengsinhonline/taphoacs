@@ -8,22 +8,18 @@ const productRoutes  = require('./routes/productRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 require('dotenv').config();
 
-// 1. Khởi tạo ứng dụng
 const app = express();
 
-app.use(cors()); 
-// 2. Middleware cốt lõi
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 3. Kiểm tra biến môi trường (Critical check)
 console.log('🔧 Environment Check:', {
   NODE_ENV: process.env.NODE_ENV || 'undefined',
   PORT: process.env.PORT || 'undefined',
   MONGODB_URI: process.env.MONGODB_URI ? '***' : 'MISSING - KILLING PROCESS'
 });
 
-// 4. Kết nối MongoDB Atlas
 const connectDB = async () => {
   try {
     if (!process.env.MONGODB_URI) {
@@ -41,32 +37,39 @@ const connectDB = async () => {
       message: err.message,
       stack: err.stack
     });
-    process.exit(1); // Force exit
+    process.exit(1);
   }
 };
 
-// 5. Khởi động kết nối DB
 connectDB();
 
-// 6. Route chính
+// Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/categories', categoryRoutes);
 app.use('/api/v1/products',   productRoutes);
 app.use('/api/v1/orders', orderRoutes);
-// 7. Xử lý lỗi toàn cục
+
+// 404 Handler
+app.use((req, res, next) => {
+  res.status(404).json({
+    status: 'error',
+    message: 'Đường dẫn không tồn tại'
+  });
+});
+
+// Global Error Handler
 app.use((err, req, res, next) => {
   console.error('💥 ERROR:', {
     path: req.path,
     method: req.method,
     error: err.stack
   });
-  res.status(500).json({ 
+  res.status(500).json({
     status: 'error',
-    message: 'Internal Server Error' 
+    message: 'Internal Server Error'
   });
 });
 
-// 8. Khởi động server
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`🚀 Server UP: http://localhost:${PORT}`);
