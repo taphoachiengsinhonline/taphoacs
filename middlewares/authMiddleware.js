@@ -1,20 +1,18 @@
-// middlewares/authMiddleware.js
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 exports.verifyToken = async (req, res, next) => {
   let token = req.headers['x-access-token'] || req.headers['authorization'];
 
-  // Nếu có tiền tố Bearer
   if (token && token.startsWith('Bearer ')) {
-    token = token.slice(7, token.length);
+    token = token.slice(7);
   }
 
   if (!token) {
+    console.warn('[AUTH] Không có token');
     return res.status(401).json({ message: 'Không tìm thấy token' });
   }
 
-  // Dummy token (nếu có xài trong dev)
   if (token === 'dummy-token-for-testing') {
     req.user = { _id: 'dummyAdminId', isAdmin: true };
     return next();
@@ -22,20 +20,25 @@ exports.verifyToken = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log('[AUTH] Token decoded:', decoded);
 
-    if (!decoded.userId) {
+    const userId = decoded.userId || decoded._id || decoded.id;
+
+    if (!userId) {
+      console.warn('[AUTH] Token thiếu userId');
       return res.status(401).json({ message: 'Token không hợp lệ (thiếu ID)' });
     }
 
-    const user = await User.findById(decoded.userId);
+    const user = await User.findById(userId);
     if (!user) {
+      console.warn('[AUTH] Không tìm thấy người dùng trong DB');
       return res.status(401).json({ message: 'Người dùng không tồn tại' });
     }
 
     req.user = user;
     next();
   } catch (error) {
-    console.error('verifyToken error:', error);
-    return res.status(401).json({ message: 'Token không hợp lệ' });
+    console.error('[AUTH] Lỗi verify token:', error);
+    return res.status(401).json({ message: 'Token không hợp lệ hoặc hết hạn' });
   }
 };
