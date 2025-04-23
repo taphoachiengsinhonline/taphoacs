@@ -9,42 +9,35 @@ const User = require('../models/User');
 router.post('/register', async (req, res) => {
     try {
         const { name, email, password, address, phone } = req.body;
-        
-        // Validate input
+
         if (!name || !email || !password) {
             return res.status(400).json({ 
-                status: 'error',
+                status: 'error', 
                 message: 'Vui lòng điền đầy đủ các mục' 
             });
         }
 
-        // Check existing user
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(409).json({ 
-                status: 'error',
+                status: 'error', 
                 message: 'Email đã tồn tại' 
             });
         }
 
-        // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
-        
-        // Create user
+
         const user = new User({
-            name: name,
-            email: email,
+            name,
+            email,
             password: hashedPassword,
             address: address || '',
             phone: phone || ''
         });
 
-        // Save to database
         await user.save();
 
-        // Return response
-        res.setHeader('Content-Type', 'application/json');
-        res.status(201).json({
+        return res.status(201).json({
             status: 'success',
             data: {
                 _id: user._id,
@@ -57,11 +50,10 @@ router.post('/register', async (req, res) => {
 
     } catch (err) {
         console.error('Registration error:', err);
-        res.setHeader('Content-Type', 'application/json');
-        res.status(500).json({ 
+        return res.status(500).json({
             status: 'error',
             message: 'Lỗi server',
-            error: process.env.NODE_ENV === 'development' ? err.message : null
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
         });
     }
 });
@@ -71,42 +63,36 @@ router.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        // Validate input
         if (!email || !password) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 status: 'error',
-                message: 'Vui lòng nhập email và mật khẩu' 
+                message: 'Vui lòng nhập email và mật khẩu'
             });
         }
 
-        // Find user
         const user = await User.findOne({ email });
         if (!user) {
-            return res.status(401).json({ 
+            return res.status(401).json({
                 status: 'error',
-                message: 'Email hoặc mật khẩu không đúng' 
+                message: 'Email hoặc mật khẩu không đúng'
             });
         }
 
-        // Verify password
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            return res.status(401).json({ 
+            return res.status(401).json({
                 status: 'error',
-                message: 'Email hoặc mật khẩu không đúng' 
+                message: 'Email hoặc mật khẩu không đúng'
             });
         }
 
-        // Tạo JWT token
         const token = jwt.sign(
             { userId: user._id },
             process.env.JWT_SECRET || 'fallback_secret_key',
             { expiresIn: '1h' }
         );
 
-        // Trả về response
-        res.setHeader('Content-Type', 'application/json');
-        res.status(200).json({
+        return res.status(200).json({
             status: 'success',
             data: {
                 user: {
@@ -117,17 +103,16 @@ router.post('/login', async (req, res) => {
                     phone: user.phone,
                     isAdmin: user.isAdmin || false
                 },
-                token: token
+                token
             }
         });
 
     } catch (err) {
         console.error('Login error:', err);
-        res.setHeader('Content-Type', 'application/json');
-        res.status(500).json({ 
+        return res.status(500).json({
             status: 'error',
             message: 'Lỗi server',
-            error: process.env.NODE_ENV === 'development' ? err.message : null
+            error: process.env.NODE_ENV === 'development' ? err.message : undefined
         });
     }
 });
