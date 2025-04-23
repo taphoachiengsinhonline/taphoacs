@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
-const { verifyToken, isAdminMiddleware } = require('../middleware/authMiddleware');
+const { verifyToken, isAdminMiddleware } = require('../middlewares/authMiddleware');
 const sendPushNotification = require('../utils/sendPushNotification');
 const User = require('../models/User');
 
