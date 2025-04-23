@@ -1,6 +1,13 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+exports.isAdminMiddleware = (req, res, next) => {
+  if (!req.user || !req.user.isAdmin) {
+    return res.status(403).json({ message: 'Bạn không có quyền truy cập' });
+  }
+  next();
+};
+
 exports.verifyToken = async (req, res, next) => {
   let token = req.headers['x-access-token'] || req.headers['authorization'];
 
