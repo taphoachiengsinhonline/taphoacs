@@ -1,3 +1,4 @@
+// models/order.model.js
 const mongoose = require('mongoose');
 
 const orderItemSchema = new mongoose.Schema({
@@ -25,8 +26,14 @@ const orderSchema = new mongoose.Schema({
   customer: customerSchema,
   status: { 
     type: String, 
-    enum: ['pending', 'processing', 'shipped', 'delivered', 'cancelled'],
-    default: 'pending'
+    enum: [
+      'Chờ xác nhận',
+      'Đang xử lý',
+      'Đang giao',
+      'Đã giao',
+      'Đã hủy'
+    ],
+    default: 'Chờ xác nhận'
   },
   createdAt: { type: Date, default: Date.now }
 });
