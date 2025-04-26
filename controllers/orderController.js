@@ -71,6 +71,8 @@ exports.getAllOrders = async (req, res) => {
 
 // Admin cập nhật trạng thái đơn hàng
 exports.updateOrderStatus = async (req, res) => {
+  console.log('Nhận yêu cầu cập nhật trạng thái:', req.params.id, req.body); // 🛠️ Thêm dòng này
+
   try {
     const { status } = req.body;
     const order = await Order.findById(req.params.id);
@@ -88,3 +90,4 @@ exports.updateOrderStatus = async (req, res) => {
     res.status(500).json({ message: 'Lỗi cập nhật trạng thái đơn hàng', error: err.message });
   }
 };
+
