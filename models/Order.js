@@ -16,10 +16,10 @@ const customerSchema = new mongoose.Schema({
 
 const orderSchema = new mongoose.Schema({
   user: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: 'User',
-  required: true,
-}
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+  },
   items: [orderItemSchema],
   total: { type: Number, required: true },
   customer: customerSchema,
