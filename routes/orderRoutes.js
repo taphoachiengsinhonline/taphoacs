@@ -1,12 +1,13 @@
 // routes/orderRoutes.js
 const express = require('express');
 const router = express.Router();
-const Order = require('../models/Order');
 const { verifyToken, isAdminMiddleware } = require('../middlewares/authMiddleware');
+const { getMyOrders, cancelMyOrder } = require('../controllers/orderController');
+const Order = require('../models/Order');
 const sendPushNotification = require('../utils/sendPushNotification');
 const User = require('../models/User');
 
-// Tạo đơn hàng mới (người dùng đã đăng nhập)
+// Tạo đơn hàng
 router.post('/', verifyToken, async (req, res) => {
   try {
     const { items, total, customerInfo } = req.body;
@@ -15,18 +16,14 @@ router.post('/', verifyToken, async (req, res) => {
       items,
       total,
       customerInfo,
-      user: req.user._id, // Gán người dùng từ token
+      user: req.user._id,
       status: 'pending',
     });
 
     const savedOrder = await newOrder.save();
 
-    // 🔔 Gửi thông báo push đến Admin (nếu có token)
-    const admins = await User.find({
-      isAdmin: true,
-      expoPushToken: { $exists: true, $ne: null },
-    });
-
+    // 🔔 Gửi thông báo push
+    const admins = await User.find({ isAdmin: true, expoPushToken: { $exists: true, $ne: null } });
     for (const admin of admins) {
       await sendPushNotification(
         admin.expoPushToken,
@@ -42,17 +39,13 @@ router.post('/', verifyToken, async (req, res) => {
   }
 });
 
-// Lấy đơn hàng cá nhân
-router.get('/my-orders', verifyToken, async (req, res) => {
-  try {
-    const orders = await Order.find({ user: req.user._id }).sort({ createdAt: -1 });
-    res.json(orders);
-  } catch (err) {
-    res.status(500).json({ message: 'Lỗi lấy đơn hàng của bạn', error: err.message });
-  }
-});
+// Lấy đơn hàng cá nhân, có thể lọc trạng thái
+router.get('/my-orders', verifyToken, getMyOrders);
 
-// Lấy tất cả đơn hàng (chỉ admin)
+// Huỷ đơn hàng của chính mình
+router.put('/my-orders/:id/cancel', verifyToken, cancelMyOrder);
+
+// Lấy tất cả đơn hàng (admin)
 router.get('/', verifyToken, isAdminMiddleware, async (req, res) => {
   try {
     const orders = await Order.find()
