@@ -3,22 +3,25 @@ const Order = require('../models/Order');
 const User = require('../models/User');
 const sendPushNotification = require('../utils/sendPushNotification');
 
-// Tạo đơn hàng mới
+// Tạo đơn hàng mới - ĐÃ SỬA PHẦN THÔNG TIN KHÁCH HÀNG
 exports.createOrder = async (req, res) => {
   console.log('[DEBUG] req.body:', req.body);
   try {
-    const { items, total, customer } = req.body;
+    const { items, total, phone, shippingAddress } = req.body;
 
     const newOrder = new Order({
       items,
       total,
-      customer,
       user: req.user._id,
+      phone,          // ✅ Thêm trường phone từ body
+      shippingAddress, // ✅ Thêm trường shippingAddress từ body
+      customerName: req.user.name, // Lấy từ thông tin user
       status: 'Chờ xác nhận',
     });
 
     const savedOrder = await newOrder.save();
 
+    // Phần gửi thông báo giữ nguyên
     const admins = await User.find({
       isAdmin: true,
       expoPushToken: { $exists: true, $ne: null },
@@ -28,7 +31,10 @@ exports.createOrder = async (req, res) => {
       await sendPushNotification(
         admin.expoPushToken,
         '🛒 Có đơn hàng mới!',
-        `Người dùng ${req.user.name || 'khách'} vừa đặt hàng. Tổng: ${total.toLocaleString()}đ`
+        `Người dùng ${req.user.name || 'khách'} vừa đặt hàng\n`
+        + `SĐT: ${phone}\n`
+        + `Địa chỉ: ${shippingAddress}\n`
+        + `Tổng: ${total.toLocaleString()}đ`
       );
     }
 
@@ -39,7 +45,7 @@ exports.createOrder = async (req, res) => {
   }
 };
 
-// Lấy đơn hàng của user đang đăng nhập
+// Các hàm khác GIỮ NGUYÊN KHÔNG THAY ĐỔI
 exports.getMyOrders = async (req, res) => {
   try {
     const { status } = req.query;
@@ -53,7 +59,6 @@ exports.getMyOrders = async (req, res) => {
   }
 };
 
-// Admin lấy tất cả đơn hàng
 exports.getAllOrders = async (req, res) => {
   try {
     const { status } = req.query;
@@ -70,9 +75,8 @@ exports.getAllOrders = async (req, res) => {
   }
 };
 
-// Admin cập nhật trạng thái đơn hàng
 exports.updateOrderStatus = async (req, res) => {
-  console.log('Nhận yêu cầu cập nhật trạng thái:', req.params.id, req.body); // Log yêu cầu nhận được từ frontend
+  console.log('Nhận yêu cầu cập nhật trạng thái:', req.params.id, req.body);
 
   try {
     const { status } = req.body;
@@ -85,12 +89,10 @@ exports.updateOrderStatus = async (req, res) => {
     order.status = status || order.status;
     await order.save();
 
-    console.log('Trạng thái đơn hàng sau khi cập nhật:', order.status); // Log trạng thái sau khi cập nhật
-
+    console.log('Trạng thái đơn hàng sau khi cập nhật:', order.status);
     res.json({ message: 'Cập nhật trạng thái thành công', order });
   } catch (err) {
     console.error('Lỗi cập nhật trạng thái:', err);
     res.status(500).json({ message: 'Lỗi cập nhật trạng thái đơn hàng', error: err.message });
   }
 };
-
