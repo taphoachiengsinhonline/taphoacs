@@ -5,6 +5,7 @@ const sendPushNotification = require('../utils/sendPushNotification');
 
 // Tạo đơn hàng mới
 exports.createOrder = async (req, res) => {
+  console.log('[DEBUG] req.body:', req.body);
   try {
     const { items, total, customerInfo } = req.body;
 
@@ -13,7 +14,7 @@ exports.createOrder = async (req, res) => {
       total,
       customerInfo,
       user: req.user._id,
-      status: 'pending',
+      //status: 'pending',
     });
 
     const savedOrder = await newOrder.save();
