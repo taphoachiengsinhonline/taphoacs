@@ -1,71 +1,96 @@
 // controllers/orderController.js
 const Order = require('../models/Order');
-const User  = require('../models/User');
+const User = require('../models/User');
 const sendPushNotification = require('../utils/sendPushNotification');
 
+// Tạo đơn hàng mới
 exports.createOrder = async (req, res) => {
+  console.log('[DEBUG] req.body:', req.body);
   try {
-    const { items, total, customerInfo } = req.body;
+    const { items, total, customer } = req.body;
+
     const newOrder = new Order({
       items,
       total,
-      customer: customerInfo,
+      customer,
       user: req.user._id,
-      status: 'pending'
+      status: 'Chờ xác nhận',
     });
-    const saved = await newOrder.save();
 
-    // push to admins
-    const admins = await User.find({ isAdmin:true, expoPushToken:{$exists:true} });
-    for(const a of admins){
+    const savedOrder = await newOrder.save();
+
+    const admins = await User.find({
+      isAdmin: true,
+      expoPushToken: { $exists: true, $ne: null },
+    });
+
+    for (const admin of admins) {
       await sendPushNotification(
-        a.expoPushToken,
-        '🛒 Đơn hàng mới',
-        `Người dùng ${req.user.name} vừa đặt. Tổng: ${total.toLocaleString()}đ`
+        admin.expoPushToken,
+        '🛒 Có đơn hàng mới!',
+        `Người dùng ${req.user.name || 'khách'} vừa đặt hàng. Tổng: ${total.toLocaleString()}đ`
       );
     }
 
-    res.status(201).json({ success:true, order:saved });
-  } catch(err) {
-    console.error('Lỗi tạo đơn hàng:',err);
-    res.status(500).json({ message:'Lỗi tạo đơn hàng', error:err.message });
+    res.status(201).json(savedOrder);
+  } catch (err) {
+    console.error('Lỗi tạo đơn hàng:', err);
+    res.status(500).json({ message: 'Lỗi tạo đơn hàng', error: err.message });
   }
 };
 
+// Lấy đơn hàng của user đang đăng nhập
 exports.getMyOrders = async (req, res) => {
   try {
     const { status } = req.query;
-    const q = { user:req.user._id };
-    if(status) q.status = status;
-    const orders = await Order.find(q).sort({ createdAt:-1 });
-    res.json({ data:orders });
-  } catch(err){
-    res.status(500).json({ message:'Lỗi lấy đơn hàng cá nhân', error:err.message });
+    const query = { user: req.user._id };
+    if (status) query.status = status;
+
+    const orders = await Order.find(query).sort({ createdAt: -1 });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi lấy đơn hàng cá nhân', error: err.message });
   }
 };
 
+// Admin lấy tất cả đơn hàng
 exports.getAllOrders = async (req, res) => {
   try {
     const { status } = req.query;
-    const q = {};
-    if(status) q.status = status;
-    const orders = await Order.find(q).populate('user','name email').sort({ createdAt:-1 });
-    res.json({ data:orders });
-  } catch(err){
-    res.status(500).json({ message:'Lỗi lấy đơn hàng', error:err.message });
+    const query = {};
+    if (status) query.status = status;
+
+    const orders = await Order.find(query)
+      .populate('user', 'name email')
+      .sort({ createdAt: -1 });
+
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi lấy danh sách đơn hàng', error: err.message });
   }
 };
 
+// Admin cập nhật trạng thái đơn hàng
 exports.updateOrderStatus = async (req, res) => {
+  console.log('Nhận yêu cầu cập nhật trạng thái:', req.params.id, req.body); // Log yêu cầu nhận được từ frontend
+
   try {
     const { status } = req.body;
     const order = await Order.findById(req.params.id);
-    if(!order) return res.status(404).json({ message:'Không tìm thấy đơn hàng' });
-    order.status = status;
+
+    if (!order) {
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+    }
+
+    order.status = status || order.status;
     await order.save();
-    res.json({ success:true, order });
-  } catch(err) {
-    console.error('Lỗi cập nhật đơn hàng:',err);
-    res.status(500).json({ message:'Lỗi cập nhật trạng thái', error:err.message });
+
+    console.log('Trạng thái đơn hàng sau khi cập nhật:', order.status); // Log trạng thái sau khi cập nhật
+
+    res.json({ message: 'Cập nhật trạng thái thành công', order });
+  } catch (err) {
+    console.error('Lỗi cập nhật trạng thái:', err);
+    res.status(500).json({ message: 'Lỗi cập nhật trạng thái đơn hàng', error: err.message });
   }
 };
+
