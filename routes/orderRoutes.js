@@ -16,7 +16,7 @@ router.post('/', verifyToken, async (req, res) => {
       total,
       customerInfo,
       user: req.user._id,
-      status: 'pending',
+      status: 'Chờ xác nhận',
     });
 
     const savedOrder = await newOrder.save();
