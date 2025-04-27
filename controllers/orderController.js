@@ -7,12 +7,12 @@ const sendPushNotification = require('../utils/sendPushNotification');
 exports.createOrder = async (req, res) => {
   console.log('[DEBUG] req.body:', req.body);
   try {
-    const { items, total, customerInfo } = req.body;
+    const { items, total, customer } = req.body;
 
     const newOrder = new Order({
       items,
       total,
-      customerInfo,
+      customer,
       user: req.user._id,
       status: 'Chờ xác nhận',
     });
