@@ -5,6 +5,9 @@ const sendPushNotification = require('../utils/sendPushNotification');
 
 // Tạo đơn hàng mới - ĐÃ SỬA PHẦN THÔNG TIN KHÁCH HÀNG
 exports.createOrder = async (req, res) => {
+  catch (err) {
+  console.error('⚠️ Lỗi tạo đơn hàng full:', err);
+  res.status(500).json({ message: 'Lỗi tạo đơn hàng', error: err.message });
   console.log('[DEBUG] req.body:', req.body);
   try {
     const { items, total, phone, shippingAddress } = req.body;
