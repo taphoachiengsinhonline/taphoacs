@@ -24,7 +24,7 @@ exports.createOrder = async (req, res) => {
       console.error('[ERROR] Request body không tồn tại');
       return res.status(400).json({ message: 'Thiếu dữ liệu đơn hàng' });
     }
-    const { items, total, phone, shippingAddress } = req.body;
+    const { items, total, phone, shippingAddress, customerName } = req.body;
     // Validate input
     const missingFields = [];
     if (!items) missingFields.push('items');
@@ -73,19 +73,19 @@ exports.createOrder = async (req, res) => {
     // Tạo đối tượng đơn hàng
     const customerName = req.user.name || req.body.customerName || 'Khách hàng';
     const orderData = {
-      items: items.map(item => ({
-        productId: item.productId,
-        name: item.name,
-        quantity: item.quantity,
-        price: item.price
-      })),
-      total: Number(total),
-      user: req.user._id,
-      customerName: req.user?.name || req.body.customerName || 'Khách hàng',
-      phone: req.body.phone.toString().trim(),
-      shippingAddress: req.body.shippingAddress.trim()
-      status: 'Chờ xác nhận'
-    };
+  items: items.map(item => ({
+    productId: item.productId,
+    name: item.name,
+    quantity: item.quantity,
+    price: item.price
+  })),
+  total: Number(total),
+  user: req.user._id,
+  phone: phone.toString().trim(),
+  shippingAddress: shippingAddress.trim(),
+  customerName: customerName.trim(), // Sử dụng từ request body
+  status: 'Chờ xác nhận'
+};
 
     console.log('[DEBUG] Dữ liệu đơn hàng chuẩn bị lưu:', JSON.stringify(orderData, null, 2));
 
