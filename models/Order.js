@@ -4,12 +4,13 @@ const mongoose = require('mongoose');
 const orderItemSchema = new mongoose.Schema({
   productId: { 
     type: mongoose.Schema.Types.ObjectId, 
-    required: true,
+    required: [true, 'Mã sản phẩm là bắt buộc'],
     ref: 'Product' 
   },
   name: { 
     type: String, 
-    required: [true, 'Tên sản phẩm là bắt buộc'] 
+    required: [true, 'Tên sản phẩm là bắt buộc'],
+    trim: true
   },
   quantity: { 
     type: Number, 
@@ -19,7 +20,8 @@ const orderItemSchema = new mongoose.Schema({
   price: { 
     type: Number, 
     required: [true, 'Giá sản phẩm là bắt buộc'],
-    min: [0, 'Giá không thể âm']
+    min: [0, 'Giá không thể âm'],
+    set: v => Math.round(v * 100) / 100
   }
 });
 
@@ -45,16 +47,20 @@ const orderSchema = new mongoose.Schema({
   phone: {
     type: String,
     required: [true, 'Số điện thoại là bắt buộc'],
-    match: [/^(0[3|5|7|8|9])+([0-9]{8})$/, 'Số điện thoại không hợp lệ']
+    match: [/^(0[3|5|7|8|9]|84[3|5|7|8|9]|\+84[3|5|7|8|9])+([0-9]{7,8})$/,
+      'Số điện thoại không hợp lệ (VD: 0912345678 hoặc +84912345678)'],
+    trim: true
   },
   shippingAddress: {
     type: String,
     required: [true, 'Địa chỉ giao hàng là bắt buộc'],
-    minlength: [10, 'Địa chỉ quá ngắn (tối thiểu 10 ký tự)']
+    minlength: [10, 'Địa chỉ phải có ít nhất 10 ký tự'],
+    trim: true
   },
   customerName: {
     type: String,
-    required: [true, 'Tên khách hàng là bắt buộc']
+    required: [true, 'Tên khách hàng là bắt buộc'],
+    trim: true
   },
   status: { 
     type: String, 
@@ -74,27 +80,23 @@ const orderSchema = new mongoose.Schema({
     type: String,
     enum: ['COD', 'Chuyển khoản'],
     default: 'COD'
-  },
-  createdAt: { 
-    type: Date, 
-    default: Date.now 
   }
 }, {
   versionKey: false,
+  timestamps: true, // ✅ Tự động thêm createdAt và updatedAt
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
 
-// Thêm validate trước khi save
 orderSchema.pre('validate', function(next) {
-  if (this.items) {
+  if (this.items && this.items.length > 0) {
     const calculatedTotal = this.items.reduce(
       (sum, item) => sum + (item.price * item.quantity),
       0
-    );
+    ).toFixed(2); // ✅ Làm tròn 2 số thập phân
     
-    if (this.total !== calculatedTotal) {
-      this.invalidate('total', 'Tổng tiền không khớp với giá sản phẩm');
+    if (this.total.toFixed(2) !== calculatedTotal) {
+      this.invalidate('total', `Tổng tiền không khớp (${this.total} ≠ ${calculatedTotal})`);
     }
   }
   next();
