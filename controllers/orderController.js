@@ -2,6 +2,18 @@
 exports.createOrder = async (req, res) => {
   console.log('[DEBUG] === BẮT ĐẦU TẠO ĐƠN HÀNG ===');
   try {
+    console.log('Request Body:', req.body); // Log toàn bộ body
+    
+    // Validate trực tiếp
+    if (!req.body.phone || !req.body.shippingAddress) {
+      return res.status(400).json({ 
+        message: 'Thiếu thông tin bắt buộc',
+        missingFields: [
+          ...(!req.body.phone ? ['phone'] : []),
+          ...(!req.body.shippingAddress ? ['shippingAddress'] : [])
+        ]
+      });
+  try {
     // Log toàn bộ thông tin request
     console.log('[DEBUG] Headers:', JSON.stringify(req.headers, null, 2));
     console.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2));
@@ -12,9 +24,7 @@ exports.createOrder = async (req, res) => {
       console.error('[ERROR] Request body không tồn tại');
       return res.status(400).json({ message: 'Thiếu dữ liệu đơn hàng' });
     }
-
     const { items, total, phone, shippingAddress } = req.body;
-    
     // Validate input
     const missingFields = [];
     if (!items) missingFields.push('items');
