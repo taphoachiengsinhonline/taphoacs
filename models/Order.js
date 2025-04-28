@@ -1,4 +1,4 @@
-// models/order.model.js
+// models/Order.js
 const mongoose = require('mongoose');
 
 const orderItemSchema = new mongoose.Schema({
@@ -44,27 +44,24 @@ const orderSchema = new mongoose.Schema({
     required: [true, 'Tổng tiền là bắt buộc'],
     min: [0, 'Tổng tiền không thể âm']
   },
- 
   customerName: {
     type: String,
     required: [true, 'Tên khách hàng là bắt buộc'],
     trim: true
   },
-   phone: {
+  phone: {
     type: String,
     required: [true, 'Số điện thoại là bắt buộc'],
     match: [/^(0[3|5|7|8|9]|84[3|5|7|8|9]|\+84[3|5|7|8|9])+([0-9]{7,8})$/,
       'Số điện thoại không hợp lệ (VD: 0912345678 hoặc +84912345678)'],
     trim: true
   },
-
-    shippingAddress: {
+  shippingAddress: {
     type: String,
     required: [true, 'Địa chỉ giao hàng là bắt buộc'],
     minlength: [10, 'Địa chỉ phải có ít nhất 10 ký tự'],
     trim: true
   },
-  
   status: { 
     type: String, 
     enum: {
@@ -86,22 +83,44 @@ const orderSchema = new mongoose.Schema({
   }
 }, {
   versionKey: false,
-  timestamps: true, // ✅ Tự động thêm createdAt và updatedAt
+  timestamps: true,
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
 
+// Giữ nguyên hook validate tổng tiền khi tạo mới/cập nhật
 orderSchema.pre('validate', function(next) {
   if (this.items && this.items.length > 0) {
     const calculatedTotal = this.items.reduce(
       (sum, item) => sum + (item.price * item.quantity),
       0
-    ).toFixed(2); // ✅ Làm tròn 2 số thập phân
+    ).toFixed(2);
     
     if (this.total.toFixed(2) !== calculatedTotal) {
       this.invalidate('total', `Tổng tiền không khớp (${this.total} ≠ ${calculatedTotal})`);
     }
   }
+  next();
+});
+
+// Thêm hook mới cho cập nhật trạng thái
+orderSchema.pre('findOneAndUpdate', function(next) {
+  const update = this.getUpdate();
+  const statusPath = orderSchema.path('status');
+
+  // Validate trạng thái nếu có trong update
+  if (update.status && !statusPath.enumValues.includes(update.status)) {
+    return next(new Error(`Trạng thái không hợp lệ. Chỉ chấp nhận: ${statusPath.enumValues.join(', ')}`));
+  }
+
+  // Validate số điện thoại nếu có trong update (giữ nguyên logic nếu cần)
+  if (update.phone) {
+    const phoneRegex = orderSchema.path('phone').options.match[0];
+    if (!new RegExp(phoneRegex).test(update.phone)) {
+      return next(new Error('Số điện thoại không hợp lệ'));
+    }
+  }
+
   next();
 });
 
