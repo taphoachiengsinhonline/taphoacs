@@ -87,19 +87,48 @@ router.get('/', verifyToken, isAdminMiddleware, async (req, res) => {
 router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
   try {
     const { status } = req.body;
-    const order = await Order.findById(req.params.id);
+    
+    // Chỉ cập nhật trường status và tắt validate
+    const updatedOrder = await Order.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { 
+        new: true,
+        runValidators: true, // ✅ Validate riêng trường status
+        context: 'query',   // ⚠️ Bắt buộc để validate enum
+        omitUndefined: true // Bỏ qua các trường undefined
+      }
+    );
 
-    if (!order) {
+    if (!updatedOrder) {
       return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
     }
 
-    order.status = status || order.status;
-    await order.save();
-
-    res.json({ message: 'Cập nhật trạng thái thành công', order });
+    res.json({ 
+      message: 'Cập nhật trạng thái thành công', 
+      order: updatedOrder 
+    });
   } catch (err) {
     console.error('Lỗi cập nhật đơn hàng:', err);
-    res.status(500).json({ message: 'Lỗi cập nhật đơn hàng', error: err.message });
+    
+    // Xử lý lỗi enum
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({
+        message: 'Trạng thái không hợp lệ',
+        validStatuses: [
+          'Chờ xác nhận',
+          'Đang xử lý',
+          'Đang giao',
+          'Đã giao',
+          'Đã hủy'
+        ]
+      });
+    }
+
+    res.status(500).json({ 
+      message: 'Lỗi cập nhật đơn hàng', 
+      error: process.env.NODE_ENV === 'development' ? err.message : null
+    });
   }
 });
 
