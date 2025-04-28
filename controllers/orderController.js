@@ -2,7 +2,7 @@
 exports.createOrder = async (req, res) => {
   console.log('[DEBUG] === BẮT ĐẦU TẠO ĐƠN HÀNG ===');
   try {
-    console.log('Request Body:', req.body); // Log toàn bộ body
+    console.log('[DEBUG] Request body:', JSON.stringify(req.body, null, 2)); // Thêm dòng này
     
     // Validate trực tiếp
     if (!req.body.phone || !req.body.shippingAddress) {
@@ -14,17 +14,18 @@ exports.createOrder = async (req, res) => {
         ]
       });
   try {
-    // Log toàn bộ thông tin request
-    console.log('[DEBUG] Headers:', JSON.stringify(req.headers, null, 2));
-    console.log('[DEBUG] Request Body:', JSON.stringify(req.body, null, 2));
-    console.log('[DEBUG] Authenticated User:', JSON.stringify(req.user, null, 2));
-
+   
     // Kiểm tra các trường bắt buộc
     if (!req.body) {
       console.error('[ERROR] Request body không tồn tại');
       return res.status(400).json({ message: 'Thiếu dữ liệu đơn hàng' });
     }
     const { items, total, phone, shippingAddress, customerName } = req.body;
+    console.log('[DEBUG] Extracted fields:', {
+      phone: !!phone,
+      shippingAddress: !!shippingAddress,
+      customerName: !!customerName
+    });
     // Validate input
     const missingFields = [];
     if (!items) missingFields.push('items');
