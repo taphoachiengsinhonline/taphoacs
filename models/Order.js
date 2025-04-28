@@ -44,24 +44,27 @@ const orderSchema = new mongoose.Schema({
     required: [true, 'Tổng tiền là bắt buộc'],
     min: [0, 'Tổng tiền không thể âm']
   },
-  phone: {
+ 
+  customerName: {
+    type: String,
+    required: [true, 'Tên khách hàng là bắt buộc'],
+    trim: true
+  },
+   phone: {
     type: String,
     required: [true, 'Số điện thoại là bắt buộc'],
     match: [/^(0[3|5|7|8|9]|84[3|5|7|8|9]|\+84[3|5|7|8|9])+([0-9]{7,8})$/,
       'Số điện thoại không hợp lệ (VD: 0912345678 hoặc +84912345678)'],
     trim: true
   },
-  shippingAddress: {
+
+    shippingAddress: {
     type: String,
     required: [true, 'Địa chỉ giao hàng là bắt buộc'],
     minlength: [10, 'Địa chỉ phải có ít nhất 10 ký tự'],
     trim: true
   },
-  customerName: {
-    type: String,
-    required: [true, 'Tên khách hàng là bắt buộc'],
-    trim: true
-  },
+  
   status: { 
     type: String, 
     enum: {
