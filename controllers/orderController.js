@@ -61,6 +61,7 @@ exports.createOrder = async (req, res) => {
     }
 
     // Tạo đối tượng đơn hàng
+    const customerName = req.user.name || req.body.customerName || 'Khách hàng';
     const orderData = {
       items: items.map(item => ({
         productId: item.productId,
@@ -72,7 +73,7 @@ exports.createOrder = async (req, res) => {
       user: req.user._id,
       phone: phone.toString().trim(),
       shippingAddress: shippingAddress.trim(),
-      customerName: req.user.name.trim(),
+      customerName: customerName.trim(),
       status: 'Chờ xác nhận'
     };
 
