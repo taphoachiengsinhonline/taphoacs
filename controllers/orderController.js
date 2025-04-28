@@ -81,9 +81,9 @@ exports.createOrder = async (req, res) => {
       })),
       total: Number(total),
       user: req.user._id,
-      phone: phone.toString().trim(),
-      shippingAddress: shippingAddress.trim(),
-      customerName: customerName.trim(),
+      customerName: req.user?.name || req.body.customerName || 'Khách hàng',
+      phone: req.body.phone.toString().trim(),
+      shippingAddress: req.body.shippingAddress.trim()
       status: 'Chờ xác nhận'
     };
 
