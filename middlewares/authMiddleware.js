@@ -1,3 +1,4 @@
+// middlewares/authMiddleware.js
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
@@ -25,7 +26,7 @@ exports.verifyToken = async (req, res, next) => {
     return next();
   }
 
-  try {
+   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     console.log('[AUTH] Token decoded:', decoded);
 
@@ -36,10 +37,17 @@ exports.verifyToken = async (req, res, next) => {
       return res.status(401).json({ message: 'Token không hợp lệ (thiếu ID)' });
     }
 
-    const user = await User.findById(userId);
+    // ✅ Thêm .select('name') để đảm bảo lấy trường name
+    const user = await User.findById(userId).select('name isAdmin');
+    
     if (!user) {
       console.warn('[AUTH] Không tìm thấy người dùng trong DB');
       return res.status(401).json({ message: 'Người dùng không tồn tại' });
+    }
+
+    // ✅ Thêm kiểm tra phụ trợ (không block request)
+    if (!user.name) {
+      console.warn('[AUTH] Người dùng chưa cập nhật tên:', user._id);
     }
 
     req.user = user;
