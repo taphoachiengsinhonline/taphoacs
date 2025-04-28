@@ -4,7 +4,9 @@ const mongoose = require('mongoose');
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: [true, 'Vui lòng nhập tên']
+    required: [true, 'Tên người dùng là bắt buộc'],
+    trim: true,
+    minlength: [2, 'Tên phải có ít nhất 2 ký tự']
   },
   email: {
     type: String,
