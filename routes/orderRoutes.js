@@ -9,14 +9,25 @@ const User = require('../models/User');
 // Tạo đơn hàng mới (người dùng đã đăng nhập)
 router.post('/', verifyToken, async (req, res) => {
   try {
-    const { items, total, customerInfo } = req.body;
+    // Đọc các trường trực tiếp từ body
+    const { 
+      items, 
+      total, 
+      phone, 
+      shippingAddress, 
+      customerName, 
+      paymentMethod 
+    } = req.body;
 
     const newOrder = new Order({
       items,
       total,
-      customerInfo,
+      phone,          // Lấy trực tiếp
+      shippingAddress,// Lấy trực tiếp
+      customerName,   // Lấy trực tiếp
       user: req.user._id,
       status: 'Chờ xác nhận',
+      paymentMethod
     });
 
     const savedOrder = await newOrder.save();
