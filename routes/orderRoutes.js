@@ -75,16 +75,13 @@ router.get('/:id', async (req, res) => {
 // Lấy đơn hàng cá nhân, có thể lọc theo status
 router.get('/my-orders', verifyToken, async (req, res) => {
   try {
-    const { status } = req.query;
-    const query = { user: req.user._id };
-    if (status) query.status = status;
-
-    const orders = await Order.find(query).sort({ createdAt: -1 });
-    .populate('user', '_id name') // Thêm dòng này
+    const orders = await Order.find({ user: req.user._id })
+      .populate('user', '_id name') // Thêm dòng này
       .sort({ createdAt: -1 });
+      
     res.json(orders);
   } catch (err) {
-    res.status(500).json({ message: 'Lỗi lấy đơn hàng của bạn', error: err.message });
+    res.status(500).json({ message: 'Lỗi server' });
   }
 });
 
