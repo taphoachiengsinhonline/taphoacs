@@ -52,6 +52,26 @@ router.post('/', verifyToken, async (req, res) => {
   }
 });
 
+
+
+// Trong route GET /api/v1/orders/:id
+router.get('/:id', async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id)
+      .populate('user', '_id name email') // Thêm dòng này
+      .lean();
+
+    if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+    
+    res.json(order);
+  } catch (err) {
+    res.status(500).json({ message: 'Lỗi server' });
+  }
+});
+
+
+
+
 // Lấy đơn hàng cá nhân, có thể lọc theo status
 router.get('/my-orders', verifyToken, async (req, res) => {
   try {
@@ -60,6 +80,7 @@ router.get('/my-orders', verifyToken, async (req, res) => {
     if (status) query.status = status;
 
     const orders = await Order.find(query).sort({ createdAt: -1 });
+    .populate('user', '_id name') // Thêm dòng này
     res.json(orders);
   } catch (err) {
     res.status(500).json({ message: 'Lỗi lấy đơn hàng của bạn', error: err.message });
