@@ -81,6 +81,7 @@ router.get('/my-orders', verifyToken, async (req, res) => {
 
     const orders = await Order.find(query).sort({ createdAt: -1 });
     .populate('user', '_id name') // Thêm dòng này
+      .sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
     res.status(500).json({ message: 'Lỗi lấy đơn hàng của bạn', error: err.message });
