@@ -9,7 +9,6 @@ const User = require('../models/User');
 // Tạo đơn hàng mới (người dùng đã đăng nhập)
 router.post('/', verifyToken, async (req, res) => {
   try {
-    // Đọc các trường trực tiếp từ body
     const { 
       items, 
       total, 
@@ -22,9 +21,9 @@ router.post('/', verifyToken, async (req, res) => {
     const newOrder = new Order({
       items,
       total,
-      phone,          // Lấy trực tiếp
-      shippingAddress,// Lấy trực tiếp
-      customerName,   // Lấy trực tiếp
+      phone,
+      shippingAddress,
+      customerName,
       user: req.user._id,
       status: 'Chờ xác nhận',
       paymentMethod
@@ -32,6 +31,7 @@ router.post('/', verifyToken, async (req, res) => {
 
     const savedOrder = await newOrder.save();
 
+    // Gửi thông báo cho admin
     const admins = await User.find({
       isAdmin: true,
       expoPushToken: { $exists: true, $ne: null },
@@ -52,7 +52,7 @@ router.post('/', verifyToken, async (req, res) => {
   }
 });
 
-// Lấy đơn hàng cá nhân, có thể lọc theo status
+// Lấy đơn hàng cá nhân
 router.get('/my-orders', verifyToken, async (req, res) => {
   try {
     const { status } = req.query;
@@ -66,7 +66,7 @@ router.get('/my-orders', verifyToken, async (req, res) => {
   }
 });
 
-// Lấy tất cả đơn hàng (chỉ admin), có thể lọc theo status
+// Lấy tất cả đơn hàng (admin)
 router.get('/', verifyToken, isAdminMiddleware, async (req, res) => {
   try {
     const { status } = req.query;
@@ -83,20 +83,19 @@ router.get('/', verifyToken, isAdminMiddleware, async (req, res) => {
   }
 });
 
-// Admin cập nhật trạng thái đơn hàng
+// Cập nhật trạng thái đơn hàng (admin)
 router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
   try {
     const { status } = req.body;
     
-    // Chỉ cập nhật trường status và tắt validate
     const updatedOrder = await Order.findByIdAndUpdate(
       req.params.id,
       { status },
       { 
         new: true,
-        runValidators: true, // ✅ Validate riêng trường status
-        context: 'query',   // ⚠️ Bắt buộc để validate enum
-        omitUndefined: true // Bỏ qua các trường undefined
+        runValidators: true,
+        context: 'query',
+        omitUndefined: true
       }
     );
 
@@ -111,7 +110,6 @@ router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
   } catch (err) {
     console.error('Lỗi cập nhật đơn hàng:', err);
     
-    // Xử lý lỗi enum
     if (err.name === 'ValidationError') {
       return res.status(400).json({
         message: 'Trạng thái không hợp lệ',
@@ -132,21 +130,21 @@ router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
   }
 });
 
-
-// routes/order.js
-router.put('/:id/cancel', authMiddleware, async (req, res) => {
+// Huỷ đơn hàng (người dùng)
+router.put('/:id/cancel', verifyToken, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id)
       .populate('user', 'name email');
 
-    // Validate
-    if (order.status !== 'pending') {
+    // Validate trạng thái
+    if (order.status !== 'Chờ xác nhận') {
       return res.status(400).json({
         success: false,
         message: 'Chỉ có thể huỷ đơn ở trạng thái Chờ xác nhận'
       });
     }
 
+    // Validate quyền truy cập
     if (order.user._id.toString() !== req.user.id) {
       return res.status(403).json({
         success: false,
@@ -154,9 +152,9 @@ router.put('/:id/cancel', authMiddleware, async (req, res) => {
       });
     }
 
-    // Cập nhật
+    // Cập nhật thông tin huỷ
     const updates = {
-      status: 'cancelled',
+      status: 'Đã hủy',
       cancelReason: req.body.cancelReason,
       cancelledAt: Date.now()
     };
@@ -167,12 +165,19 @@ router.put('/:id/cancel', authMiddleware, async (req, res) => {
       { new: true }
     );
 
-    // Gửi thông báo
-    sendNotificationToAdmins({
-      title: 'Đơn hàng bị huỷ',
-      body: `Đơn hàng ${order._id} đã bị huỷ bởi khách hàng`,
-      data: { orderId: order._id }
+    // Gửi thông báo cho admin
+    const admins = await User.find({
+      isAdmin: true,
+      expoPushToken: { $exists: true, $ne: null },
     });
+
+    for (const admin of admins) {
+      await sendPushNotification(
+        admin.expoPushToken,
+        '❌ Đơn hàng bị huỷ',
+        `Đơn hàng ${order._id} đã bị huỷ bởi khách hàng`
+      );
+    }
 
     res.json({
       success: true,
@@ -180,12 +185,12 @@ router.put('/:id/cancel', authMiddleware, async (req, res) => {
     });
 
   } catch (error) {
+    console.error('Lỗi huỷ đơn hàng:', error);
     res.status(500).json({
       success: false,
       message: error.message
     });
   }
 });
-
 
 module.exports = router;
