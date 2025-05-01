@@ -163,40 +163,60 @@ router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
   }
 });
 // Thêm endpoint huỷ đơn hàng
+// Thêm route huỷ đơn hàng
 router.put('/:id/cancel', verifyToken, async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
+    const orderId = req.params.id;
+    console.log(`[CANCEL] Attempting to cancel order ${orderId}`);
+    
+    const order = await Order.findById(orderId);
     
     if (!order) {
-      return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+      console.log(`[CANCEL] Order ${orderId} not found`);
+      return res.status(404).json({ 
+        status: 'error',
+        message: 'Không tìm thấy đơn hàng' 
+      });
     }
 
-    // Kiểm tra quyền huỷ
+    // Kiểm tra quyền
     if (order.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Bạn không có quyền huỷ đơn này' });
+      console.log(`[CANCEL] User ${req.user._id} unauthorized to cancel order ${orderId}`);
+      return res.status(403).json({ 
+        status: 'error',
+        message: 'Bạn không có quyền huỷ đơn này' 
+      });
     }
 
     // Kiểm tra trạng thái
     if (order.status !== 'Chờ xác nhận') {
-      return res.status(400).json({ message: 'Chỉ huỷ được đơn ở trạng thái "Chờ xác nhận"' });
+      console.log(`[CANCEL] Invalid status ${order.status} for order ${orderId}`);
+      return res.status(400).json({ 
+        status: 'error',
+        message: 'Chỉ có thể huỷ đơn ở trạng thái "Chờ xác nhận"' 
+      });
     }
 
     // Cập nhật
     order.status = 'Đã hủy';
     order.cancelReason = req.body.cancelReason;
+    order.updatedAt = Date.now();
+    
     await order.save();
-
+    
+    console.log(`[CANCEL] Order ${orderId} cancelled successfully`);
     res.json({ 
-      message: 'Huỷ đơn thành công',
-      order: order.toObject()
+      status: 'success',
+      data: order
     });
 
   } catch (err) {
-    console.error('Error cancelling order:', err);
-    res.status(500).json({ message: 'Lỗi server khi huỷ đơn' });
+    console.error(`[CANCEL ERROR] ${err.message}`, err.stack);
+    res.status(500).json({ 
+      status: 'error',
+      message: 'Lỗi server khi huỷ đơn' 
+    });
   }
 });
-
-
 
 module.exports = router;
