@@ -132,4 +132,60 @@ router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
   }
 });
 
+
+// routes/order.js
+router.put('/:id/cancel', authMiddleware, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id)
+      .populate('user', 'name email');
+
+    // Validate
+    if (order.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'Chỉ có thể huỷ đơn ở trạng thái Chờ xác nhận'
+      });
+    }
+
+    if (order.user._id.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Không có quyền thực hiện hành động này'
+      });
+    }
+
+    // Cập nhật
+    const updates = {
+      status: 'cancelled',
+      cancelReason: req.body.cancelReason,
+      cancelledAt: Date.now()
+    };
+
+    const updatedOrder = await Order.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates },
+      { new: true }
+    );
+
+    // Gửi thông báo
+    sendNotificationToAdmins({
+      title: 'Đơn hàng bị huỷ',
+      body: `Đơn hàng ${order._id} đã bị huỷ bởi khách hàng`,
+      data: { orderId: order._id }
+    });
+
+    res.json({
+      success: true,
+      order: updatedOrder
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+
 module.exports = router;
