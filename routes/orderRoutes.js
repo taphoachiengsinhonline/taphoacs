@@ -132,4 +132,36 @@ router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
   }
 });
 
+
+// Hủy đơn hàng (người dùng)
+router.put('/:id/cancel', verifyToken, async (req, res) => {
+  try {
+    const { cancelReason } = req.body;
+    const order = await Order.findById(req.params.id);
+
+    // Validate
+    if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+    if (order.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Bạn không có quyền huỷ đơn này' });
+    }
+    if (order.status !== 'Chờ xác nhận') {
+      return res.status(400).json({ message: 'Chỉ được huỷ đơn ở trạng thái "Chờ xác nhận"' });
+    }
+
+    // Cập nhật
+    order.status = 'Đã hủy';
+    order.cancelReason = cancelReason;
+    const updatedOrder = await order.save();
+
+    res.json({
+      message: 'Huỷ đơn thành công',
+      order: updatedOrder
+    });
+  } catch (err) {
+    console.error('Lỗi huỷ đơn hàng:', err);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
+});
+
+
 module.exports = router;
