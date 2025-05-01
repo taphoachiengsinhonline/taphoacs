@@ -70,7 +70,8 @@ router.get('/my-orders', verifyToken, async (req, res) => {
   }
 });
 
-router.get('/:id', async (req, res) => {
+// Thêm verifyToken vào route GET /:id
+router.get('/:id', verifyToken, async (req, res) => {
   try {
     const order = await Order.findById(req.params.id)
       .populate({
@@ -85,10 +86,8 @@ router.get('/:id', async (req, res) => {
     }
 
     // Xử lý trường hợp user null
-    if (!order.user) {
-      order.user = { _id: null, name: 'Khách hàng' };
-    }
-
+    order.user = order.user || { _id: null, name: 'Khách hàng' };
+    
     res.json(order);
   } catch (err) {
     console.error('Error fetching order:', err);
