@@ -162,5 +162,41 @@ router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
     });
   }
 });
+// Thêm endpoint huỷ đơn hàng
+router.put('/:id/cancel', verifyToken, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    
+    if (!order) {
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+    }
+
+    // Kiểm tra quyền huỷ
+    if (order.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Bạn không có quyền huỷ đơn này' });
+    }
+
+    // Kiểm tra trạng thái
+    if (order.status !== 'Chờ xác nhận') {
+      return res.status(400).json({ message: 'Chỉ huỷ được đơn ở trạng thái "Chờ xác nhận"' });
+    }
+
+    // Cập nhật
+    order.status = 'Đã hủy';
+    order.cancelReason = req.body.cancelReason;
+    await order.save();
+
+    res.json({ 
+      message: 'Huỷ đơn thành công',
+      order: order.toObject()
+    });
+
+  } catch (err) {
+    console.error('Error cancelling order:', err);
+    res.status(500).json({ message: 'Lỗi server khi huỷ đơn' });
+  }
+});
+
+
 
 module.exports = router;
