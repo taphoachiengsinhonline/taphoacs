@@ -84,40 +84,51 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Lấy đơn hàng cá nhân
+// Thêm try/catch và logging chi tiết cho tất cả routes
 router.get('/my-orders', verifyToken, async (req, res) => {
   try {
-    const { status } = req.query;
-    const query = { user: req.user._id };
+    console.log('[DEBUG] User ID:', req.user._id);
     
-    if (status) {
-      if (!['Chờ xác nhận', 'Đang xử lý', 'Đang giao', 'Đã giao', 'Đã hủy'].includes(status)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Trạng thái không hợp lệ'
-        });
-      }
-      query.status = status;
-    }
+    const orders = await Order.find({ user: req.user._id })
+      .populate({
+        path: 'user',
+        select: 'name email',
+        options: { lean: true }
+      })
+      .lean();
 
-    const orders = await Order.find(query)
-      .sort({ createdAt: -1 })
-      .populate('user', 'name email');
-
+    console.log('[DEBUG] Found orders:', orders.length);
+    
     res.json({
       success: true,
       count: orders.length,
-      orders
+      data: orders
     });
 
   } catch (err) {
-    console.error('[ERROR] Lỗi lấy đơn hàng:', err);
+    console.error('[ERROR] Lỗi lấy đơn hàng:', {
+      message: err.message,
+      stack: err.stack,
+      query: req.query
+    });
+    
     res.status(500).json({
       success: false,
       message: 'Lỗi hệ thống',
-      error: process.env.NODE_ENV === 'development' ? err.message : null
+      error: process.env.NODE_ENV === 'development' ? {
+        message: err.message,
+        stack: err.stack
+      } : null
     });
   }
+});
+
+// Thêm endpoint health check
+router.get('/health', (req, res) => {
+  res.json({
+    status: 'OK',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Lấy tất cả đơn hàng (Admin)
