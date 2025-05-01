@@ -55,16 +55,47 @@ router.post('/', verifyToken, async (req, res) => {
 // Lấy đơn hàng cá nhân, có thể lọc theo status
 router.get('/my-orders', verifyToken, async (req, res) => {
   try {
-    const { status } = req.query;
-    const query = { user: req.user._id };
-    if (status) query.status = status;
+    const orders = await Order.find({ user: req.user._id })
+      .populate({
+        path: 'user',
+        select: '_id name',
+        options: { lean: true } // Thêm lean để trả về plain object
+      })
+      .lean(); // Thêm lean() ở đây
 
-    const orders = await Order.find(query).sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
-    res.status(500).json({ message: 'Lỗi lấy đơn hàng của bạn', error: err.message });
+    console.error('Error fetching orders:', err);
+    res.status(500).json({ message: 'Lỗi server khi lấy đơn hàng' });
   }
 });
+
+router.get('/:id', async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id)
+      .populate({
+        path: 'user',
+        select: '_id name',
+        options: { lean: true }
+      })
+      .lean();
+
+    if (!order) {
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+    }
+
+    // Xử lý trường hợp user null
+    if (!order.user) {
+      order.user = { _id: null, name: 'Khách hàng' };
+    }
+
+    res.json(order);
+  } catch (err) {
+    console.error('Error fetching order:', err);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
+});
+
 
 // Lấy tất cả đơn hàng (chỉ admin), có thể lọc theo status
 router.get('/', verifyToken, isAdminMiddleware, async (req, res) => {
