@@ -9,7 +9,6 @@ const User = require('../models/User');
 // Tạo đơn hàng mới (người dùng đã đăng nhập)
 router.post('/', verifyToken, async (req, res) => {
   try {
-    // Đọc các trường trực tiếp từ body
     const { 
       items, 
       total, 
@@ -22,9 +21,9 @@ router.post('/', verifyToken, async (req, res) => {
     const newOrder = new Order({
       items,
       total,
-      phone,          // Lấy trực tiếp
-      shippingAddress,// Lấy trực tiếp
-      customerName,   // Lấy trực tiếp
+      phone,
+      shippingAddress,
+      customerName,
       user: req.user._id,
       status: 'Chờ xác nhận',
       paymentMethod
@@ -47,7 +46,7 @@ router.post('/', verifyToken, async (req, res) => {
 
     res.status(201).json(savedOrder);
   } catch (err) {
-    console.error('Lỗi tạo đơn hàng:', err);
+    console.error('[BACKEND] Lỗi tạo đơn hàng:', err.message, err.stack);
     res.status(500).json({ message: 'Lỗi tạo đơn hàng', error: err.message });
   }
 });
@@ -62,6 +61,7 @@ router.get('/my-orders', verifyToken, async (req, res) => {
     const orders = await Order.find(query).sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
+    console.error('[BACKEND] Lỗi lấy đơn hàng:', err.message, err.stack);
     res.status(500).json({ message: 'Lỗi lấy đơn hàng của bạn', error: err.message });
   }
 });
@@ -79,39 +79,44 @@ router.get('/', verifyToken, isAdminMiddleware, async (req, res) => {
 
     res.json(orders);
   } catch (err) {
+    console.error('[BACKEND] Lỗi lấy danh sách đơn hàng:', err.message, err.stack);
     res.status(500).json({ message: 'Lỗi lấy danh sách đơn hàng', error: err.message });
   }
 });
 
 // Admin cập nhật trạng thái đơn hàng
 router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
+  console.log('[BACKEND] Nhận yêu cầu cập nhật đơn hàng (admin):', {
+    orderId: req.params.id,
+    body: req.body,
+    userId: req.user._id,
+    isAdmin: req.user.isAdmin
+  });
+
   try {
     const { status } = req.body;
-    
-    // Chỉ cập nhật trường status và tắt validate
-    const updatedOrder = await Order.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { 
-        new: true,
-        runValidators: true, // ✅ Validate riêng trường status
-        context: 'query',   // ⚠️ Bắt buộc để validate enum
-        omitUndefined: true // Bỏ qua các trường undefined
-      }
-    );
+    if (!status) {
+      console.log('[BACKEND] Thiếu trường status');
+      return res.status(400).json({ message: 'Thiếu trường status' });
+    }
 
-    if (!updatedOrder) {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      console.log('[BACKEND] Không tìm thấy đơn hàng:', req.params.id);
       return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
     }
 
+    order.status = status;
+    const updatedOrder = await order.save();
+
+    console.log('[BACKEND] Cập nhật đơn hàng thành công (admin):', updatedOrder);
     res.json({ 
       message: 'Cập nhật trạng thái thành công', 
       order: updatedOrder 
     });
   } catch (err) {
-    console.error('Lỗi cập nhật đơn hàng:', err);
+    console.error('[BACKEND] Lỗi cập nhật đơn hàng (admin):', err.message, err.stack);
     
-    // Xử lý lỗi enum
     if (err.name === 'ValidationError') {
       return res.status(400).json({
         message: 'Trạng thái không hợp lệ',
@@ -125,8 +130,58 @@ router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
       });
     }
 
+    if (err.name === 'CastError') {
+      return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+    }
+
     res.status(500).json({ 
       message: 'Lỗi cập nhật đơn hàng', 
+      error: process.env.NODE_ENV === 'development' ? err.message : null
+    });
+  }
+});
+
+// Người dùng hoặc admin hủy đơn hàng
+router.put('/:id/cancel', verifyToken, async (req, res) => {
+  console.log('[BACKEND] Nhận yêu cầu hủy đơn hàng:', {
+    orderId: req.params.id,
+    userId: req.user._id,
+    isAdmin: req.user.isAdmin
+  });
+
+  try {
+    const query = req.user.isAdmin 
+      ? { _id: req.params.id }
+      : { _id: req.params.id, user: req.user._id };
+
+    const order = await Order.findOne(query);
+    if (!order) {
+      console.log('[BACKEND] Không tìm thấy đơn hàng hoặc không có quyền:', req.params.id);
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng hoặc bạn không có quyền' });
+    }
+
+    if (order.status !== 'Chờ xác nhận') {
+      console.log('[BACKEND] Đơn hàng không thể hủy, trạng thái hiện tại:', order.status);
+      return res.status(400).json({ 
+        message: 'Chỉ có thể hủy đơn hàng ở trạng thái "Chờ xác nhận"' 
+      });
+    }
+
+    order.status = 'Đã hủy';
+    const updatedOrder = await order.save();
+
+    console.log('[BACKEND] Hủy đơn hàng thành công:', updatedOrder);
+    res.json({ 
+      message: 'Hủy đơn hàng thành công', 
+      order: updatedOrder 
+    });
+  } catch (err) {
+    console.error('[BACKEND] Lỗi hủy đơn hàng:', err.message, err.stack);
+    if (err.name === 'CastError') {
+      return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+    }
+    res.status(500).json({ 
+      message: 'Lỗi hủy đơn hàng', 
       error: process.env.NODE_ENV === 'development' ? err.message : null
     });
   }
