@@ -10,8 +10,6 @@ const User = require('../models/User');
 router.post('/', verifyToken, async (req, res) => {
   try {
     const { items, total, phone, shippingAddress, customerName, paymentMethod } = req.body;
-
-    // Validate đầu vào
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: 'Danh sách sản phẩm không hợp lệ' });
     }
@@ -41,7 +39,6 @@ router.post('/', verifyToken, async (req, res) => {
 
     const savedOrder = await newOrder.save();
 
-    // Gửi thông báo đến admin
     const admins = await User.find({
       isAdmin: true,
       expoPushToken: { $exists: true, $ne: null },
@@ -65,23 +62,6 @@ router.post('/', verifyToken, async (req, res) => {
   }
 });
 
-// Lấy chi tiết đơn hàng theo ID
-router.get('/:id', verifyToken, async (req, res) => {
-  try {
-    const order = await Order.findById(req.params.id).populate('user', 'name email');
-    if (!order) {
-      return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
-    }
-    if (order.user.toString() !== req.user._id.toString() && !req.user.isAdmin) {
-      return res.status(403).json({ message: 'Bạn không có quyền xem đơn hàng này' });
-    }
-    res.json(order);
-  } catch (err) {
-    console.error('Lỗi lấy chi tiết đơn hàng:', err);
-    res.status(500).json({ message: 'Lỗi lấy chi tiết đơn hàng', error: err.message });
-  }
-});
-
 // Lấy đơn hàng cá nhân
 router.get('/my-orders', verifyToken, async (req, res) => {
   try {
@@ -94,9 +74,6 @@ router.get('/my-orders', verifyToken, async (req, res) => {
     res.json(orders);
   } catch (err) {
     console.error('Lỗi lấy đơn hàng:', err);
-    if (err.name === 'CastError') {
-      return res.status(400).json({ message: 'ID người dùng không hợp lệ' });
-    }
     res.status(500).json({ message: 'Lỗi lấy đơn hàng của bạn', error: err.message });
   }
 });
@@ -116,6 +93,23 @@ router.get('/', verifyToken, isAdminMiddleware, async (req, res) => {
   } catch (err) {
     console.error('Lỗi lấy danh sách đơn hàng:', err);
     res.status(500).json({ message: 'Lỗi lấy danh sách đơn hàng', error: err.message });
+  }
+});
+
+// Lấy chi tiết đơn hàng theo ID
+router.get('/:id', verifyToken, async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id).populate('user', 'name email');
+    if (!order) {
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+    }
+    if (order.user.toString() !== req.user._id.toString() && !req.user.isAdmin) {
+      return res.status(403).json({ message: 'Bạn không có quyền xem đơn hàng này' });
+    }
+    res.json(order);
+  } catch (err) {
+    console.error('Lỗi lấy chi tiết đơn hàng:', err);
+    res.status(500).json({ message: 'Lỗi lấy chi tiết đơn hàng', error: err.message });
   }
 });
 
@@ -140,7 +134,6 @@ router.put('/:id/cancel', verifyToken, async (req, res) => {
     order.cancelReason = req.body.cancelReason;
     await order.save();
 
-    // Gửi thông báo đến admin
     const admins = await User.find({
       isAdmin: true,
       expoPushToken: { $exists: true, $ne: null },
@@ -182,7 +175,6 @@ router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
     }
 
-    // Gửi thông báo đến người dùng
     if (updatedOrder.user) {
       const user = await User.findById(updatedOrder.user);
       if (user && user.expoPushToken) {
