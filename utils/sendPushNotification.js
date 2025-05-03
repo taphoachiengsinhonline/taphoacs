@@ -1,4 +1,3 @@
-// utils/sendPushNotification.js
 const axios = require('axios');
 
 const sendPushNotification = async (expoPushToken, title, body) => {
