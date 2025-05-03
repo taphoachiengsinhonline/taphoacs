@@ -7,19 +7,17 @@ const User = require('../models/User');
 
 // Hàm tạo Access + Refresh token
 const generateTokens = (userId) => {
-    const accessToken = jwt.sign(
-        { userId },
-        process.env.JWT_SECRET,
-        { expiresIn: '15m' } // thời gian ngắn để tăng bảo mật
-    );
-
-    const refreshToken = jwt.sign(
-        { userId },
-        process.env.JWT_SECRET,
-        { expiresIn: '7d' } // thời gian dài hơn để làm mới token
-    );
-
-    return { accessToken, refreshToken };
+  const accessToken = jwt.sign(
+    { userId },
+    process.env.JWT_SECRET,
+    { expiresIn: '15m' }
+  );
+  const refreshToken = jwt.sign(
+    { userId },
+    process.env.JWT_REFRESH_SECRET, // Sử dụng JWT_REFRESH_SECRET
+    { expiresIn: '7d' }
+  );
+  return { accessToken, refreshToken };
 };
 
 // Đăng ký tài khoản
@@ -103,10 +101,12 @@ router.post('/login', async (req, res) => {
 router.post('/refresh-token', async (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken) {
+    console.warn('[REFRESH_TOKEN] Thiếu refresh token trong body');
     return res.status(400).json({ status: 'error', message: 'Thiếu refresh token' });
   }
   try {
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET); // Sử dụng JWT_REFRESH_SECRET
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    console.log('[REFRESH_TOKEN] Token hợp lệ, userId:', decoded.userId);
     const { accessToken, refreshToken: newRefreshToken } = generateTokens(decoded.userId);
     return res.status(200).json({
       status: 'success',
@@ -116,7 +116,11 @@ router.post('/refresh-token', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Refresh token error:', error);
+    console.error('[REFRESH_TOKEN] Lỗi xác minh token:', {
+      message: error.message,
+      name: error.name,
+      stack: error.stack
+    });
     return res.status(401).json({ status: 'error', message: 'Refresh token không hợp lệ' });
   }
 });
