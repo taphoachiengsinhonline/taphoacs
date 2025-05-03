@@ -143,6 +143,10 @@ router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
 
 // Người dùng hoặc admin hủy đơn hàng
 router.put('/:id/cancel', verifyToken, async (req, res) => {
+  console.log('=== BẮT ĐẦU XỬ LÝ HỦY ĐƠN ===');
+  console.log('User ID:', req.user._id);
+  console.log('Is Admin:', req.user.isAdmin);
+  console.log('Order ID:', req.params.id);
   console.log('[BACKEND] Nhận yêu cầu hủy đơn hàng:', {
     orderId: req.params.id,
     userId: req.user._id,
@@ -185,6 +189,7 @@ router.put('/:id/cancel', verifyToken, async (req, res) => {
       error: process.env.NODE_ENV === 'development' ? err.message : null
     });
   }
+  console.log('=== KẾT THÚC XỬ LÝ HỦY ĐƠN ===');
 });
 
 module.exports = router;
