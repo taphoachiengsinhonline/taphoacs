@@ -101,27 +101,25 @@ router.post('/login', async (req, res) => {
 
 // Làm mới token
 router.post('/refresh-token', async (req, res) => {
-    const { refreshToken } = req.body;
+  const { refreshToken } = req.body;
 
-    if (!refreshToken) {
-        return res.status(400).json({ status: 'error', message: 'Thiếu refresh token' });
-    }
+  if (!refreshToken) {
+    return res.status(400).json({ status: 'error', message: 'Thiếu refresh token' });
+  }
 
-    try {
-        const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
-        const { accessToken, refreshToken: newRefreshToken } = generateTokens(decoded.userId);
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+    const { accessToken, refreshToken: newRefreshToken } = generateTokens(decoded.userId);
 
-        return res.status(200).json({
-            status: 'success',
-            data: {
-                token: accessToken,
-                refreshToken: newRefreshToken
-            }
-        });
-    } catch (error) {
-        console.error('Refresh token error:', error);
-        return res.status(401).json({ status: 'error', message: 'Refresh token không hợp lệ' });
-    }
+    return res.status(200).json({
+      status: 'success',
+      token: accessToken,  // Trả về trực tiếp
+      refreshToken: newRefreshToken  // Trả về trực tiếp
+    });
+  } catch (error) {
+    console.error('Refresh token error:', error);
+    return res.status(401).json({ status: 'error', message: 'Refresh token không hợp lệ' });
+  }
 });
 
 module.exports = router;
