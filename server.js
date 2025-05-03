@@ -6,6 +6,7 @@ const authRoutes = require('./routes/authRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const productRoutes  = require('./routes/productRoutes');
 const orderRoutes = require('./routes/orderRoutes');
+const cartRoutes = require('./routes/cartRoutes');
 require('dotenv').config();
 
 const app = express();
@@ -46,8 +47,9 @@ connectDB();
 // Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/categories', categoryRoutes);
-app.use('/api/v1/products',   productRoutes);
+app.use('/api/v1/products', productRoutes);
 app.use('/api/v1/orders', orderRoutes);
+app.use('/api/v1/cart', cartRoutes); // Thêm route giỏ hàng
 
 // 404 Handler
 app.use((req, res, next) => {
