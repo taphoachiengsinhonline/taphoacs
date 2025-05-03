@@ -10,7 +10,7 @@ const generateTokens = (userId) => {
     const accessToken = jwt.sign(
         { userId },
         process.env.JWT_SECRET,
-        { expiresIn: '15m' } // thời gian ngắn để tăng bảo mật
+        { expiresIn: '150m' } // thời gian ngắn để tăng bảo mật
     );
 
     const refreshToken = jwt.sign(
