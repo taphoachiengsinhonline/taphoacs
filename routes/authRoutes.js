@@ -57,44 +57,43 @@ router.post('/register', async (req, res) => {
 
 // Đăng nhập
 router.post('/login', async (req, res) => {
-    try {
-        const { email, password } = req.body;
-        if (!email || !password) {
-            return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
-        }
-
-        const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
-        }
-
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
-        }
-
-        const { accessToken, refreshToken } = generateTokens(user._id);
-
-        res.status(200).json({
-            status: 'success',
-            data: {
-                user: {
-                    _id: user._id,
-                    name: user.name,
-                    email: user.email,
-                    address: user.address,
-                    phone: user.phone,
-                    isAdmin: user.isAdmin || false
-                },
-                token: accessToken,
-                refreshToken: refreshToken
-            }
-        });
-
-    } catch (err) {
-        console.error('Login error:', err);
-        res.status(500).json({ status: 'error', message: 'Lỗi server' });
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
     }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
+    }
+
+    const { accessToken, refreshToken } = generateTokens(user._id);
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        user: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          address: user.address,
+          phone: user.phone,
+          isAdmin: user.isAdmin || false
+        },
+        token: accessToken,
+        refreshToken: refreshToken
+      }
+    });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ status: 'error', message: 'Lỗi server' });
+  }
 });
 
 // Làm mới token
