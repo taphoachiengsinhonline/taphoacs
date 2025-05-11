@@ -63,17 +63,21 @@ router.get('/', async (req, res) => {
 // ✅ POST /api/products - Thêm sản phẩm mới (chỉ admin)
 router.post('/', isAdmin, async (req, res) => {
   try {
-    const { name, price, category, image } = req.body;
+    const { name, price, stock, category, description, attributes, images } = req.body;
     console.log('📦 Thông tin sản phẩm nhận được:', req.body);
-    if (!name || !price || !category) {
+   if (!name || !price || !category || !stock || !images?.length) {
       return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin sản phẩm' });
     }
 
     const newProduct = new Product({
       name,
       price,
+      stock,
       category,
-      image,
+      description,
+      attributes,
+      images,    // array of URLs
+      createdBy: req.user._id  // nếu muốn track ai thêm
     });
 
     const saved = await newProduct.save();
