@@ -88,10 +88,11 @@ router.get(
           case 'Đang xử lý':    acc.confirmed = (acc.confirmed || 0) + 1; break;
           case 'Đang giao':     acc.shipped   = (acc.shipped   || 0) + 1; break;
           case 'Đã giao':       acc.delivered = (acc.delivered || 0) + 1; break;
+          case 'Đã huỷ':        acc.canceled  = (acc.canceled  || 0) + 1; break;
           default: /* bỏ qua các trạng thái khác */;
         }
         return acc;
-      }, { pending:0, confirmed:0, shipped:0, delivered:0 });
+      }, { pending:0, confirmed:0, shipped:0, delivered:0, canceled:0,  });
 
       return res.status(200).json(counts);
     } catch (err) {
