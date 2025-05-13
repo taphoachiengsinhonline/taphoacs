@@ -3,11 +3,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-/**
- * Middleware xác thực JWT.
- * - Đọc header "Authorization: Bearer <token>"
- * - Giải mã, tìm user trong DB, gán vào req.user
- */
 exports.verifyToken = async (req, res, next) => {
   try {
     let token = req.headers['authorization'] || req.headers['x-access-token'];
@@ -19,7 +14,9 @@ exports.verifyToken = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const userId = decoded.userId || decoded.id;
+
+    // Hỗ trợ cả 3 kiểu userId
+    const userId = decoded.userId || decoded.id || decoded._id;
     if (!userId) {
       return res.status(401).json({ message: 'Token không hợp lệ (thiếu ID)' });
     }
@@ -29,22 +26,10 @@ exports.verifyToken = async (req, res, next) => {
       return res.status(401).json({ message: 'Người dùng không tồn tại' });
     }
 
-    // Gán req.user để middleware sau sử dụng
     req.user = user;
     next();
   } catch (err) {
     console.error('[AUTH] Lỗi verifyToken:', err);
     return res.status(401).json({ message: 'Token không hợp lệ hoặc hết hạn' });
   }
-};
-
-/**
- * Middleware kiểm tra quyền admin.
- * - Dựa vào req.user do verifyToken gán
- */
-exports.isAdminMiddleware = (req, res, next) => {
-  if (!req.user || !req.user.isAdmin) {
-    return res.status(403).json({ message: 'Bạn không có quyền thực hiện thao tác này' });
-  }
-  next();
 };
