@@ -164,7 +164,7 @@ router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
           'Đang xử lý',
           'Đang giao',
           'Đã giao',
-          'Đã hủy'
+          'Đã huỷ'
         ]
       });
     }
