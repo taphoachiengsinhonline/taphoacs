@@ -52,19 +52,25 @@ router.post('/', verifyToken, async (req, res) => {
 });
 
 // Lấy đơn hàng cá nhân, có thể lọc theo status
-router.get('/my-orders', verifyToken, async (req, res) => {
-  try {
-    const { status } = req.query;
-    const query = { user: req.user._id };
-    if (status) query.status = status;
+router.get(
+  '/my-orders',
+  verifyToken,
+  async (req, res) => {
+    try {
+      const { status } = req.query;
+      const query = { user: req.user._id };
+      if (status) query.status = status;
 
-    const orders = await Order.find(query).sort({ createdAt: -1 });
-    res.json(orders);
-  } catch (err) {
-    console.error('[BACKEND] Lỗi lấy đơn hàng:', err.message, err.stack);
-    res.status(500).json({ message: 'Lỗi lấy đơn hàng của bạn', error: err.message });
+      const orders = await Order.find(query).sort({ createdAt: -1 });
+      return res.status(200).json(orders);
+    } catch (err) {
+      console.error('[BACKEND] Lỗi lấy đơn hàng của user:', err);
+      return res
+        .status(500)
+        .json({ message: 'Lỗi server khi lấy đơn hàng của bạn' });
+    }
   }
-});
+);
 
 // Lấy tất cả đơn hàng (chỉ admin), có thể lọc theo status
 router.get('/', verifyToken, isAdminMiddleware, async (req, res) => {
