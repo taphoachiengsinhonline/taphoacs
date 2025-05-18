@@ -12,8 +12,6 @@ exports.verifyToken = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    // Hỗ trợ cả kiểu cũ lẫn mới
     const userId = decoded.userId || decoded.id;
     if (!userId) {
       return res.status(401).json({ message: 'Token không hợp lệ (thiếu ID)' });
@@ -28,7 +26,13 @@ exports.verifyToken = async (req, res, next) => {
     next();
   } catch (err) {
     console.error('[AUTH] Lỗi verifyToken:', err);
-    return res.status(401).json({ message: 'Token không hợp lệ hoặc hết hạn' });
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: 'Token đã hết hạn' });
+    }
+    if (err.name === 'JsonWebTokenError') {
+      return res.status(401).json({ message: 'Token không hợp lệ' });
+    }
+    return res.status(401).json({ message: 'Lỗi xác thực token' });
   }
 };
 
