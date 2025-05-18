@@ -1,4 +1,5 @@
 // routes/orderRoutes.js
+const orderController = require('../controllers/orderController');
 const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
@@ -7,28 +8,7 @@ const sendPushNotification = require('../utils/sendPushNotification');
 const User = require('../models/User');
 
 // Tạo đơn hàng mới (người dùng đã đăng nhập)
-router.post('/', verifyToken, async (req, res) => {
-  try {
-    const { 
-      items, 
-      total, 
-      phone, 
-      shippingAddress, 
-      customerName, 
-      paymentMethod 
-    } = req.body;
-
-    const newOrder = new Order({
-      items,
-      total,
-      phone,
-      shippingAddress,
-      customerName,
-      user: req.user._id,
-      status: 'Chờ xác nhận',
-      paymentMethod
-    });
-
+router.post('/', verifyToken, orderController.createOrder);
     const savedOrder = await newOrder.save();
 
     const admins = await User.find({
