@@ -1,4 +1,3 @@
-// routes/authRoutes.js
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
@@ -10,13 +9,13 @@ const generateTokens = (userId) => {
     const accessToken = jwt.sign(
         { userId },
         process.env.JWT_SECRET,
-        { expiresIn: '150m' } // thời gian ngắn để tăng bảo mật
+        { expiresIn: '150m' }
     );
 
     const refreshToken = jwt.sign(
         { userId },
         process.env.JWT_SECRET,
-        { expiresIn: '7d' } // thời gian dài hơn để làm mới token
+        { expiresIn: '7d' }
     );
 
     return { accessToken, refreshToken };
@@ -101,25 +100,31 @@ router.post('/login', async (req, res) => {
 
 // Làm mới token
 router.post('/refresh-token', async (req, res) => {
-  const { refreshToken } = req.body;
+    const { refreshToken } = req.body;
 
-  if (!refreshToken) {
-    return res.status(400).json({ status: 'error', message: 'Thiếu refresh token' });
-  }
+    if (!refreshToken) {
+        return res.status(400).json({ status: 'error', message: 'Thiếu refresh token' });
+    }
 
-  try {
-    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
-    const { accessToken, refreshToken: newRefreshToken } = generateTokens(decoded.userId);
+    try {
+        const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
+        const { accessToken, refreshToken: newRefreshToken } = generateTokens(decoded.userId);
 
-    return res.status(200).json({
-      status: 'success',
-      token: accessToken,  // Trả về trực tiếp
-      refreshToken: newRefreshToken  // Trả về trực tiếp
-    });
-  } catch (error) {
-    console.error('Refresh token error:', error);
-    return res.status(401).json({ status: 'error', message: 'Refresh token không hợp lệ' });
-  }
+        return res.status(200).json({
+            status: 'success',
+            token: accessToken,
+            refreshToken: newRefreshToken
+        });
+    } catch (error) {
+        console.error('Refresh token error:', error);
+        if (error.name === 'TokenExpiredError') {
+            return res.status(401).json({ status: 'error', message: 'Refresh token đã hết hạn' });
+        }
+        if (error.name === 'JsonWebTokenError') {
+            return res.status(401).json({ status: 'error', message: 'Refresh token không hợp lệ' });
+        }
+        return res.status(401).json({ status: 'error', message: 'Lỗi xác thực refresh token' });
+    }
 });
 
 module.exports = router;
