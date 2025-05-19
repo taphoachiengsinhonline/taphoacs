@@ -11,7 +11,35 @@ const createOrder = async (req, res) => {
       shippingAddress, customerName,
       paymentMethod
     } = req.body;
+ // 1. Kiểm tra khung giờ cho mỗi sản phẩm
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
 
+    for (const item of items) {
+      const prod = await Product.findById(item.productId);
+      if (!prod) {
+        return res.status(404).json({ message: `Sản phẩm "${item.name}" không tồn tại` });
+      }
+      if (prod.saleStartTime && prod.saleEndTime) {
+        const toMin = (str) => {
+          const [h, m] = str.split(':').map(Number);
+          return h * 60 + m;
+        };
+        const start = toMin(prod.saleStartTime);
+        const end   = toMin(prod.saleEndTime);
+        let ok;
+        if (start <= end) {
+          ok = nowMin >= start && nowMin <= end;
+        } else {
+          ok = nowMin >= start || nowMin <= end;
+        }
+        if (!ok) {
+          return res.status(400).json({
+            message: `Sản phẩm "${prod.name}" chỉ bán từ ${prod.saleStartTime} đến ${prod.saleEndTime}`
+          });
+        }
+      }
+    }
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: 'Không có sản phẩm trong đơn hàng' });
     }
