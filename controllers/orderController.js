@@ -1,3 +1,4 @@
+// controllers/orderController.js
 const Order = require('../models/Order');
 const User = require('../models/User');
 const sendPushNotification = require('../utils/sendPushNotification');
@@ -6,11 +7,8 @@ const sendPushNotification = require('../utils/sendPushNotification');
 const createOrder = async (req, res) => {
   try {
     const {
-      items,
-      total,
-      phone,
-      shippingAddress,
-      customerName,
+      items, total, phone,
+      shippingAddress, customerName,
       paymentMethod
     } = req.body;
 
@@ -19,11 +17,8 @@ const createOrder = async (req, res) => {
     }
 
     const newOrder = new Order({
-      items,
-      total,
-      phone,
-      shippingAddress,
-      customerName,
+      items, total, phone,
+      shippingAddress, customerName,
       user: req.user._id,
       status: 'Chờ xác nhận',
       paymentMethod
@@ -31,12 +26,11 @@ const createOrder = async (req, res) => {
 
     const savedOrder = await newOrder.save();
 
-    // Gửi push notification đến admin
+    // Gửi thông báo cho admin
     const admins = await User.find({
       isAdmin: true,
-      expoPushToken: { $exists: true, $ne: null },
+      expoPushToken: { $exists: true, $ne: null }
     });
-
     for (const admin of admins) {
       await sendPushNotification(
         admin.expoPushToken,
@@ -52,13 +46,12 @@ const createOrder = async (req, res) => {
   }
 };
 
-// Lấy danh sách đơn hàng của user, có thể lọc theo status
+// Lấy đơn hàng của user (có thể lọc theo status)
 const getMyOrders = async (req, res) => {
   try {
     const { status } = req.query;
     const query = { user: req.user._id };
     if (status) query.status = status;
-
     const orders = await Order.find(query).sort({ createdAt: -1 });
     res.status(200).json(orders);
   } catch (err) {
@@ -67,7 +60,7 @@ const getMyOrders = async (req, res) => {
   }
 };
 
-// Đếm số lượng đơn hàng của user theo trạng thái
+// Đếm số lượng đơn hàng theo trạng thái
 const countOrdersByStatus = async (req, res) => {
   try {
     const all = await Order.find({ user: req.user._id });
@@ -77,11 +70,10 @@ const countOrdersByStatus = async (req, res) => {
         case 'Đang xử lý':    acc.confirmed++; break;
         case 'Đang giao':     acc.shipped++; break;
         case 'Đã giao':       acc.delivered++; break;
-        case 'Đã huỷ':        acc.canceled++; break;
+        case 'Đã hủy':        acc.canceled++; break;
       }
       return acc;
-    }, { pending: 0, confirmed: 0, shipped: 0, delivered: 0, canceled: 0 });
-
+    }, { pending:0, confirmed:0, shipped:0, delivered:0, canceled:0 });
     res.status(200).json(counts);
   } catch (err) {
     console.error('[BACKEND] Lỗi đếm đơn theo status:', err);
@@ -89,7 +81,7 @@ const countOrdersByStatus = async (req, res) => {
   }
 };
 
-// Lấy chi tiết một đơn hàng (user hoặc admin)
+// Lấy chi tiết đơn hàng (user hoặc admin)
 const getOrderById = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -143,7 +135,7 @@ const updateOrderStatus = async (req, res) => {
     if (err.name === 'ValidationError') {
       return res.status(400).json({
         message: 'Trạng thái không hợp lệ',
-        validStatuses: ['Chờ xác nhận','Đang xử lý','Đang giao','Đã giao','Đã huỷ']
+        validStatuses: ['Chờ xác nhận','Đang xử lý','Đang giao','Đã giao','Đã hủy']
       });
     }
     if (err.name === 'CastError') {
@@ -153,21 +145,27 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
-// Người dùng hoặc admin: Hủy đơn hàng
+// Hủy đơn (user hoặc admin)
 const cancelOrder = async (req, res) => {
   try {
     const query = req.user.isAdmin
       ? { _id: req.params.id }
       : { _id: req.params.id, user: req.user._id };
+
     const order = await Order.findOne(query);
     if (!order) {
       return res.status(404).json({ message: 'Không tìm thấy đơn hàng hoặc không có quyền' });
     }
     if (order.status !== 'Chờ xác nhận') {
-      return res.status(400).json({ message: 'Chỉ có thể hủy đơn hàng ở trạng thái "Chờ xác nhận"' });
+      return res.status(400).json({
+        message: 'Chỉ có thể hủy đơn hàng ở trạng thái "Chờ xác nhận"'
+      });
     }
-    order.status = 'Đã huỷ';
+
+    // **Use exact enum string**
+    order.status = 'Đã hủy';
     const updated = await order.save();
+
     res.json({ message: 'Hủy đơn hàng thành công', order: updated });
   } catch (err) {
     console.error('[BACKEND] Lỗi hủy đơn hàng:', err);
