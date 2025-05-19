@@ -7,6 +7,8 @@ const productSchema = new mongoose.Schema({
   images: [String], // ✅ Thay vì image: String
   price: { type: Number, required: true },
   stock: { type: Number, required: true },
+  saleStartTime: { type: String, default: null },  // ví dụ "09:00"
+  saleEndTime:   { type: String, default: null },   // ví dụ "17:30"
   attributes: [
     {
       name: { type: String, required: true },
