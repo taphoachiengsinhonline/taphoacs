@@ -4,22 +4,17 @@ const router = express.Router();
 const orderController = require('../controllers/orderController');
 const { verifyToken, isAdminMiddleware } = require('../middlewares/authMiddleware');
 
-// Tạo đơn hàng mới (người dùng đã đăng nhập)
-router.post('/', verifyToken, orderController.createOrder);
+// Người dùng:
+router.post('/',          verifyToken,           orderController.createOrder);
+router.get('/my-orders',  verifyToken,           orderController.getMyOrders);
+router.get('/count-by-status', verifyToken,      orderController.countOrdersByStatus);
+router.get('/:id',        verifyToken,           orderController.getOrderById);
 
-// Lấy đơn hàng cá nhân, có thể lọc theo status
-router.get('/my-orders', verifyToken, orderController.getMyOrders);
+// Admin:
+router.get('/',           verifyToken, isAdminMiddleware, orderController.getAllOrders);
+router.put('/:id',        verifyToken, isAdminMiddleware, orderController.updateOrderStatus);
 
-// Đếm đơn hàng theo từng trạng thái (của người dùng)
-router.get('/count-by-status', verifyToken, orderController.countOrdersByStatus);
-
-// Lấy tất cả đơn hàng (admin), có thể lọc theo status
-router.get('/', verifyToken, isAdminMiddleware, orderController.getAllOrders);
-
-// Admin cập nhật trạng thái đơn hàng
-router.put('/:id', verifyToken, isAdminMiddleware, orderController.updateOrderStatus);
-
-// Người dùng hoặc admin hủy đơn hàng
-router.put('/:id/cancel', verifyToken, orderController.cancelOrder);
+// Hủy đơn (user hoặc admin)
+router.put('/:id/cancel', verifyToken,           orderController.cancelOrder);
 
 module.exports = router;
