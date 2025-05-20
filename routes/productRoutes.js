@@ -44,8 +44,8 @@ router.get('/', async (req, res) => {
       const ids = [category, ...(await getAllChildCategoryIds(category))];
       filter.category = { $in: ids };
     }
-    const products = await Product.find(filter).populate('category');
-    .populate('category'); // Thêm populate
+    const products = await Product.find(filter)
+      .populate('category')
       .populate('createdBy', 'name email');
     res.json(products);
   } catch (err) {
@@ -54,10 +54,12 @@ router.get('/', async (req, res) => {
   }
 });
 
-
 router.get('/:id', async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id).populate('category');
+    const product = await Product.findById(req.params.id)
+      .populate('category')
+      .populate('createdBy', 'name email');
+    
     if (!product) {
       return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
     }
@@ -68,16 +70,16 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-
-
 // POST /api/products - Thêm sản phẩm mới (chỉ admin)
 router.post('/', isAdmin, async (req, res) => {
   try {
     const { name, price, stock, category, description, attributes, images, saleStartTime, saleEndTime } = req.body;
     console.log('📦 Thông tin sản phẩm nhận được:', req.body);
+    
     if (!name || price == null || !category || stock == null || !images?.length) {
       return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin sản phẩm' });
     }
+    
     const newProduct = new Product({
       name,
       price,
@@ -90,6 +92,7 @@ router.post('/', isAdmin, async (req, res) => {
       saleEndTime,
       createdBy: req.user._id
     });
+    
     const saved = await newProduct.save();
     res.status(201).json(saved);
   } catch (err) {
@@ -103,18 +106,22 @@ router.put('/:id', isAdmin, async (req, res) => {
   try {
     const updateFields = ['name','price','stock','category','description','attributes','images','saleStartTime','saleEndTime'];
     const updateData = {};
+    
     for (const f of updateFields) {
       if (req.body[f] !== undefined) updateData[f] = req.body[f];
     }
+    
     const updated = await Product.findByIdAndUpdate(
       req.params.id,
       updateData,
       { new: true, runValidators: true }
     );
+    
     if (!updated) return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
     res.json(updated);
   } catch (err) {
     console.error('❌ Lỗi khi cập nhật sản phẩm:', err);
+    
     if (err.name === 'ValidationError') {
       return res.status(400).json({ message: err.message });
     }
@@ -129,11 +136,26 @@ router.put('/:id', isAdmin, async (req, res) => {
 router.delete('/:id', isAdmin, async (req, res) => {
   try {
     const product = await Product.findByIdAndDelete(req.params.id);
-    // Thêm logic xoá references trong category nếu cần
+    
+    if (!product) {
+      return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+    }
+    
+    // Xoá reference trong category
     await Category.updateMany(
       { products: req.params.id },
       { $pull: { products: req.params.id } }
     );
+    
     res.json({ message: 'Đã xoá sản phẩm thành công' });
-  } catch (err) {}
+  } catch (err) {
+    console.error('❌ Lỗi khi xoá sản phẩm:', err);
+    
+    if (err.name === 'CastError') {
+      return res.status(400).json({ message: 'ID sản phẩm không hợp lệ' });
+    }
+    res.status(500).json({ message: 'Lỗi server khi xoá sản phẩm' });
+  }
+});
+
 module.exports = router;
