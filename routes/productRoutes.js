@@ -45,7 +45,7 @@ router.get('/', async (req, res) => {
       filter.category = { $in: ids };
     }
     const products = await Product.find(filter).populate('category');
-    .populate('category') // Thêm populate
+    .populate('category'); // Thêm populate
       .populate('createdBy', 'name email');
     res.json(products);
   } catch (err) {
