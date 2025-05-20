@@ -1,34 +1,24 @@
 const express = require('express');
 const router = express.Router();
-const { isAdminMiddleware } = require('../middlewares/authMiddleware');
 const Category = require('../models/Category');
 
 // Lấy tất cả danh mục
-// Trong categoryRoutes.js
 router.get('/', async (req, res) => {
   try {
     const categories = await Category.find().populate('parent', 'name');
-    res.json(Array.isArray(categories) ? categories : []); // Luôn trả về mảng
+    res.json(categories);
   } catch (err) {
-    res.status(500).json([]); // Trả về mảng rỗng khi có lỗi
+    res.status(500).json({ message: 'Lỗi server khi lấy danh mục' });
   }
 });
 
 // Tạo danh mục
-router.post('/', isAdminMiddleware, async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { name, parent } = req.body;
-    
-    // Validate name
-    if (!name || name.trim().length < 2) {
-      return res.status(400).json({ message: 'Tên danh mục phải từ 2 ký tự' });
-    }
+    const existing = await Category.findOne({ name });
+    if (existing) return res.status(400).json({ message: 'Danh mục đã tồn tại' });
 
-    // Check trùng name
-    const existing = await Category.findOne({ name: name.trim() });
-    if (existing) {
-      return res.status(409).json({ message: 'Danh mục đã tồn tại' });
-    }
     const newCategory = await Category.create({ name, parent: parent || null });
     res.status(201).json(newCategory);
   } catch (err) {
@@ -37,7 +27,7 @@ router.post('/', isAdminMiddleware, async (req, res) => {
 });
 
 // Xoá danh mục + danh mục con
-router.delete('/:id', isAdminMiddleware, async (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     await Category.deleteMany({ parent: id });
