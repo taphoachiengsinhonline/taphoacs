@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const isAdmin = require('./middleware/isAdmin'); // Import middleware kiểm tra admin
 const Category = require('../models/Category');
 
 // Lấy tất cả danh mục
@@ -13,7 +14,7 @@ router.get('/', async (req, res) => {
 });
 
 // Tạo danh mục
-router.post('/', async (req, res) => {
+router.post('/', isAdmin, async (req, res) => {
   try {
     const { name, parent } = req.body;
     const existing = await Category.findOne({ name });
@@ -27,7 +28,7 @@ router.post('/', async (req, res) => {
 });
 
 // Xoá danh mục + danh mục con
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', isAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     await Category.deleteMany({ parent: id });
