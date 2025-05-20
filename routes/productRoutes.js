@@ -45,6 +45,8 @@ router.get('/', async (req, res) => {
       filter.category = { $in: ids };
     }
     const products = await Product.find(filter).populate('category');
+    .populate('category') // Thêm populate
+      .populate('createdBy', 'name email');
     res.json(products);
   } catch (err) {
     console.error('❌ Lỗi khi lấy sản phẩm:', err);
@@ -127,15 +129,11 @@ router.put('/:id', isAdmin, async (req, res) => {
 router.delete('/:id', isAdmin, async (req, res) => {
   try {
     const product = await Product.findByIdAndDelete(req.params.id);
-    if (!product) return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+    // Thêm logic xoá references trong category nếu cần
+    await Category.updateMany(
+      { products: req.params.id },
+      { $pull: { products: req.params.id } }
+    );
     res.json({ message: 'Đã xoá sản phẩm thành công' });
-  } catch (err) {
-    console.error('❌ Lỗi khi xoá sản phẩm:', err);
-    if (err.name === 'CastError') {
-      return res.status(400).json({ message: 'ID sản phẩm không hợp lệ' });
-    }
-    res.status(500).json({ message: 'Lỗi server khi xoá sản phẩm' });
-  }
-});
-
+  } catch (err) {}
 module.exports = router;
