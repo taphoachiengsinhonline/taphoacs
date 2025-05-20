@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const isAdmin = require('./middlewares/authMiddleware'); // Import middleware kiểm tra admin
+const isAdmin = require('../middlewares/authMiddleware'); // Import middleware kiểm tra admin
 const Category = require('../models/Category');
 
 // Lấy tất cả danh mục
