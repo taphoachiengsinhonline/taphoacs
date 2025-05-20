@@ -4,12 +4,21 @@ const isAdmin = require('./middleware/isAdmin'); // Import middleware kiểm tra
 const Category = require('../models/Category');
 
 // Lấy tất cả danh mục
-router.get('/', async (req, res) => {
+// Trong categoryRoutes.js
+router.get('/tree', async (req, res) => {
   try {
-    const categories = await Category.find().populate('parent', 'name');
-    res.json(categories || []); // Luôn trả về mảng kể cả null
+    const buildTree = async (parentId = null) => {
+      const categories = await Category.find({ parent: parentId });
+      return Promise.all(categories.map(async cat => ({
+        ...cat.toObject(),
+        children: await buildTree(cat._id)
+      })));
+    };
+    
+    const tree = await buildTree();
+    res.json(tree);
   } catch (err) {
-    res.status(500).json([]); // Trả về mảng rỗng khi lỗi
+    res.status(500).json([]);
   }
 });
 
@@ -17,9 +26,17 @@ router.get('/', async (req, res) => {
 router.post('/', isAdmin, async (req, res) => {
   try {
     const { name, parent } = req.body;
-    const existing = await Category.findOne({ name });
-    if (existing) return res.status(400).json({ message: 'Danh mục đã tồn tại' });
+    
+    // Validate name
+    if (!name || name.trim().length < 2) {
+      return res.status(400).json({ message: 'Tên danh mục phải từ 2 ký tự' });
+    }
 
+    // Check trùng name
+    const existing = await Category.findOne({ name: name.trim() });
+    if (existing) {
+      return res.status(409).json({ message: 'Danh mục đã tồn tại' });
+    }
     const newCategory = await Category.create({ name, parent: parent || null });
     res.status(201).json(newCategory);
   } catch (err) {
