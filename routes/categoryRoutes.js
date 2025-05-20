@@ -5,20 +5,12 @@ const Category = require('../models/Category');
 
 // Lấy tất cả danh mục
 // Trong categoryRoutes.js
-router.get('/tree', async (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const buildTree = async (parentId = null) => {
-      const categories = await Category.find({ parent: parentId });
-      return Promise.all(categories.map(async cat => ({
-        ...cat.toObject(),
-        children: await buildTree(cat._id)
-      })));
-    };
-    
-    const tree = await buildTree();
-    res.json(tree);
+    const categories = await Category.find().populate('parent', 'name');
+    res.json(Array.isArray(categories) ? categories : []); // Luôn trả về mảng
   } catch (err) {
-    res.status(500).json([]);
+    res.status(500).json([]); // Trả về mảng rỗng khi có lỗi
   }
 });
 
