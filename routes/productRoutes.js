@@ -52,6 +52,22 @@ router.get('/', async (req, res) => {
   }
 });
 
+
+router.get('/:id', async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id).populate('category');
+    if (!product) {
+      return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+    }
+    res.json(product);
+  } catch (err) {
+    console.error('❌ Lỗi khi lấy chi tiết sản phẩm:', err);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
+});
+
+
+
 // POST /api/products - Thêm sản phẩm mới (chỉ admin)
 router.post('/', isAdmin, async (req, res) => {
   try {
