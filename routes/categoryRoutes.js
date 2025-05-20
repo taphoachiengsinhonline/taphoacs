@@ -7,9 +7,9 @@ const Category = require('../models/Category');
 router.get('/', async (req, res) => {
   try {
     const categories = await Category.find().populate('parent', 'name');
-    res.json(categories);
+    res.json(categories || []); // Luôn trả về mảng kể cả null
   } catch (err) {
-    res.status(500).json({ message: 'Lỗi server khi lấy danh mục' });
+    res.status(500).json([]); // Trả về mảng rỗng khi lỗi
   }
 });
 
