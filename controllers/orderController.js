@@ -1,6 +1,7 @@
 // controllers/orderController.js
 const Order = require('../models/Order');
 const User = require('../models/User');
+const Product = require('../models/Product');
 const sendPushNotification = require('../utils/sendPushNotification');
 
 // Tạo đơn hàng mới
