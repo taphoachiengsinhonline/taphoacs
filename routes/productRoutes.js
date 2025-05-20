@@ -6,7 +6,7 @@ const Category = require('../models/Category');
 const User = require('../models/User');
 
 // Middleware kiểm tra quyền admin
-tconst isAdmin = async (req, res, next) => {
+const isAdmin = async (req, res, next) => {
   try {
     const userId = req.header('x-user-id');
     if (!userId) {
@@ -25,7 +25,7 @@ tconst isAdmin = async (req, res, next) => {
 };
 
 // Hàm đệ quy lấy danh sách category con
-tconst getAllChildCategoryIds = async (parentId) => {
+const getAllChildCategoryIds = async (parentId) => {
   const children = await Category.find({ parent: parentId }).select('_id');
   let allIds = children.map(c => c._id.toString());
   for (const c of children) {
