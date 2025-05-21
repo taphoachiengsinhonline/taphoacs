@@ -36,10 +36,20 @@ const productSchema = new mongoose.Schema({
     min: 0
   },
   // Ví dụ phân loại
-  category: {
-    type: String,
-    default: 'general'
-  },
+ // category: {
+ //   type: String,
+ //   default: 'general'
+ // },
+
+
+category: {
+  type: mongoose.Schema.Types.ObjectId, // Sửa từ String sang ObjectId
+  ref: 'Category',
+  required: true
+},
+
+
+  
 }, {
   timestamps: true
 });
