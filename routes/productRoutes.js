@@ -124,17 +124,11 @@ router.put('/:id', isAdmin, async (req, res) => {
 });
 
 // DELETE /api/products/:id - Xoá sản phẩm (chỉ admin)
-// router.delete('/:id', isAdmin, async (req, res) => {
-//  try {
-//    console.log('Deleting product with id:', req.params.id);
-//    const product = await Product.findByIdAndDelete(req.params.id);
-//      .lean()
-//      .exec();
-router.delete('/:id', isAdmin, async (req, res) => {
+ router.delete('/:id', isAdmin, async (req, res) => {
   try {
-    const product = await Product.findByIdAndDelete(req.params.id)
-      .lean()
-      .exec();
+    console.log('Deleting product with id:', req.params.id);
+    const product = await Product.findByIdAndDelete(req.params.id);
+
     if (!product) return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
     console.log('Deleted successfully');
     res.json({ message: 'Đã xoá sản phẩm thành công' });
