@@ -36,21 +36,48 @@ const getAllChildCategoryIds = async (parentId) => {
 };
 
 // GET /api/products?category=ID
+//router.get('/', async (req, res) => {
+//  try {
+//    const { category } = req.query;
+//    let filter = {};
+//    if (category && category !== 'Tất cả') {
+//      const ids = [category, ...(await getAllChildCategoryIds(category))];
+//      filter.category = { $in: ids };
+//    }
+//    const products = await Product.find(filter).populate('category');
+//    res.json(products);
+//  } catch (err) {
+//   console.error('❌ Lỗi khi lấy sản phẩm:', err);
+//    res.status(500).json({ error: err.message });
+// }
+//});
+
+
 router.get('/', async (req, res) => {
   try {
-    const { category } = req.query;
+    const { category, limit } = req.query;
     let filter = {};
     if (category && category !== 'Tất cả') {
       const ids = [category, ...(await getAllChildCategoryIds(category))];
       filter.category = { $in: ids };
     }
-    const products = await Product.find(filter).populate('category');
+    let query = Product.find(filter).populate('category');
+    if (limit) {
+      query = query.limit(parseInt(limit));  // Giới hạn số lượng sản phẩm
+    }
+    const products = await query;
     res.json(products);
   } catch (err) {
     console.error('❌ Lỗi khi lấy sản phẩm:', err);
     res.status(500).json({ error: err.message });
   }
 });
+
+
+
+
+
+
 
 
 router.get('/:id', async (req, res) => {
