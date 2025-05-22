@@ -331,5 +331,6 @@ module.exports = {
   getAvailableDeliveryOrders,
   acceptOrderDelivery,
   updateDeliveryStatus,
-  getMyAssignedOrders
+  getMyAssignedOrders,
+  updateOrderLocation
 };
