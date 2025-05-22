@@ -19,7 +19,9 @@ router.put('/:id/cancel', verifyToken, orderController.cancelOrder);
 router.get('/', verifyToken, isAdminMiddleware, orderController.getAllOrders);
 router.put('/:id', verifyToken, isAdminMiddleware, orderController.updateOrderStatus);
 
+
 // █████ Delivery Staff Routes █████
+
 router.get('/delivery/available', 
   verifyToken, 
   isStaffMiddleware, 
