@@ -275,6 +275,50 @@ const getMyAssignedOrders = async (req, res) => {
   }
 };
 
+
+
+const updateOrderLocation = async (req, res) => {
+  try {
+    const { lat, lng } = req.body;
+    if (!lat || !lng) {
+      return res.status(400).json({ message: 'Vui lòng cung cấp tọa độ lat và lng' });
+    }
+
+    const order = await Order.findOneAndUpdate(
+      { _id: req.params.id, deliveryStaff: req.user._id },
+      {
+        $push: {
+          tracking: {
+            location: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
+            timestamp: new Date()
+          }
+        }
+      },
+      { new: true }
+    );
+
+    if (!order) {
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng hoặc bạn không được phân công' });
+    }
+
+    // Gửi thông báo real-time
+    req.app.get('io').emit('orderLocationUpdate', {
+      orderId: order._id,
+      location: { lat, lng }
+    });
+
+    res.json(order);
+  } catch (err) {
+    console.error('[ORDER] Lỗi cập nhật vị trí:', err);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
+};
+
+
+
+
+
+
 module.exports = {
   createOrder,
   getMyOrders,
