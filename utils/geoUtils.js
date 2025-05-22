@@ -1,6 +1,6 @@
 const User = require('../models/User');
 
-exports.findNearestStaff = async (orderLocation) => {
+exports.findNearestStaff = async (orderLocation, maxDistanceKm = 5) => {
   return await User.aggregate([
     {
       $geoNear: {
@@ -9,7 +9,7 @@ exports.findNearestStaff = async (orderLocation) => {
           coordinates: orderLocation
         },
         distanceField: 'distance',
-        maxDistance: 5000, // 5km
+        maxDistance: maxDistanceKm * 1000, // Chuyển km thành mét
         query: {
           'deliveryInfo.status': 'available',
           role: 'staff'
