@@ -1,4 +1,4 @@
-// controllers/orderController.js
+const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Product = require('../models/Product');
@@ -55,22 +55,34 @@ const createOrder = async (req, res) => {
       
       const fcmTokens = nearestStaff.filter(s => s.fcmToken).map(s => s.fcmToken);
       if (fcmTokens.length > 0) {
-        await sendPushNotification(
-          fcmTokens,
-          '📦 Đơn hàng mới gần bạn',
-          `${customerName} - ${shippingAddress}`
-        );
+        // SỬA: Thêm try-catch để xử lý lỗi gửi thông báo
+        try {
+          const result = await sendPushNotification(
+            fcmTokens,
+            '📦 Đơn hàng mới gần bạn',
+            `${customerName} - ${shippingAddress}`
+          );
+          console.log('Thông báo gửi thành công cho nhân viên:', result);
+        } catch (notificationError) {
+          console.error('Không gửi được thông báo cho nhân viên:', notificationError.message);
+        }
       }
     }
 
     // Gửi thông báo cho admin
     const admins = await User.find({ isAdmin: true, fcmToken: { $exists: true } });
     for (const admin of admins) {
-      await sendPushNotification(
-        admin.fcmToken,
-        '🛒 Đơn hàng mới',
-        `Tổng giá trị: ${total.toLocaleString()}đ`
-      );
+      // SỬA: Thêm try-catch để xử lý lỗi gửi thông báo
+      try {
+        const result = await sendPushNotification(
+          admin.fcmToken,
+          '🛒 Đơn hàng mới',
+          `Tổng giá trị: ${total.toLocaleString()}đ`
+        );
+        console.log('Thông báo gửi thành công cho admin:', result);
+      } catch (notificationError) {
+        console.error('Không gửi được thông báo cho admin:', notificationError.message);
+      }
     }
 
     res.status(201).json(savedOrder);
@@ -145,11 +157,17 @@ const updateOrderStatus = async (req, res) => {
     // Gửi thông báo real-time
     req.app.get('io').emit('orderUpdate', updatedOrder);
     if (updatedOrder.user?.fcmToken) {
-      await sendPushNotification(
-        updatedOrder.user.fcmToken,
-        '🔔 Trạng thái đơn hàng',
-        `Đơn hàng #${updatedOrder._id} đã chuyển sang "${req.body.status}"`
-      );
+      // SỬA: Thêm try-catch để xử lý lỗi gửi thông báo
+      try {
+        const result = await sendPushNotification(
+          updatedOrder.user.fcmToken,
+          '🔔 Trạng thái đơn hàng',
+          `Đơn hàng #${updatedOrder._id} đã chuyển sang "${req.body.status}"`
+        );
+        console.log('Thông báo gửi thành công cho người dùng:', result);
+      } catch (notificationError) {
+        console.error('Không gửi được thông báo cho người dùng:', notificationError.message);
+      }
     }
     
     res.json(updatedOrder);
@@ -275,8 +293,6 @@ const getMyAssignedOrders = async (req, res) => {
   }
 };
 
-
-
 const updateOrderLocation = async (req, res) => {
   try {
     const { lat, lng } = req.body;
@@ -313,11 +329,6 @@ const updateOrderLocation = async (req, res) => {
     res.status(500).json({ message: 'Lỗi server' });
   }
 };
-
-
-
-
-
 
 module.exports = {
   createOrder,
