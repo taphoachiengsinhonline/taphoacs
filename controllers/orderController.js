@@ -1,333 +1,208 @@
-
-const mongoose = require('mongoose');
+// controllers/orderController.js
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Product = require('../models/Product');
-const { findNearestStaff, calculateDistance } = require('../utils/geoUtils');
+const Category = require('../models/Category');
 const sendPushNotification = require('../utils/sendPushNotification');
 
-// [1] Tạo đơn hàng mới (Cập nhật phiên bản có tích hợp vị trí)
+// Tạo đơn hàng mới
 const createOrder = async (req, res) => {
   try {
-    const { items, total, phone, shippingAddress, customerName, paymentMethod, lng, lat } = req.body;
-
-    // Kiểm tra khung giờ bán hàng
+    const {
+      items, total, phone,
+      shippingAddress, customerName,
+      paymentMethod
+    } = req.body;
+ // 1. Kiểm tra khung giờ cho mỗi sản phẩm
     const now = new Date();
     const nowMin = now.getHours() * 60 + now.getMinutes();
+
     for (const item of items) {
       const prod = await Product.findById(item.productId);
-      if (!prod) return res.status(404).json({ message: `Sản phẩm "${item.name}" không tồn tại` });
-      
+      if (!prod) {
+        return res.status(404).json({ message: `Sản phẩm "${item.name}" không tồn tại` });
+      }
       if (prod.saleStartTime && prod.saleEndTime) {
-        const toMin = (str) => str.split(':').map(Number).reduce((h, m) => h * 60 + m);
-        const [start, end] = [toMin(prod.saleStartTime), toMin(prod.saleEndTime)];
-        const validTime = start <= end ? (nowMin >= start && nowMin <= end) : (nowMin >= start || nowMin <= end);
-        if (!validTime) return res.status(400).json({ 
-          message: `Sản phẩm "${prod.name}" chỉ bán từ ${prod.saleStartTime} đến ${prod.saleEndTime}`
-        });
+        const toMin = (str) => {
+          const [h, m] = str.split(':').map(Number);
+          return h * 60 + m;
+        };
+        const start = toMin(prod.saleStartTime);
+        const end   = toMin(prod.saleEndTime);
+        let ok;
+        if (start <= end) {
+          ok = nowMin >= start && nowMin <= end;
+        } else {
+          ok = nowMin >= start || nowMin <= end;
+        }
+        if (!ok) {
+          return res.status(400).json({
+            message: `Sản phẩm "${prod.name}" chỉ bán từ ${prod.saleStartTime} đến ${prod.saleEndTime}`
+          });
+        }
       }
     }
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: 'Không có sản phẩm trong đơn hàng' });
+    }
 
-    // Tạo đơn hàng với thông tin vị trí
     const newOrder = new Order({
-      items,
-      total,
-      phone,
-      shippingAddress,
-      customerName,
-      paymentMethod,
+      items, total, phone,
+      shippingAddress, customerName,
       user: req.user._id,
       status: 'Chờ xác nhận',
-      shippingLocation: {
-        type: 'Point',
-        coordinates: [parseFloat(lng), parseFloat(lat)]
-      }
+      paymentMethod
     });
 
     const savedOrder = await newOrder.save();
 
-    // Tìm và thông báo cho nhân viên gần nhất
-    const nearestStaff = await findNearestStaff(savedOrder.shippingLocation.coordinates, 10);
-    if (nearestStaff.length > 0) {
-      req.app.get('io').emit('newOrder', { 
-        orderId: savedOrder._id,
-        staffIds: nearestStaff.map(s => s._id)
-      });
-      
-      const fcmTokens = nearestStaff.filter(s => s.fcmToken).map(s => s.fcmToken);
-      if (fcmTokens.length > 0) {
-        // SỬA: Thêm try-catch để xử lý lỗi gửi thông báo
-        try {
-          const result = await sendPushNotification(
-            fcmTokens,
-            '📦 Đơn hàng mới gần bạn',
-            `${customerName} - ${shippingAddress}`
-          );
-          console.log('Thông báo gửi thành công cho nhân viên:', result);
-        } catch (notificationError) {
-          console.error('Không gửi được thông báo cho nhân viên:', notificationError.message);
-        }
-      }
-    }
-
     // Gửi thông báo cho admin
-    const admins = await User.find({ isAdmin: true, fcmToken: { $exists: true } });
+    const admins = await User.find({
+      isAdmin: true,
+      expoPushToken: { $exists: true, $ne: null }
+    });
     for (const admin of admins) {
-      // SỬA: Thêm try-catch để xử lý lỗi gửi thông báo
-      try {
-        const result = await sendPushNotification(
-          admin.fcmToken,
-          '🛒 Đơn hàng mới',
-          `Tổng giá trị: ${total.toLocaleString()}đ`
-        );
-        console.log('Thông báo gửi thành công cho admin:', result);
-      } catch (notificationError) {
-        console.error('Không gửi được thông báo cho admin:', notificationError.message);
-      }
+      await sendPushNotification(
+        admin.expoPushToken,
+        '🛒 Có đơn hàng mới!',
+        `Người dùng ${req.user.name || 'khách'} vừa đặt hàng. Tổng: ${total.toLocaleString()}đ`
+      );
     }
 
     res.status(201).json(savedOrder);
   } catch (err) {
-    console.error('[ORDER] Lỗi tạo đơn:', err);
+    console.error('[BACKEND] Lỗi tạo đơn hàng:', err);
     res.status(500).json({ message: 'Lỗi tạo đơn hàng', error: err.message });
   }
 };
 
-// [2] Các hàm gốc giữ nguyên
+// Lấy đơn hàng của user (có thể lọc theo status)
 const getMyOrders = async (req, res) => {
   try {
-    const orders = await Order.find({ user: req.user._id }).sort('-createdAt');
-    res.json(orders);
+    const { status } = req.query;
+    const query = { user: req.user._id };
+    if (status) query.status = status;
+    const orders = await Order.find(query).sort({ createdAt: -1 });
+    res.status(200).json(orders);
   } catch (err) {
-    console.error('[ORDER] Lỗi lấy đơn:', err);
-    res.status(500).json({ message: 'Lỗi server' });
+    console.error('[BACKEND] Lỗi lấy đơn hàng của user:', err);
+    res.status(500).json({ message: 'Lỗi server khi lấy đơn hàng của bạn' });
   }
 };
 
+// Đếm số lượng đơn hàng theo trạng thái
 const countOrdersByStatus = async (req, res) => {
   try {
-    const counts = await Order.aggregate([
-      { $match: { user: new mongoose.Types.ObjectId(req.user._id) } },
-      { $group: { _id: "$status", count: { $sum: 1 } } }
-    ]);
-    res.json(counts.reduce((acc, cur) => ({ ...acc, [cur._id]: cur.count }), {}));
+    const all = await Order.find({ user: req.user._id });
+    const counts = all.reduce((acc, o) => {
+      switch (o.status) {
+        case 'Chờ xác nhận': acc.pending++; break;
+        case 'Đang xử lý':    acc.confirmed++; break;
+        case 'Đang giao':     acc.shipped++; break;
+        case 'Đã giao':       acc.delivered++; break;
+        case 'Đã hủy':        acc.canceled++; break;
+      }
+      return acc;
+    }, { pending:0, confirmed:0, shipped:0, delivered:0, canceled:0 });
+    res.status(200).json(counts);
   } catch (err) {
-    console.error('[ORDER] Lỗi thống kê:', err);
-    res.status(500).json({ message: 'Lỗi server' });
+    console.error('[BACKEND] Lỗi đếm đơn theo status:', err);
+    res.status(500).json({ message: 'Lỗi khi đếm đơn hàng theo trạng thái' });
   }
 };
 
+// Lấy chi tiết đơn hàng (user hoặc admin)
 const getOrderById = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id)
-      .populate('user', 'name email')
-      .populate('deliveryStaff', 'name phone');
-    
-    if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn' });
-    if (!req.user.isAdmin && order.user._id.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Không có quyền truy cập' });
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+    }
+    if (!req.user.isAdmin && order.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Bạn không có quyền xem đơn hàng này' });
     }
     res.json(order);
   } catch (err) {
-    console.error('[ORDER] Lỗi chi tiết:', err);
-    res.status(500).json({ message: 'Lỗi server' });
+    console.error('[BACKEND] Lỗi lấy chi tiết đơn hàng:', err);
+    if (err.name === 'CastError') {
+      return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+    }
+    res.status(500).json({ message: 'Lỗi server khi lấy chi tiết đơn hàng' });
   }
 };
 
+// Admin: Lấy tất cả đơn hàng, có thể lọc theo status
 const getAllOrders = async (req, res) => {
   try {
-    const orders = await Order.find()
-      .populate('user', 'name phone')
-      .populate('deliveryStaff', 'name')
-      .sort('-createdAt');
+    const { status } = req.query;
+    const query = status ? { status } : {};
+    const orders = await Order.find(query)
+      .populate('user', 'name email')
+      .sort({ createdAt: -1 });
     res.json(orders);
   } catch (err) {
-    console.error('[ORDER] Lỗi lấy tất cả:', err);
-    res.status(500).json({ message: 'Lỗi server' });
+    console.error('[BACKEND] Lỗi lấy danh sách đơn hàng:', err);
+    res.status(500).json({ message: 'Lỗi lấy danh sách đơn hàng', error: err.message });
   }
 };
 
+// Admin: Cập nhật trạng thái đơn hàng
 const updateOrderStatus = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
-    if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn' });
-    
-    order.status = req.body.status;
-    const updatedOrder = await order.save();
-    
-    // Gửi thông báo real-time
-    req.app.get('io').emit('orderUpdate', updatedOrder);
-    if (updatedOrder.user?.fcmToken) {
-      // SỬA: Thêm try-catch để xử lý lỗi gửi thông báo
-      try {
-        const result = await sendPushNotification(
-          updatedOrder.user.fcmToken,
-          '🔔 Trạng thái đơn hàng',
-          `Đơn hàng #${updatedOrder._id} đã chuyển sang "${req.body.status}"`
-        );
-        console.log('Thông báo gửi thành công cho người dùng:', result);
-      } catch (notificationError) {
-        console.error('Không gửi được thông báo cho người dùng:', notificationError.message);
-      }
+    const { status } = req.body;
+    if (!status) {
+      return res.status(400).json({ message: 'Thiếu trường status' });
     }
-    
-    res.json(updatedOrder);
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+    }
+    order.status = status;
+    const updated = await order.save();
+    res.json({ message: 'Cập nhật trạng thái thành công', order: updated });
   } catch (err) {
-    console.error('[ORDER] Lỗi cập nhật:', err);
-    res.status(500).json({ message: 'Lỗi server' });
+    console.error('[BACKEND] Lỗi cập nhật đơn hàng:', err);
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({
+        message: 'Trạng thái không hợp lệ',
+        validStatuses: ['Chờ xác nhận','Đang xử lý','Đang giao','Đã giao','Đã hủy']
+      });
+    }
+    if (err.name === 'CastError') {
+      return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+    }
+    res.status(500).json({ message: 'Lỗi cập nhật đơn hàng', error: err.message });
   }
 };
 
+// Hủy đơn (user hoặc admin)
 const cancelOrder = async (req, res) => {
   try {
-    const order = await Order.findOne({
-      _id: req.params.id,
-      $or: [{ user: req.user._id }, { deliveryStaff: req.user._id }]
-    });
-    
-    if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn' });
-    if (!['Chờ xác nhận', 'Đang xử lý'].includes(order.status)) {
-      return res.status(400).json({ message: 'Không thể hủy đơn này' });
-    }
-    
-    order.status = 'Đã hủy';
-    await order.save();
-    res.json({ message: 'Hủy đơn thành công' });
-  } catch (err) {
-    console.error('[ORDER] Lỗi hủy đơn:', err);
-    res.status(500).json({ message: 'Lỗi server' });
-  }
-};
+    const query = req.user.isAdmin
+      ? { _id: req.params.id }
+      : { _id: req.params.id, user: req.user._id };
 
-// [3] Các hàm mới cho nhân viên giao hàng
-const getAvailableDeliveryOrders = async (req, res) => {
-  try {
-    const staffLocation = req.user.deliveryInfo?.location?.coordinates;
-    if (!staffLocation) return res.status(400).json({ message: 'Vui lòng bật định vị' });
-
-    const orders = await Order.find({
-      status: 'Đang xử lý',
-      deliveryStaff: null,
-      shippingLocation: {
-        $nearSphere: {
-          $geometry: {
-            type: 'Point',
-            coordinates: staffLocation
-          },
-          $maxDistance: 20000 // 20km
-        }
-      }
-    }).populate('user', 'name address phone');
-
-    res.json(orders);
-  } catch (err) {
-    console.error('[DELIVERY] Lỗi lấy đơn:', err);
-    res.status(500).json({ message: 'Lỗi server' });
-  }
-};
-
-const acceptOrderDelivery = async (req, res) => {
-  try {
-    const order = await Order.findOneAndUpdate(
-      { _id: req.params.id, deliveryStaff: null },
-      { 
-        deliveryStaff: req.user._id,
-        status: 'Đang giao',
-        assignedAt: new Date()
-      },
-      { new: true }
-    );
-    
-    if (!order) return res.status(400).json({ message: 'Đơn không khả dụng' });
-    
-    await User.findByIdAndUpdate(req.user._id, {
-      'deliveryInfo.status': 'busy',
-      $push: { 'deliveryInfo.currentOrders': order._id }
-    });
-
-    res.json(order);
-  } catch (err) {
-    console.error('[DELIVERY] Lỗi nhận đơn:', err);
-    res.status(500).json({ message: 'Lỗi server' });
-  }
-};
-
-const updateDeliveryStatus = async (req, res) => {
-  try {
-    const { status, lat, lng } = req.body;
-    const updateData = { status };
-    
-    if (lat && lng) {
-      updateData.$push = {
-        tracking: {
-          location: { type: 'Point', coordinates: [lng, lat] },
-          timestamp: new Date()
-        }
-      };
-    }
-
-    const order = await Order.findOneAndUpdate(
-      { _id: req.params.id, deliveryStaff: req.user._id },
-      updateData,
-      { new: true }
-    );
-
-    if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn' });
-    res.json(order);
-  } catch (err) {
-    console.error('[DELIVERY] Lỗi cập nhật:', err);
-    res.status(500).json({ message: 'Lỗi server' });
-  }
-};
-
-const getMyAssignedOrders = async (req, res) => {
-  try {
-    const orders = await Order.find({
-      deliveryStaff: req.user._id,
-      status: { $in: ['Đang giao', 'Đã giao'] }
-    }).sort('-assignedAt');
-    
-    res.json(orders);
-  } catch (err) {
-    console.error('[DELIVERY] Lỗi lấy đơn:', err);
-    res.status(500).json({ message: 'Lỗi server' });
-  }
-};
-
-const updateOrderLocation = async (req, res) => {
-  try {
-    const { lat, lng } = req.body;
-    if (!lat || !lng) {
-      return res.status(400).json({ message: 'Vui lòng cung cấp tọa độ lat và lng' });
-    }
-
-    const order = await Order.findOneAndUpdate(
-      { _id: req.params.id, deliveryStaff: req.user._id },
-      {
-        $push: {
-          tracking: {
-            location: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
-            timestamp: new Date()
-          }
-        }
-      },
-      { new: true }
-    );
-
+    const order = await Order.findOne(query);
     if (!order) {
-      return res.status(404).json({ message: 'Không tìm thấy đơn hàng hoặc bạn không được phân công' });
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng hoặc không có quyền' });
+    }
+    if (order.status !== 'Chờ xác nhận') {
+      return res.status(400).json({
+        message: 'Chỉ có thể hủy đơn hàng ở trạng thái "Chờ xác nhận"'
+      });
     }
 
-    // Gửi thông báo real-time
-    req.app.get('io').emit('orderLocationUpdate', {
-      orderId: order._id,
-      location: { lat, lng }
-    });
+    // **Use exact enum string**
+    order.status = 'Đã hủy';
+    const updated = await order.save();
 
-    res.json(order);
+    res.json({ message: 'Hủy đơn hàng thành công', order: updated });
   } catch (err) {
-    console.error('[ORDER] Lỗi cập nhật vị trí:', err);
-    res.status(500).json({ message: 'Lỗi server' });
+    console.error('[BACKEND] Lỗi hủy đơn hàng:', err);
+    if (err.name === 'CastError') {
+      return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
+    }
+    res.status(500).json({ message: 'Lỗi hủy đơn hàng', error: err.message });
   }
 };
 
@@ -338,11 +213,5 @@ module.exports = {
   getOrderById,
   getAllOrders,
   updateOrderStatus,
-  cancelOrder,
-  // Delivery functions
-  getAvailableDeliveryOrders,
-  acceptOrderDelivery,
-  updateDeliveryStatus,
-  getMyAssignedOrders,
-  updateOrderLocation
+  cancelOrder
 };
