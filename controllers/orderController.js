@@ -107,7 +107,7 @@ const getMyOrders = async (req, res) => {
 const countOrdersByStatus = async (req, res) => {
   try {
     const counts = await Order.aggregate([
-      { $match: { user: mongoose.Types.ObjectId(req.user._id) } },
+      { $match: { user: new mongoose.Types.ObjectId(req.user._id) } },
       { $group: { _id: "$status", count: { $sum: 1 } } }
     ]);
     res.json(counts.reduce((acc, cur) => ({ ...acc, [cur._id]: cur.count }), {}));
