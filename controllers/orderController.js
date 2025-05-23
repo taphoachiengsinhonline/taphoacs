@@ -1,3 +1,21 @@
+console.log('Loading orderController.js');
+const mongoose = require('mongoose');
+console.log('mongoose loaded:', !!mongoose);
+const Order = require('../models/Order');
+console.log('Order model loaded:', !!Order);
+const User = require('../models/User');
+console.log('User model loaded:', !!User);
+const Product = require('../models/Product');
+console.log('Product model loaded:', !!Product);
+const { findNearestStaff, calculateDistance } = require('../utils/geoUtils');
+console.log('geoUtils loaded:', !!findNearestStaff, !!calculateDistance);
+const sendPushNotification = require('../utils/sendPushNotification');
+console.log('sendPushNotification loaded:', !!sendPushNotification);
+
+
+
+
+
 const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const User = require('../models/User');
