@@ -206,6 +206,42 @@ const cancelOrder = async (req, res) => {
   }
 };
 
+
+const assignToNearestShipper = async (order) => {
+  const shippers = await User.aggregate([
+    {
+      $geoNear: {
+        near: {
+          type: 'Point',
+          coordinates: order.shippingLocation.coordinates
+        },
+        distanceField: 'distance',
+        maxDistance: 10000, // 10km
+        query: { 
+          role: 'shipper',
+          isAvailable: true 
+        },
+        spherical: true
+      }
+    },
+    { $limit: 3 }
+  ]);
+
+  if (shippers.length > 0) {
+    order.shipper = shippers[0]._id;
+    await order.save();
+    
+    // Gửi thông báo đến shipper
+    sendPushNotification(shippers[0].expoPushToken, {
+      title: 'Đơn hàng mới',
+      body: `Bạn có đơn hàng mới cách ${(shippers[0].distance / 1000).toFixed(1)}km`
+    });
+  }
+};
+
+
+
+
 module.exports = {
   createOrder,
   getMyOrders,
@@ -213,5 +249,6 @@ module.exports = {
   getOrderById,
   getAllOrders,
   updateOrderStatus,
-  cancelOrder
+  cancelOrder,
+  assignToNearestShipper
 };
