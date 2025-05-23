@@ -12,17 +12,6 @@ console.log('geoUtils loaded:', !!findNearestStaff, !!calculateDistance);
 const sendPushNotification = require('../utils/sendPushNotification');
 console.log('sendPushNotification loaded:', !!sendPushNotification);
 
-
-
-
-
-const mongoose = require('mongoose');
-const Order = require('../models/Order');
-const User = require('../models/User');
-const Product = require('../models/Product');
-const { findNearestStaff, calculateDistance } = require('../utils/geoUtils');
-const sendPushNotification = require('../utils/sendPushNotification');
-
 // [1] Tạo đơn hàng mới (Cập nhật phiên bản có tích hợp vị trí)
 const createOrder = async (req, res) => {
   try {
