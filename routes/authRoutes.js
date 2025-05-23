@@ -64,7 +64,7 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
         }
 
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email }).select('+password');
         if (!user) {
             return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
         }
