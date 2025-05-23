@@ -56,4 +56,33 @@ userSchema.methods.toJSON = function () {
   return user;
 };
 
+
+
+
+userSchema.add({
+  role: {
+    type: String,
+    enum: ['user', 'admin', 'shipper'],
+    default: 'user'
+  },
+  location: {
+    type: {
+      type: String,
+      enum: ['Point'],
+      default: 'Point'
+    },
+    coordinates: {
+      type: [Number],
+      default: [0, 0]
+    }
+  },
+  isAvailable: {
+    type: Boolean,
+    default: true
+  }
+});
+// Tạo index cho truy vấn địa lý
+userSchema.index({ location: '2dsphere' });
+
+
 module.exports = mongoose.model('User', userSchema);
