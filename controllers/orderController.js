@@ -352,3 +352,4 @@ module.exports = {
   getMyAssignedOrders,
   updateOrderLocation
 };
+console.log('orderController exported:', Object.keys(module.exports));
