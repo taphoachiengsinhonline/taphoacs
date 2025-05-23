@@ -1,4 +1,3 @@
-const { isStaffMiddleware } = require('./isStaffMiddleware');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
@@ -43,4 +42,3 @@ exports.isAdminMiddleware = (req, res, next) => {
   }
   next();
 };
-module.exports.isStaffMiddleware = isStaffMiddleware;
