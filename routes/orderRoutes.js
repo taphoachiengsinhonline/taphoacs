@@ -2,13 +2,11 @@
 const express = require('express');
 const router = express.Router();
 const orderController = require('../controllers/orderController');
-console.log('orderController loaded:', Object.keys(orderController));
 const { 
   verifyToken, 
   isAdminMiddleware,
   isStaffMiddleware 
 } = require('../middlewares/authMiddleware');
-console.log('authMiddleware loaded:', { verifyToken: !!verifyToken, isAdminMiddleware: !!isAdminMiddleware, isStaffMiddleware: !!isStaffMiddleware });
 
 // █████ User Routes █████
 router.post('/', verifyToken, orderController.createOrder);
