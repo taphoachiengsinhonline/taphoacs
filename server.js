@@ -7,6 +7,7 @@ const categoryRoutes = require('./routes/categoryRoutes');
 const productRoutes  = require('./routes/productRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const cartRoutes = require('./routes/cartRoutes');
+const shipperRoutes = require('./routes/shipperRoutes');
 require('dotenv').config();
 
 const app = express();
@@ -50,6 +51,7 @@ app.use('/api/v1/categories', categoryRoutes);
 app.use('/api/v1/products', productRoutes);
 app.use('/api/v1/orders', orderRoutes);
 app.use('/api/v1/cart', cartRoutes); // Thêm route giỏ hàng
+app.use('/api/v1/shippers', shipperRoutes);
 
 // 404 Handler
 app.use((req, res, next) => {
