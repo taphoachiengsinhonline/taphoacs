@@ -129,4 +129,10 @@ userSchema.methods.correctPassword = async function(candidatePassword, userPassw
   return await bcrypt.compare(candidatePassword, userPassword);
 };
 
+
+userSchema.virtual('isAdmin').get(function() {
+  return this.role === 'admin';
+});
+
+
 module.exports = mongoose.model('User', userSchema);
