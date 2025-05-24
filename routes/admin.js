@@ -1,7 +1,7 @@
 // routes/admin.js
 const router = require('express').Router();
 const User = require('../models/User');
-
+const { verifyToken, isAdmin } = require('../middlewares/authMiddleware'); // Thêm dòng này
 router.post('/shippers', async (req, res) => {
   try {
     const { email, password, name, phone, vehicleType, licensePlate } = req.body;
