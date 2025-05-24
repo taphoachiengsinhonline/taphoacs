@@ -2,6 +2,7 @@
 const router = require('express').Router();
 const User = require('../models/User');
 const { verifyToken, isAdmin } = require('../middlewares/authMiddleware'); // Thêm dòng này
+const bcrypt = require('bcrypt');
 router.post('/shippers', verifyToken, isAdmin, async (req, res) => {
   try {
     const { email, password, name, phone, vehicleType, licensePlate } = req.body;
