@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
 
-// Phần schema cơ bản ban đầu
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -34,29 +34,6 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Vui lòng nhập mật khẩu']
   },
-  isAdmin: {
-    type: Boolean,
-    default: false
-  },
-  fcmToken: {
-    type: String,
-    default: null
-  }
-}, {
-  timestamps: true,
-  toJSON: { 
-    virtuals: true,
-    transform: function(doc, ret) {
-      delete ret.password;
-      delete ret.__v;
-      return ret;
-    }
-  },
-  toObject: { virtuals: true }
-});
-
-// Thêm các trường mở rộng bằng schema.add()
-userSchema.add({
   role: {
     type: String,
     enum: ['customer', 'admin', 'shipper'],
@@ -94,7 +71,47 @@ userSchema.add({
       min: 1,
       max: 5
     }
+  },
+  fcmToken: {
+    type: String,
+    default: null
   }
+}, {
+  timestamps: true,
+  toJSON: {
+    virtuals: true,
+    transform: function (doc, ret) {
+      delete ret.password;
+      delete ret.__v;
+      return ret;
+    }
+  },
+  toObject: { virtuals: true }
+});
+
+// Hash password trước khi lưu
+userSchema.pre('save', async function (next) {
+  if (!this.isModified('password')) return next();
+  try {
+    const hashedPassword = await bcrypt.hash(this.password, 12);
+    this.password = hashedPassword;
+    next();
+  } catch (error) {
+    next(new Error(`Lỗi hash password: ${error.message}`));
+  }
+});
+
+// Validate thông tin shipper
+userSchema.pre('validate', function (next) {
+  if (this.role === 'shipper') {
+    if (!this.shipperProfile?.vehicleType) {
+      this.invalidate('shipperProfile.vehicleType', 'Shipper phải có phương tiện');
+    }
+    if (!this.location?.coordinates?.length) {
+      this.invalidate('location.coordinates', 'Shipper phải có tọa độ địa lý');
+    }
+  }
+  next();
 });
 
 // Tạo index cho truy vấn địa lý
