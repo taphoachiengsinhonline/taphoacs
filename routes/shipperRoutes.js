@@ -1,24 +1,61 @@
-// routes/shipperRoutes.js
 const express = require('express');
 const router = express.Router();
-const { verifyToken } = require('../middlewares/authMiddleware');
+const { verifyToken, isAdmin } = require('../middlewares/authMiddleware'); // Thêm isAdmin
 const Order = require('../models/Order');
+const User = require('../models/User'); // Thêm model User
+const bcrypt = require('bcrypt'); // Thêm bcrypt để mã hóa mật khẩu
 
-// Lấy danh sách đơn hàng được phân công
+// Route POST để tạo shipper mới
+router.post('/', verifyToken, isAdmin, async (req, res) => {
+  try {
+    const { email, password, name, phone, vehicleType, licensePlate } = req.body;
+
+    // Kiểm tra xem email đã tồn tại chưa
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: 'Email đã tồn tại' });
+    }
+
+    // Tạo shipper mới
+    const shipper = new User({
+      email,
+      password: await bcrypt.hash(password, 10), // Mã hóa mật khẩu
+      name,
+      phone,
+      role: 'shipper', // Gán vai trò là shipper
+      shipperProfile: {
+        vehicleType,
+        licensePlate
+      }
+    });
+
+    await shipper.save();
+
+    // Trả về thông tin shipper vừa tạo
+    res.status(201).json({
+      _id: shipper._id,
+      email: shipper.email,
+      role: shipper.role,
+      shipperProfile: shipper.shipperProfile
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Lỗi server: ' + error.message });
+  }
+});
+
+// Các route hiện có
 router.get('/assigned-orders', verifyToken, async (req, res) => {
   try {
     const orders = await Order.find({ 
       shipper: req.user._id,
       status: { $in: ['Đang giao', 'Đã nhận'] }
     }).sort('-createdAt');
-    
     res.json(orders);
   } catch (error) {
     res.status(500).json({ message: 'Lỗi server' });
   }
 });
 
-// Cập nhật trạng thái đơn hàng
 router.put('/orders/:id/status', verifyToken, async (req, res) => {
   try {
     const { status } = req.body;
@@ -27,12 +64,8 @@ router.put('/orders/:id/status', verifyToken, async (req, res) => {
       { status },
       { new: true }
     );
-    
     if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
-    
-    // Gửi thông báo cho khách hàng
     sendPushNotificationToCustomer(order.user, `Trạng thái đơn hàng: ${status}`);
-    
     res.json(order);
   } catch (error) {
     res.status(500).json({ message: 'Lỗi server' });
