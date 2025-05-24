@@ -1,6 +1,6 @@
-// models/User.js
 const mongoose = require('mongoose');
 
+// Phần schema cơ bản ban đầu
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -40,30 +40,27 @@ const userSchema = new mongoose.Schema({
   },
   fcmToken: {
     type: String,
-    default: null // ✅ Đổi tên từ expoPushToken ➜ fcmToken
+    default: null
   }
 }, {
   timestamps: true,
-  toJSON: { virtuals: true },
+  toJSON: { 
+    virtuals: true,
+    transform: function(doc, ret) {
+      delete ret.password;
+      delete ret.__v;
+      return ret;
+    }
+  },
   toObject: { virtuals: true }
 });
 
-// Ẩn trường nhạy cảm khi trả về client
-userSchema.methods.toJSON = function () {
-  const user = this.toObject();
-  delete user.password;
-  delete user.__v;
-  return user;
-};
-
-
-
-
+// Thêm các trường mở rộng bằng schema.add()
 userSchema.add({
   role: {
     type: String,
-    enum: ['user', 'admin', 'shipper'],
-    default: 'user'
+    enum: ['customer', 'admin', 'shipper'],
+    default: 'customer'
   },
   location: {
     type: {
@@ -79,10 +76,28 @@ userSchema.add({
   isAvailable: {
     type: Boolean,
     default: true
+  },
+  shipperProfile: {
+    vehicleType: {
+      type: String,
+      enum: ['bike', 'motorbike', 'car']
+    },
+    licensePlate: String,
+    status: {
+      type: String,
+      enum: ['available', 'busy', 'offline'],
+      default: 'offline'
+    },
+    rating: {
+      type: Number,
+      default: 5.0,
+      min: 1,
+      max: 5
+    }
   }
 });
+
 // Tạo index cho truy vấn địa lý
 userSchema.index({ location: '2dsphere' });
-
 
 module.exports = mongoose.model('User', userSchema);
