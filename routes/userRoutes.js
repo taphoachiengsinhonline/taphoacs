@@ -5,10 +5,10 @@ const User = require('../models/User');
 // PUT /users/:id
 router.put('/:id', async (req, res) => {
   try {
-    const { name, phone, address } = req.body;
+    const { name, address, phone } = req.body;
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      { name, phone, address },
+      { name, address, phone  },
       { new: true }
     ).select('-password');
 
