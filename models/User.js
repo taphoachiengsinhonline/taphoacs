@@ -56,15 +56,19 @@ const userSchema = new mongoose.Schema({
   },
   shipperProfile: {
     vehicleType: {
-      type: String,
-      enum: ['bike', 'motorbike', 'car']
+    type: String,
+    required: function() { 
+      return this.role === 'shipper'; // Required khi role là shipper
     },
-    licensePlate: String,
-    status: {
-      type: String,
-      enum: ['available', 'busy', 'offline'],
-      default: 'offline'
-    },
+    enum: ['bike', 'motorbike', 'car'] // Đúng giá trị cho phép
+  },
+  licensePlate: {
+    type: String,
+    required: function() { 
+      return this.role === 'shipper'; 
+    }
+  },
+    
     rating: {
       type: Number,
       default: 5.0,
