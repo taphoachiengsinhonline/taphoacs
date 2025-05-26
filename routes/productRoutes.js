@@ -6,23 +6,7 @@ const Category = require('../models/Category');
 const User = require('../models/User');
 
 // Middleware kiểm tra quyền admin
-const isAdmin = async (req, res, next) => {
-  try {
-    const userId = req.header('x-user-id');
-    if (!userId) {
-      return res.status(401).json({ message: 'Không có user ID trong header' });
-    }
-    const user = await User.findById(userId);
-    if (!user || !user.isAdmin) {
-      return res.status(403).json({ message: 'Bạn không có quyền thực hiện thao tác này' });
-    }
-    req.user = user;
-    next();
-  } catch (err) {
-    console.error('❌ Lỗi xác thực admin:', err);
-    res.status(500).json({ message: 'Lỗi server khi kiểm tra quyền admin' });
-  }
-};
+const { verifyToken, isAdmin } = require('../middlewares/authMiddleware');
 
 // Hàm đệ quy lấy danh sách category con
 const getAllChildCategoryIds = async (parentId) => {
@@ -151,19 +135,17 @@ router.put('/:id', isAdmin, async (req, res) => {
 });
 
 // DELETE /api/products/:id - Xoá sản phẩm (chỉ admin)
- router.delete('/:id', isAdmin, async (req, res) => {
+ router.delete('/:id', verifyToken, isAdmin, async (req, res) => {
   try {
     console.log('Deleting product with id:', req.params.id);
     const product = await Product.findByIdAndDelete(req.params.id);
 
     if (!product) return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
-    console.log('Deleted successfully');
+    
+    console.log('Deleted by admin:', req.user.email); // Thêm log kiểm tra
     res.json({ message: 'Đã xoá sản phẩm thành công' });
   } catch (err) {
     console.error('❌ Lỗi khi xoá sản phẩm:', err);
-    if (err.name === 'CastError') {
-      return res.status(400).json({ message: 'ID sản phẩm không hợp lệ' });
-    }
     res.status(500).json({ message: 'Lỗi server khi xoá sản phẩm' });
   }
 });
