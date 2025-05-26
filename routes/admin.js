@@ -16,7 +16,7 @@ router.post('/shippers', verifyToken, isAdmin, async (req, res) => {
       email,
       password: await bcrypt.hash(password, 10),
       name,
-      adress,
+      address,
       phone,
       role: 'shipper',
       shipperProfile: {
