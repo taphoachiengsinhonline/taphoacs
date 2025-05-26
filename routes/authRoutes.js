@@ -85,7 +85,7 @@ router.post('/login', async (req, res) => {
                     email: user.email,
                     address: user.address,
                     phone: user.phone,
-                    isAdmin: user.isAdmin || false
+                    isAdmin: user.role === 'admin' // Sửa thành kiểm tra role
                 },
                 token: accessToken,
                 refreshToken: refreshToken
