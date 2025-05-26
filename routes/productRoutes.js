@@ -80,7 +80,7 @@ router.get('/:id', async (req, res) => {
 
 
 // POST /api/products - Thêm sản phẩm mới (chỉ admin)
-router.post('/', isAdmin, async (req, res) => {
+router.post('/', verifyToken, isAdmin, async (req, res) => {
   try {
     const { name, price, stock, category, description, attributes, images, saleStartTime, saleEndTime } = req.body;
     console.log('📦 Thông tin sản phẩm nhận được:', req.body);
