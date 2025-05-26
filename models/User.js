@@ -83,6 +83,7 @@ const userSchema = new mongoose.Schema({
     transform: function (doc, ret) {
       delete ret.password;
       delete ret.__v;
+      ret.isAdmin = ret.role === 'admin'; // Thêm virtual field
       return ret;
     }
   },
