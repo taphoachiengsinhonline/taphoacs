@@ -17,12 +17,15 @@ exports.verifyToken = async (req, res, next) => {
       return res.status(401).json({ message: 'Token không hợp lệ (thiếu ID)' });
     }
 
-    const user = await User.findById(userId).select('name isAdmin');
-    if (!user) {
-      return res.status(401).json({ message: 'Người dùng không tồn tại' });
-    }
+    // Thay đổi phần lấy thông tin user
+const user = await User.findById(userId).select('name role'); // ✅ Thêm trường role
+if (!user) {
+  return res.status(401).json({ message: 'Người dùng không tồn tại' });
+}
 
-    req.user = user;
+// Thêm dòng này để đảm bảo virtual field isAdmin hoạt động
+user.isAdmin = user.role === 'admin'; // ⚡ Fix cứng virtual field
+req.user = user;
     next();
   } catch (err) {
     console.error('[AUTH] Lỗi verifyToken:', err);
