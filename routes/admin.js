@@ -5,7 +5,7 @@ const { verifyToken, isAdmin } = require('../middlewares/authMiddleware'); // Th
 const bcrypt = require('bcrypt');
 router.post('/shippers', verifyToken, isAdmin, async (req, res) => {
   try {
-    const { email, password, name, phone, vehicleType, licensePlate } = req.body;
+    const { email, password, name, phone, address, vehicleType, licensePlate } = req.body;
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -16,6 +16,7 @@ router.post('/shippers', verifyToken, isAdmin, async (req, res) => {
       email,
       password: await bcrypt.hash(password, 10),
       name,
+      adress,
       phone,
       role: 'shipper',
       shipperProfile: {
