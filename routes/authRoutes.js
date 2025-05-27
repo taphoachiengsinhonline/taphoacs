@@ -64,7 +64,7 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
         }
 
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email }).select('+role');
         if (!user) {
             return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
         }
@@ -85,7 +85,8 @@ router.post('/login', async (req, res) => {
                     email: user.email,
                     address: user.address,
                     phone: user.phone,
-                    isAdmin: user.role === 'admin' // Sửa thành kiểm tra role
+                    isAdmin: user.role === 'admin', // Sửa thành kiểm tra role
+                    role: user.role
                 },
                 token: accessToken,
                 refreshToken: refreshToken
