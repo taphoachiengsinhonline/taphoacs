@@ -59,14 +59,21 @@ router.post('/register', async (req, res) => {
 // Đăng nhập
 router.post('/login', async (req, res) => {
     try {
-        const { email, password } = req.body;
-        if (!email || !password) {
-            return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
-        }
+        const { email, password, client_type } = req.body;
 
-        const user = await User.findOne({ email }).select('+role');
+        // ... validate input
+
+        const user = await User.findOne({ email }).select('+password +role'); // ✅ Thêm role
         if (!user) {
             return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
+        }
+
+        // Kiểm tra client_type
+        if (client_type === 'shipper' && user.role !== 'shipper') {
+            return res.status(403).json({ 
+                status: 'error', 
+                message: 'Tài khoản không có quyền shipper' 
+            });
         }
 
         const isMatch = await bcrypt.compare(password, user.password);
@@ -74,8 +81,7 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
         }
 
-        const { accessToken, refreshToken } = generateTokens(user._id);
-
+        // Trả về role trong response
         res.status(200).json({
             status: 'success',
             data: {
@@ -83,16 +89,13 @@ router.post('/login', async (req, res) => {
                     _id: user._id,
                     name: user.name,
                     email: user.email,
-                    address: user.address,
-                    phone: user.phone,
-                    isAdmin: user.role === 'admin', // Sửa thành kiểm tra role
-                    role: user.role
+                    role: user.role, // ✅ Thêm trường này
+                    isAdmin: user.role === 'admin'
                 },
                 token: accessToken,
                 refreshToken: refreshToken
             }
         });
-
     } catch (err) {
         console.error('Login error:', err);
         res.status(500).json({ status: 'error', message: 'Lỗi server' });
