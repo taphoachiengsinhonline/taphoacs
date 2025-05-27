@@ -60,24 +60,32 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
     try {
         const { email, password, client_type } = req.body;
+        console.log('[DEBUG] Login request:', { email, client_type }); // ✅ Thêm log
+
+        // Kiểm tra email và password
         if (!email || !password) {
             return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
         }
 
-        // Tìm user và kiểm tra tồn tại TRƯỚC
-        const user = await User.findOne({ email }).select('+password +role');
+        // Tìm user và log kết quả
+        const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password +role');
+        console.log('[DEBUG] User found:', user ? user.email : 'Không tồn tại'); // ✅ Thêm log
+
         if (!user) {
             return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
         }
 
-        // Kiểm tra password TIẾP THEO
+        // So sánh mật khẩu và log kết quả
         const isMatch = await bcrypt.compare(password, user.password);
+        console.log('[DEBUG] Password match:', isMatch); // ✅ Thêm log
+
         if (!isMatch) {
             return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
         }
 
-        // Kiểm tra client_type và role SAU CÙNG (khi user đã tồn tại)
+        // Kiểm tra client_type và role
         if (client_type === 'shipper' && user.role !== 'shipper') {
+            console.log('[DEBUG] Role không hợp lệ:', user.role); // ✅ Thêm log
             return res.status(403).json({ 
                 status: 'error', 
                 message: 'Tài khoản không có quyền shipper' 
