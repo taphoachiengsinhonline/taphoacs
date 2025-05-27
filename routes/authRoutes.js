@@ -64,6 +64,16 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
         }
 
+
+        const clientType = req.headers['x-client-type'] || req.body.client_type;
+        // Kiểm tra role tương ứng
+    if (clientType === 'shipper' && user.role !== 'shipper') {
+      return res.status(403).json({ 
+        status: 'error', 
+        message: 'Tài khoản không có quyền truy cập shipper' 
+      });
+    }
+      
         // Tìm user và kiểm tra tồn tại TRƯỚC
         const user = await User.findOne({ email }).select('+password +role');
         if (!user) {
