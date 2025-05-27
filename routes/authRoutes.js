@@ -59,6 +59,15 @@ router.post('/register', async (req, res) => {
 // Đăng nhập
 router.post('/login', async (req, res) => {
     try {
+
+        // Trong route login
+console.log('[DEBUG] Login attempt:', {
+    email: req.body.email,
+    client_type: req.body.client_type,
+    userExists: !!user,
+    role: user?.role
+});
+        
         const { email, password, client_type } = req.body;
 
         // ... validate input
