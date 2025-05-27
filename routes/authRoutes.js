@@ -59,25 +59,24 @@ router.post('/register', async (req, res) => {
 // Đăng nhập
 router.post('/login', async (req, res) => {
     try {
-
-        // Trong route login
-console.log('[DEBUG] Login attempt:', {
-    email: req.body.email,
-    client_type: req.body.client_type,
-    userExists: !!user,
-    role: user?.role
-});
-        
         const { email, password, client_type } = req.body;
+        if (!email || !password) {
+            return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
+        }
 
-        // ... validate input
-
-        const user = await User.findOne({ email }).select('+password +role'); // ✅ Thêm role
+        // Tìm user và kiểm tra tồn tại TRƯỚC
+        const user = await User.findOne({ email }).select('+password +role');
         if (!user) {
             return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
         }
 
-        // Kiểm tra client_type
+        // Kiểm tra password TIẾP THEO
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
+        }
+
+        // Kiểm tra client_type và role SAU CÙNG (khi user đã tồn tại)
         if (client_type === 'shipper' && user.role !== 'shipper') {
             return res.status(403).json({ 
                 status: 'error', 
@@ -85,12 +84,8 @@ console.log('[DEBUG] Login attempt:', {
             });
         }
 
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
-        }
-
-        // Trả về role trong response
+        // Tạo token và response
+        const { accessToken, refreshToken } = generateTokens(user._id);
         res.status(200).json({
             status: 'success',
             data: {
@@ -98,13 +93,14 @@ console.log('[DEBUG] Login attempt:', {
                     _id: user._id,
                     name: user.name,
                     email: user.email,
-                    role: user.role, // ✅ Thêm trường này
+                    role: user.role,
                     isAdmin: user.role === 'admin'
                 },
                 token: accessToken,
                 refreshToken: refreshToken
             }
         });
+
     } catch (err) {
         console.error('Login error:', err);
         res.status(500).json({ status: 'error', message: 'Lỗi server' });
