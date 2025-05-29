@@ -80,6 +80,11 @@ const orderSchema = new mongoose.Schema({
     type: String,
     enum: ['COD', 'Chuyển khoản'],
     default: 'COD'
+  },
+  shipper: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
   }
 }, {
   versionKey: false,
