@@ -26,7 +26,7 @@ const generateTokens = (userId) => {
 router.post('/register', async (req, res) => {
     console.log('Register body:', req.body);
     try {
-        const { name, email, password, address, phone } = req.body;
+        const { name, email, password, address, phone, location } = req.body;
 
         if (!name || !email || !password) {
             return res.status(400).json({ status: 'error', message: 'Vui lòng điền đầy đủ các mục' });
@@ -39,8 +39,15 @@ router.post('/register', async (req, res) => {
 
         //const hashedPassword = await bcrypt.hash(password, 10);
 
-        const user = new User({ name, email, password, address: address || '', phone: phone || '' });
-        await user.save();
+        const user = new User({
+  name,
+  email,
+  password,
+  address: address || '',
+  phone: phone || '',
+  location: location || { type: 'Point', coordinates: [0, 0] }
+});
+await user.save();
 
         res.status(201).json({
             status: 'success',
