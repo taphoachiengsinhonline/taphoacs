@@ -95,17 +95,19 @@ router.post('/login', async (req, res) => {
         // Tạo token và response
         const { accessToken, refreshToken } = generateTokens(user._id);
         res.status(200).json({
-            status: 'success',
-            data: {
-                user: {
-                    _id: user._id,
-                    name: user.name,
-                    email: user.email,
-                    role: user.role,
-                    isAdmin: user.role === 'admin'
-                },
-                token: accessToken,
-                refreshToken: refreshToken
+    status: 'success',
+    data: {
+        user: {
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            phone: user.phone,
+            address: user.address,
+            role: user.role,
+            isAdmin: user.role === 'admin'
+        },
+        token: accessToken,
+        refreshToken: refreshToken
             }
         });
 
