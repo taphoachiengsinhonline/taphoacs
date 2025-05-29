@@ -32,7 +32,8 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: [true, 'Vui lòng nhập mật khẩu']
+    required: [true, 'Vui lòng nhập mật khẩu'],
+    select: false
   },
   role: {
     type: String,
