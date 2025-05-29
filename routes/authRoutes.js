@@ -22,6 +22,7 @@ const generateTokens = (userId) => {
 };
 
 // Đăng ký tài khoản
+console.log('Register body:', req.body);
 router.post('/register', async (req, res) => {
     try {
         const { name, email, password, address, phone } = req.body;
