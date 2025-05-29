@@ -68,7 +68,7 @@ router.post('/login', async (req, res) => {
         }
 
         // Tìm user và log kết quả
-        const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password +role');
+        const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password +role +phone +address');
         console.log('[DEBUG] User found:', user ? user.email : 'Không tồn tại'); // ✅ Thêm log
 
         if (!user) {
