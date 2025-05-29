@@ -35,9 +35,9 @@ router.post('/register', async (req, res) => {
             return res.status(409).json({ status: 'error', message: 'Email đã tồn tại' });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+        //const hashedPassword = await bcrypt.hash(password, 10);
 
-        const user = new User({ name, email, password: hashedPassword, address: address || '', phone: phone || '' });
+        const user = new User({ name, email, password, address: address || '', phone: phone || '' });
         await user.save();
 
         res.status(201).json({
