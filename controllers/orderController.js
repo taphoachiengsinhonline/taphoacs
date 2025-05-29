@@ -55,7 +55,7 @@ const createOrder = async (req, res) => {
     });
 
     const savedOrder = await newOrder.save();
-
+    await assignToNearestShipper(savedOrder);
     // Gửi thông báo cho admin
     const admins = await User.find({
       isAdmin: true,
