@@ -4,6 +4,8 @@ const User = require('../models/User');
 const Product = require('../models/Product');
 const Category = require('../models/Category');
 const sendPushNotification = require('../utils/sendPushNotification');
+const assignOrderToNearestShipper = require('../utils/assignOrderToShipper');
+
 
 // Tạo đơn hàng mới
 const createOrder = async (req, res) => {
@@ -75,6 +77,11 @@ const createOrder = async (req, res) => {
     res.status(500).json({ message: 'Lỗi tạo đơn hàng', error: err.message });
   }
 };
+
+
+// Sau khi tạo đơn hàng thành công:
+await assignOrderToNearestShipper(newOrder._id);
+
 
 // Lấy đơn hàng của user (có thể lọc theo status)
 const getMyOrders = async (req, res) => {
