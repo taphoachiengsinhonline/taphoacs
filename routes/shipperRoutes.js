@@ -72,4 +72,25 @@ router.put('/orders/:id/status', verifyToken, async (req, res) => {
   }
 });
 
+
+// GET /api/v1/shippers/stats
+router.get('/stats', verifyToken, async (req, res) => {
+  try {
+    const totalOrders = await Order.countDocuments({ shipper: req.user._id });
+
+    const orders = await Order.find({
+      shipper: req.user._id,
+      status: 'Hoàn thành' // chỉ tính doanh thu từ đơn đã giao xong
+    });
+
+    const totalRevenue = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+
+    res.json({ totalOrders, totalRevenue });
+  } catch (error) {
+    res.status(500).json({ message: 'Lỗi khi lấy thống kê: ' + error.message });
+  }
+});
+
+
+
 module.exports = router;
