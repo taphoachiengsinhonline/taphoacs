@@ -23,7 +23,7 @@ router.post('/shippers', verifyToken, isAdmin, async (req, res) => {
 
     const shipper = new User({
       email,
-      password: await bcrypt.hash(password, 10),
+      password,
       name,
       address,
       phone,
