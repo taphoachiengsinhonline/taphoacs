@@ -1,28 +1,29 @@
 // utils/assignOrderToNearestShipper.js
+
 const Order = require('../models/Order');
 const User = require('../models/User');
-const sendPushNotification = require('./sendPushNotification');
 const PendingDelivery = require('../models/PendingDelivery');
+const sendPushNotification = require('./sendPushNotification');
 
-module.exports = async function assignOrderToNearestShipper(orderId) {
+async function assignOrderToNearestShipper(orderId) {
   console.log(`[Assign] Bắt đầu gán shipper cho order ${orderId}`);
-  console.log(shippers);
+  // 1. Lấy order
   const order = await Order.findById(orderId);
   if (!order) {
-    console.warn('[Assign] Order không tồn tại');
+    console.warn(`[Assign] Order ${orderId} không tồn tại`);
     return;
   }
   if (order.shipper) {
-    console.log('[Assign] Order đã có shipper rồi:', order.shipper);
+    console.log(`[Assign] Order ${orderId} đã có shipper: ${order.shipper}`);
     return;
   }
 
-  // Xem những shipper đã thử
-  const pending = await PendingDelivery.findOne({ orderId });
-  const excluded = pending?.triedShippers || [];
+  // 2. Load danh sách đã từng thử
+  let pending = await PendingDelivery.findOne({ orderId });
+  const tried = pending?.triedShippers || [];
 
-  // Tìm shipper gần nhất
-  const nearby = await User.aggregate([
+  // 3. Tìm shipper gần nhất chưa thử
+  const candidates = await User.aggregate([
     {
       $geoNear: {
         near: {
@@ -30,47 +31,71 @@ module.exports = async function assignOrderToNearestShipper(orderId) {
           coordinates: order.shippingLocation.coordinates
         },
         distanceField: 'distance',
-        spherical: true,
+        maxDistance: 10000, // 10km
         query: {
           role: 'shipper',
           isAvailable: true,
-          fcmToken: { $exists: true, $ne: null },
-          _id: { $nin: excluded }
-        }
+          _id: { $nin: tried }
+        },
+        spherical: true
       }
     },
-    { $limit: 1 }
+    { $limit: 3 }
   ]);
 
-  if (nearby.length === 0) {
-    console.warn('[Assign] Không tìm thấy shipper phù hợp');
+  if (!candidates || candidates.length === 0) {
+    console.log(`[Assign] Không tìm thấy shipper phù hợp cho order ${orderId}`);
+    if (pending) {
+      pending.status = 'failed';
+      await pending.save();
+    }
     return;
   }
 
-  const shipper = nearby[0];
-  console.log(`[Assign] Gán shipper ${shipper._id}, token=${shipper.fcmToken}`);
+  const next = candidates[0];
+  console.log(`[Assign] Thử gán shipper ${next._id} (cách ${ (next.distance/1000).toFixed(2) }km)`);
 
-  // Cập nhật pending
+  // 4. Cập nhật PendingDelivery
   if (!pending) {
-    await PendingDelivery.create({ orderId, triedShippers: [shipper._id] });
+    pending = new PendingDelivery({
+      orderId,
+      triedShippers: [next._id],
+      status: 'pending'
+    });
   } else {
-    pending.triedShippers.push(shipper._id);
-    await pending.save();
+    pending.triedShippers.push(next._id);
   }
+  await pending.save();
 
-  // Gán vào order
-  order.shipper = shipper._id;
-  await order.save();
-
-  // Thực sự gửi push
-  try {
-    await sendPushNotification(shipper.fcmToken, {
-      title: '📦 Đơn hàng mới',
-      body: `Bạn có đơn hàng #${order._id.slice(-6)} cần giao`,
+  // 5. Gửi push đến shipper
+  if (next.fcmToken) {
+    console.log(`[Assign] Gửi thông báo đến shipper ${next._id}`);
+    await sendPushNotification(next.fcmToken, {
+      title: 'Đơn hàng mới',
+      body: `Bạn có đơn hàng mới cách ${ (next.distance/1000).toFixed(2) }km`,
       data: { orderId }
     });
-    console.log('[Assign] Gửi push tới shipper thành công');
-  } catch (e) {
-    console.error('[Assign] Lỗi gửi push cho shipper:', e);
+  } else {
+    console.log(`[Assign] Shipper ${next._id} chưa có fcmToken`);
   }
-};
+
+  // 6. Gửi admin (nếu cấu hình)
+  if (process.env.ADMIN_FCM_TOKEN) {
+    await sendPushNotification(process.env.ADMIN_FCM_TOKEN, {
+      title: 'Đơn hàng mới',
+      body: `Đơn ${orderId} cần gán shipper`,
+      data: { orderId }
+    });
+  }
+
+  // 7. Nếu sau 30s vẫn chưa có ai nhận (order.shipper vẫn null), gọi lại
+  setTimeout(async () => {
+    const fresh = await Order.findById(orderId);
+    if (fresh && !fresh.shipper) {
+      console.log(`[Assign] 30s hết, retry gán shipper cho order ${orderId}`);
+      await assignOrderToNearestShipper(orderId);
+    }
+  }, 30 * 1000);
+}
+
+module.exports = assignOrderToNearestShipper;
