@@ -92,5 +92,20 @@ router.get('/stats', verifyToken, async (req, res) => {
 });
 
 
+const Notification = require('../models/Notification');
+
+// GET /api/v1/shippers/notifications
+router.get('/notifications', verifyToken, async (req, res) => {
+  try {
+    const notifications = await Notification.find({ user: req.user._id })
+      .sort('-createdAt')
+      .limit(20);
+    res.json(notifications);
+  } catch (error) {
+    res.status(500).json({ message: 'Lỗi khi lấy thông báo: ' + error.message });
+  }
+});
+
+
 
 module.exports = router;
