@@ -19,5 +19,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+router.post('/update-location', verifyToken, updateLocation);
+
 module.exports = router;
 
