@@ -1,26 +1,25 @@
-// models/Order.js
 const mongoose = require('mongoose');
 
 const orderItemSchema = new mongoose.Schema({
   productId: { 
     type: mongoose.Schema.Types.ObjectId, 
-    required: [true, 'Mã sản phẩm là bắt buộc'],
+    required: true,
     ref: 'Product' 
   },
   name: { 
     type: String, 
-    required: [true, 'Tên sản phẩm là bắt buộc'],
+    required: true,
     trim: true
   },
   quantity: { 
     type: Number, 
-    required: [true, 'Số lượng là bắt buộc'],
-    min: [1, 'Số lượng tối thiểu là 1']
+    required: true,
+    min: 1
   },
   price: { 
     type: Number, 
-    required: [true, 'Giá sản phẩm là bắt buộc'],
-    min: [0, 'Giá không thể âm'],
+    required: true,
+    min: 0,
     set: v => Math.round(v * 100) / 100
   }
 });
@@ -29,56 +28,55 @@ const orderSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: [true, 'Người dùng là bắt buộc']
+    required: true
   },
   items: {
     type: [orderItemSchema],
-    required: [true, 'Danh sách sản phẩm là bắt buộc'],
-    validate: {
-      validator: (v) => Array.isArray(v) && v.length > 0,
-      message: 'Đơn hàng phải có ít nhất 1 sản phẩm'
-    }
+    required: true,
+    validate: v => Array.isArray(v) && v.length > 0
   },
   total: {
     type: Number,
-    required: [true, 'Tổng tiền là bắt buộc'],
-    min: [0, 'Tổng tiền không thể âm']
+    required: true,
+    min: 0
   },
   customerName: {
     type: String,
-    required: [true, 'Tên khách hàng là bắt buộc'],
+    required: true,
     trim: true
   },
   phone: {
     type: String,
-    required: [true, 'Số điện thoại là bắt buộc'],
-    match: [/^(0[3|5|7|8|9]|84[3|5|7|8|9]|\+84[3|5|7|8|9])+([0-9]{7,8})$/,
-      'Số điện thoại không hợp lệ (VD: 0912345678 hoặc +84912345678)'],
-    trim: true
+    required: true,
+    trim: true,
+    match: [/^(0[3|5|7|8|9]|84[3|5|7|8|9]|\+84[3|5|7|8|9])[0-9]{7,8}$/, 'Số điện thoại không hợp lệ']
   },
   shippingAddress: {
     type: String,
-    required: [true, 'Địa chỉ giao hàng là bắt buộc'],
-    minlength: [10, 'Địa chỉ phải có ít nhất 10 ký tự'],
+    required: true,
+    minlength: 10,
     trim: true
   },
-  status: { 
-    type: String, 
-    enum: {
-      values: [
-        'Chờ xác nhận',
-        'Đang xử lý',
-        'Đang giao',
-        'Đã giao',
-        'Đã hủy'
-      ],
-      message: 'Trạng thái không hợp lệ'
+  // ← THÊM TRƯỜNG NÀY
+  shippingLocation: {
+    type: {
+      type: String,
+      enum: ['Point'],
+      default: 'Point'
     },
+    coordinates: {
+      type: [Number],   // [lng, lat]
+      required: true
+    }
+  },
+  status: { 
+    type: String,
+    enum: ['Chờ xác nhận','Đang xử lý','Đang giao','Đã giao','Đã hủy'],
     default: 'Chờ xác nhận'
   },
   paymentMethod: {
     type: String,
-    enum: ['COD', 'Chuyển khoản'],
+    enum: ['COD','Chuyển khoản'],
     default: 'COD'
   },
   shipper: {
@@ -88,45 +86,22 @@ const orderSchema = new mongoose.Schema({
   }
 }, {
   versionKey: false,
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  timestamps: true
 });
 
-// Giữ nguyên hook validate tổng tiền khi tạo mới/cập nhật
+// Validate tổng tiền
 orderSchema.pre('validate', function(next) {
-  if (this.items && this.items.length > 0) {
-    const calculatedTotal = this.items.reduce(
-      (sum, item) => sum + (item.price * item.quantity),
-      0
-    ).toFixed(2);
-    
-    if (this.total.toFixed(2) !== calculatedTotal) {
-      this.invalidate('total', `Tổng tiền không khớp (${this.total} ≠ ${calculatedTotal})`);
+  if (this.items.length) {
+    const calced = this.items
+      .reduce((acc, i) => acc + i.price * i.quantity, 0)
+      .toFixed(2);
+    if (this.total.toFixed(2) !== calced) {
+      this.invalidate('total', `Tổng tiền không khớp (${this.total} ≠ ${calced})`);
     }
   }
   next();
 });
 
-// Thêm hook mới cho cập nhật trạng thái
-orderSchema.pre('findOneAndUpdate', function(next) {
-  const update = this.getUpdate();
-  const statusPath = orderSchema.path('status');
-
-  // Validate trạng thái nếu có trong update
-  if (update.status && !statusPath.enumValues.includes(update.status)) {
-    return next(new Error(`Trạng thái không hợp lệ. Chỉ chấp nhận: ${statusPath.enumValues.join(', ')}`));
-  }
-
-  // Validate số điện thoại nếu có trong update (giữ nguyên logic nếu cần)
-  if (update.phone) {
-    const phoneRegex = orderSchema.path('phone').options.match[0];
-    if (!new RegExp(phoneRegex).test(update.phone)) {
-      return next(new Error('Số điện thoại không hợp lệ'));
-    }
-  }
-
-  next();
-});
+orderSchema.index({ shippingLocation: '2dsphere' });
 
 module.exports = mongoose.model('Order', orderSchema);
