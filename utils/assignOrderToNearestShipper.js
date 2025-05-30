@@ -6,6 +6,7 @@ const PendingDelivery = require('../models/PendingDelivery');
 
 module.exports = async function assignOrderToNearestShipper(orderId) {
   console.log(`[Assign] Bắt đầu gán shipper cho order ${orderId}`);
+  console.log(shippers);
   const order = await Order.findById(orderId);
   if (!order) {
     console.warn('[Assign] Order không tồn tại');
