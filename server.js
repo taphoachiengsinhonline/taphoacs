@@ -9,6 +9,7 @@ const orderRoutes = require('./routes/orderRoutes');
 const cartRoutes = require('./routes/cartRoutes');
 const shipperRoutes = require('./routes/shipperRoutes');
 const adminRoutes = require('./routes/admin');
+const userRoutes = require('./routes/userRoutes');
 require('dotenv').config();
 
 const app = express();
@@ -51,6 +52,7 @@ const connectDB = async () => {
 connectDB();
 
 // Routes
+app.use(express.json());
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/categories', categoryRoutes);
 app.use('/api/v1/products', productRoutes);
@@ -58,6 +60,7 @@ app.use('/api/v1/orders', orderRoutes);
 app.use('/api/v1/cart', cartRoutes); // Thêm route giỏ hàng
 app.use('/api/v1/shippers', shipperRoutes);
 app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/users', userRoutes);
 
 // 404 Handler
 app.use((req, res, next) => {
