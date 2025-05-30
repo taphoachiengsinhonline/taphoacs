@@ -79,9 +79,6 @@ const createOrder = async (req, res) => {
 };
 
 
-// Sau khi tạo đơn hàng thành công:
-await assignOrderToNearestShipper(newOrder._id);
-
 
 // Lấy đơn hàng của user (có thể lọc theo status)
 const getMyOrders = async (req, res) => {
