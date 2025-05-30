@@ -19,7 +19,7 @@ router.post('/', verifyToken, isAdmin, async (req, res) => {
     // Tạo shipper mới
     const shipper = new User({
       email,
-      password: await bcrypt.hash(password, 10), // Mã hóa mật khẩu
+      password,
       name,
       phone,
       role: 'shipper', // Gán vai trò là shipper
