@@ -1,16 +1,30 @@
 const axios = require('axios');
 
-const sendPushNotification = async (expoPushToken, title, body) => {
+module.exports = async (token, title, body) => {
   try {
-    await axios.post('https://exp.host/--/api/v2/push/send', {
-      to: expoPushToken,
-      sound: 'default',
+    const message = {
+      to: token,
       title,
       body,
+      sound: 'default',
+      data: { 
+        type: 'test-notification',
+        timestamp: new Date().toISOString()
+      }
+    };
+    
+    const response = await axios.post('https://exp.host/--/api/v2/push/send', message, {
+      headers: {
+        'Accept': 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      }
     });
+    
+    console.log('Push notification sent:', response.data);
+    return response.data;
   } catch (error) {
-    console.error('Lỗi gửi push notification:', error.message);
+    console.error('Error sending push notification:', error.response?.data || error.message);
+    throw error;
   }
 };
-
-module.exports = sendPushNotification;
