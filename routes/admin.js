@@ -72,29 +72,26 @@ router.get('/shippers', async (req, res) => {
     const now = new Date();
     const fiveMinutesAgo = new Date(now.getTime() - 5 * 60000);
     
-    // Lấy tất cả shipper
+    // Lấy tất cả shipper từ database
     const allShippers = await User.find({ role: 'shipper' })
-      .select('name email phone shipperProfile location locationUpdatedAt fcmToken')
+      .select('name email phone shipperProfile location locationUpdatedAt fcmToken isAvailable')
       .lean();
     
     // Đánh dấu shipper online
     const shippersWithStatus = allShippers.map(shipper => {
-      // Kiểm tra cập nhật vị trí trong 5 phút qua
-      const hasRecentUpdate = shipper.locationUpdatedAt && 
-                             new Date(shipper.locationUpdatedAt) >= fiveMinutesAgo;
-      
-      // Kiểm tra có vị trí hợp lệ
-      const hasValidLocation = shipper.location && 
-                              shipper.location.coordinates && 
-                              shipper.location.coordinates.length === 2;
+      // Kiểm tra điều kiện online
+      const isOnline = (
+        shipper.locationUpdatedAt && 
+        new Date(shipper.locationUpdatedAt) >= fiveMinutesAgo &&
+        shipper.isAvailable === true
+      );
       
       return {
         ...shipper,
-        isOnline: hasRecentUpdate && hasValidLocation
+        isOnline
       };
     });
     
-    // Đếm số lượng online
     const onlineCount = shippersWithStatus.filter(s => s.isOnline).length;
     
     // Format dữ liệu vị trí cho client
@@ -122,8 +119,7 @@ router.get('/shippers', async (req, res) => {
     console.error('Error fetching shippers:', error);
     res.status(500).json({ 
       status: 'error',
-      message: 'Lỗi server: ' + error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      message: 'Lỗi server: ' + error.message
     });
   }
 });
