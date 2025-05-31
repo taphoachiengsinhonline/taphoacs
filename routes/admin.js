@@ -215,6 +215,34 @@ router.post('/shippers/:id/fake-order', verifyToken, isAdmin, async (req, res) =
       `Đơn hàng mới #${fakeOrderId}`,
       `Giao đến: ${fakeAddress} - ${fakeAmount.toLocaleString('vi-VN')}đ`
     );
+
+
+
+// Thêm đoạn này trước khi trả response
+console.log('==== DEBUG SHIPPER STATUS ====');
+console.log(`Thời gian hiện tại: ${new Date()}`);
+console.log(`Thời gian 5 phút trước: ${fiveMinutesAgo}`);
+
+formattedShippers.forEach((s, i) => {
+  console.log(`\nShipper ${i + 1}: ${s.name || s.email}`);
+  console.log(`- ID: ${s._id}`);
+  console.log(`- Location Updated: ${s.locationUpdatedAt || 'Chưa cập nhật'}`);
+  console.log(`- isAvailable: ${s.isAvailable}`);
+  console.log(`- Online Status: ${s.isOnline ? 'ONLINE' : 'OFFLINE'}`);
+  
+  if (s.locationUpdatedAt) {
+    const lastUpdate = new Date(s.locationUpdatedAt);
+    const diffMinutes = Math.floor((new Date() - lastUpdate) / 60000);
+    console.log(`- Last update: ${diffMinutes} phút trước`);
+  }
+});
+
+console.log('==============================');
+
+
+
+
+
     
     res.json({ 
       status: 'success',
