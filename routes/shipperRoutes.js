@@ -43,6 +43,27 @@ router.post('/', verifyToken, isAdmin, async (req, res) => {
   }
 });
 
+router.post('/update-location', verifyToken, async (req, res) => {
+  try {
+    const { latitude, longitude } = req.body;
+    
+    await User.findByIdAndUpdate(req.user._id, {
+      location: {
+        type: 'Point',
+        coordinates: [longitude, latitude] // Lưu ý: [longitude, latitude]
+      },
+      locationUpdatedAt: new Date(),
+      isAvailable: true // Đánh dấu shipper đang online
+    });
+    
+    res.json({ message: 'Cập nhật vị trí thành công' });
+  } catch (error) {
+    console.error('Lỗi cập nhật vị trí:', error);
+    res.status(500).json({ message: 'Lỗi cập nhật vị trí' });
+  }
+});
+
+
 // Các route hiện có
 router.get('/assigned-orders', verifyToken, async (req, res) => {
   try {
