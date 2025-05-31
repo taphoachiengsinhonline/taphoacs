@@ -51,6 +51,7 @@ const userSchema = new mongoose.Schema({
       default: [0, 0]
     }
   },
+  locationUpdatedAt: Date,
   isAvailable: {
     type: Boolean,
     default: true
