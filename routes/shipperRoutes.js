@@ -46,8 +46,7 @@ router.post('/', verifyToken, isAdmin, async (req, res) => {
 router.post('/update-location', verifyToken, async (req, res) => {
   try {
     const { latitude, longitude } = req.body;
-     console.log(`[Shipper] Updating location for user: ${req.user._id}`);
-    console.log(`  - Latitude: ${latitude}, Longitude: ${longitude}`);
+    
     await User.findByIdAndUpdate(req.user._id, {
       location: {
         type: 'Point',
@@ -56,7 +55,7 @@ router.post('/update-location', verifyToken, async (req, res) => {
       locationUpdatedAt: new Date(),
       isAvailable: true // Đánh dấu shipper đang online
     });
-    console.log(`[Shipper] Update result:`, updateResult);
+    
     res.json({ message: 'Cập nhật vị trí thành công' });
   } catch (error) {
     console.error('Lỗi cập nhật vị trí:', error);
