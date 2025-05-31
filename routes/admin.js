@@ -92,10 +92,6 @@ router.get('/shippers', async (req, res) => {
     });
 
 
-  // Thêm đoạn này trước khi tính toán onlineCount
-const now = new Date();
-const fiveMinutesAgo = new Date(now.getTime() - 5 * 60000);
-
 // Tự động set isAvailable: false nếu không cập nhật vị trí trong 5 phút
 await User.updateMany(
   { 
