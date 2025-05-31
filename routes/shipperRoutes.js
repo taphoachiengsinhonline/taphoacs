@@ -46,41 +46,37 @@ router.post('/update-location', verifyToken, async (req, res) => {
   try {
     const { latitude, longitude } = req.body;
     
-    // Tạo giá trị thời gian trước khi cập nhật
-    const updateTime = new Date();
+    // FIX: Sử dụng user từ req.user (đã được populate)
+    const user = req.user;
     
-    // Cập nhật trực tiếp bằng MongoDB driver
-    const result = await User.updateOne(
-      { _id: req.user._id },
-      {
-        $set: {
-          location: {
-            type: 'Point',
-            coordinates: [longitude, latitude]
-          },
-          locationUpdatedAt: updateTime,
-          isAvailable: true
-        }
-      }
-    );
+    // FIX: Cập nhật trực tiếp trên document
+    user.location = {
+      type: 'Point',
+      coordinates: [longitude, latitude]
+    };
+    user.locationUpdatedAt = new Date();
+    user.isAvailable = true;
 
-    console.log(`[SHIPPER] Cập nhật vị trí thành công cho ${req.user.email}:`, {
-      coordinates: [longitude, latitude],
-      updatedAt: updateTime.toISOString()
+    // FIX: Sử dụng save() để kích hoạt hooks
+    await user.save();
+
+    console.log(`[SHIPPER] Cập nhật vị trí thành công cho ${user.email}:`, {
+      coordinates: user.location.coordinates,
+      updatedAt: user.locationUpdatedAt.toISOString()
     });
     
     res.json({ 
       message: 'Cập nhật vị trí thành công',
-      location: {
-        coordinates: [longitude, latitude]
-      },
-      updatedAt: updateTime.toISOString()
+      location: user.location,
+      updatedAt: user.locationUpdatedAt.toISOString()
     });
   } catch (error) {
     console.error('Lỗi cập nhật vị trí:', error);
     res.status(500).json({ message: 'Lỗi cập nhật vị trí: ' + error.message });
   }
 });
+
+
 // Các route khác giữ nguyên
 router.get('/assigned-orders', verifyToken, async (req, res) => {
   try {
