@@ -17,15 +17,16 @@ exports.verifyToken = async (req, res, next) => {
       return res.status(401).json({ message: 'Token không hợp lệ (thiếu ID)' });
     }
 
-    // Thay đổi phần lấy thông tin user
-const user = await User.findById(userId).select('name role'); // ✅ Thêm trường role
-if (!user) {
-  return res.status(401).json({ message: 'Người dùng không tồn tại' });
-}
+    // ✅ FIX: Lấy đầy đủ thông tin user bao gồm email và locationUpdatedAt
+    const user = await User.findById(userId).select('name role email locationUpdatedAt');
+    if (!user) {
+      return res.status(401).json({ message: 'Người dùng không tồn tại' });
+    }
 
-// Thêm dòng này để đảm bảo virtual field isAdmin hoạt động
-user.isAdmin = user.role === 'admin'; // ⚡ Fix cứng virtual field
-req.user = user;
+    // ⚡ FIX: Gán toàn bộ thông tin user vào req.user
+    req.user = user;
+    req.user.isAdmin = user.role === 'admin';
+    
     next();
   } catch (err) {
     console.error('[AUTH] Lỗi verifyToken:', err);
@@ -47,7 +48,7 @@ exports.isAdminMiddleware = (req, res, next) => {
 };
 
 exports.isAdmin = (req, res, next) => {
-  if (req.user?.role !== 'admin') { // ✅ Thêm optional chaining
+  if (req.user?.role !== 'admin') {
     return res.status(403).json({ message: 'Truy cập bị từ chối' });
   }
   next();
