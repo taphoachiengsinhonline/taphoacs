@@ -145,6 +145,7 @@ router.get('/shippers', async (req, res) => {
 });
 
 
+// Sửa lại endpoint /admin/shippers
 router.get('/shippers', async (req, res) => {
   try {
     const now = new Date();
@@ -152,26 +153,47 @@ router.get('/shippers', async (req, res) => {
     
     // Lấy tất cả shipper
     const allShippers = await User.find({ role: 'shipper' })
-      .select('name email phone shipperProfile location locationUpdatedAt')
+      .select('name email phone shipperProfile location locationUpdatedAt fcmToken')
       .lean();
     
     // Đánh dấu shipper online
-    const shippersWithStatus = allShippers.map(shipper => ({
-      ...shipper,
-      isOnline: shipper.locationUpdatedAt && 
-               new Date(shipper.locationUpdatedAt) >= fiveMinutesAgo
-    }));
+    const shippersWithStatus = allShippers.map(shipper => {
+      // Kiểm tra xem có thời gian cập nhật vị trí không
+      const hasLocationUpdate = shipper.locationUpdatedAt && 
+                              new Date(shipper.locationUpdatedAt) >= fiveMinutesAgo;
+      
+      // Kiểm tra xem có vị trí không
+      const hasLocation = shipper.location && shipper.location.coordinates;
+      
+      return {
+        ...shipper,
+        isOnline: hasLocationUpdate && hasLocation
+      };
+    });
     
     // Đếm số lượng online
     const onlineCount = shippersWithStatus.filter(s => s.isOnline).length;
     
+    // Format dữ liệu vị trí
+    const formattedShippers = shippersWithStatus.map(shipper => {
+      return {
+        ...shipper,
+        location: shipper.location || null
+      };
+    });
+
+    console.log(`Found ${formattedShippers.length} shippers, ${onlineCount} online`);
+    
     res.json({
       onlineCount,
-      shippers: shippersWithStatus
+      shippers: formattedShippers
     });
   } catch (error) {
     console.error('Error fetching shippers:', error);
-    res.status(500).json({ message: 'Lỗi server: ' + error.message });
+    res.status(500).json({ 
+      message: 'Lỗi server: ' + error.message,
+      stack: error.stack
+    });
   }
 });
 
