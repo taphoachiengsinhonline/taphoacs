@@ -66,43 +66,31 @@ router.post('/shippers', verifyToken, isAdmin, async (req, res) => {
   }
 });
 
-// Lấy danh sách shipper với trạng thái online
+// FIX: Sửa hoàn toàn logic xác định online status
 router.get('/shippers', async (req, res) => {
   try {
-    const now = new Date();
-    const fiveMinutesAgo = new Date(now.getTime() - 5 * 60000);
+    const now = Date.now(); // Sử dụng timestamp để chính xác
+    const fiveMinutesAgo = new Date(now - 5 * 60000);
     
     // Lấy tất cả shipper từ database
     const allShippers = await User.find({ role: 'shipper' })
       .select('name email phone shipperProfile location locationUpdatedAt fcmToken isAvailable')
       .lean();
     
-    // Đánh dấu shipper online
+    // FIX: Logic xác định online hoàn toàn mới
     const shippersWithStatus = allShippers.map(shipper => {
       // Kiểm tra điều kiện online
-      const isOnline = (
-  shipper.locationUpdatedAt && 
-  new Date(shipper.locationUpdatedAt) >= fiveMinutesAgo
-);
+      const locationUpdatedAt = shipper.locationUpdatedAt 
+        ? new Date(shipper.locationUpdatedAt)
+        : null;
+      
+      const isOnline = locationUpdatedAt && locationUpdatedAt >= fiveMinutesAgo;
       
       return {
         ...shipper,
         isOnline
       };
     });
-
-
-// Tự động set isAvailable: false nếu không cập nhật vị trí trong 5 phút
-await User.updateMany(
-  { 
-    role: 'shipper',
-    locationUpdatedAt: { $lt: fiveMinutesAgo },
-    isAvailable: true
-  },
-  { $set: { isAvailable: false } }
-);
-
-
     
     const onlineCount = shippersWithStatus.filter(s => s.isOnline).length;
     
@@ -113,14 +101,29 @@ await User.updateMany(
           ...shipper,
           location: {
             coordinates: [
-              shipper.location.coordinates[0], // longitude
-              shipper.location.coordinates[1]  // latitude
+              shipper.location.coordinates[0],
+              shipper.location.coordinates[1]
             ]
           }
         };
       }
       return shipper;
     });
+
+    // FIX: Log debug chi tiết
+    console.log('==== SHIPPER STATUS DEBUG ====');
+    console.log(`Thời gian hiện tại: ${new Date(now)}`);
+    console.log(`Thời gian 5 phút trước: ${fiveMinutesAgo}`);
+    formattedShippers.forEach((s, i) => {
+      console.log(`\nShipper ${i+1}: ${s.name || s.email}`);
+      console.log(`- Location Updated: ${s.locationUpdatedAt || 'Chưa cập nhật'}`);
+      console.log(`- isOnline: ${s.isOnline}`);
+      if (s.locationUpdatedAt) {
+        const diffMinutes = Math.floor((now - new Date(s.locationUpdatedAt).getTime()) / 60000;
+        console.log(`- Cập nhật cách đây: ${diffMinutes.toFixed(2)} phút`);
+      }
+    });
+    console.log('==============================');
 
     res.json({
       status: 'success',
