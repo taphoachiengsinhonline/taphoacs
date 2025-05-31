@@ -66,29 +66,34 @@ router.post('/shippers', verifyToken, isAdmin, async (req, res) => {
   }
 });
 
-// FIX: Sửa hoàn toàn logic xác định online status
+// ✅ SỬA HOÀN TOÀN LOGIC XÁC ĐỊNH ONLINE STATUS
 router.get('/shippers', async (req, res) => {
   try {
-    const now = Date.now(); // Sử dụng timestamp để chính xác
-    const fiveMinutesAgo = new Date(now - 5 * 60000);
+    const now = Date.now(); // Sử dụng timestamp
+    const fiveMinutesAgo = now - 5 * 60000; // 5 phút trước (timestamp)
     
     // Lấy tất cả shipper từ database
     const allShippers = await User.find({ role: 'shipper' })
       .select('name email phone shipperProfile location locationUpdatedAt fcmToken isAvailable')
       .lean();
     
-    // FIX: Logic xác định online hoàn toàn mới
+    // FIX: Logic xác định online mới
     const shippersWithStatus = allShippers.map(shipper => {
       // Kiểm tra điều kiện online
       const locationUpdatedAt = shipper.locationUpdatedAt 
-        ? new Date(shipper.locationUpdatedAt)
-        : null;
+        ? new Date(shipper.locationUpdatedAt).getTime() // Chuyển sang timestamp
+        : 0;
       
-      const isOnline = locationUpdatedAt && locationUpdatedAt >= fiveMinutesAgo;
+      // Tính toán thời gian chênh lệch (milliseconds)
+      const diff = now - locationUpdatedAt;
+      
+      // Online nếu cập nhật trong vòng 5 phút
+      const isOnline = locationUpdatedAt > 0 && diff <= 300000;
       
       return {
         ...shipper,
-        isOnline
+        isOnline,
+        lastUpdateSeconds: Math.floor(diff / 1000) // DEBUG
       };
     });
     
@@ -113,13 +118,13 @@ router.get('/shippers', async (req, res) => {
     // FIX: Log debug chi tiết
     console.log('==== SHIPPER STATUS DEBUG ====');
     console.log(`Thời gian hiện tại: ${new Date(now)}`);
-    console.log(`Thời gian 5 phút trước: ${fiveMinutesAgo}`);
+    console.log(`Thời gian 5 phút trước: ${new Date(fiveMinutesAgo)}`);
     formattedShippers.forEach((s, i) => {
       console.log(`\nShipper ${i+1}: ${s.name || s.email}`);
       console.log(`- Location Updated: ${s.locationUpdatedAt || 'Chưa cập nhật'}`);
       console.log(`- isOnline: ${s.isOnline}`);
       if (s.locationUpdatedAt) {
-        const diffMinutes = Math.floor((now - new Date(s.locationUpdatedAt).getTime()) / 60000);
+        const diffMinutes = Math.floor((now - new Date(s.locationUpdatedAt).getTime()) / 60000;
         console.log(`- Cập nhật cách đây: ${diffMinutes.toFixed(2)} phút`);
       }
     });
