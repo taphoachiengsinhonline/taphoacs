@@ -76,4 +76,39 @@ router.get('/shippers', async (req, res) => {
   }
 });
 
+
+router.get('/shippers', async (req, res) => {
+  try {
+    const now = new Date();
+    const fiveMinutesAgo = new Date(now.getTime() - 5 * 60000);
+    
+    // Lấy tất cả shipper
+    const allShippers = await User.find({ role: 'shipper' })
+      .select('name email phone shipperProfile location locationUpdatedAt')
+      .lean();
+    
+    // Đánh dấu shipper online
+    const shippersWithStatus = allShippers.map(shipper => ({
+      ...shipper,
+      isOnline: shipper.locationUpdatedAt && 
+               new Date(shipper.locationUpdatedAt) >= fiveMinutesAgo
+    }));
+    
+    // Đếm số lượng online
+    const onlineCount = shippersWithStatus.filter(s => s.isOnline).length;
+    
+    res.json({
+      onlineCount,
+      shippers: shippersWithStatus
+    });
+  } catch (error) {
+    console.error('Error fetching shippers:', error);
+    res.status(500).json({ message: 'Lỗi server: ' + error.message });
+  }
+});
+
+
+
+
+
 module.exports = router;
