@@ -66,40 +66,38 @@ router.post('/shippers', verifyToken, isAdmin, async (req, res) => {
   }
 });
 
-// ✅ SỬA HOÀN TOÀN LOGIC XÁC ĐỊNH ONLINE STATUS
 router.get('/shippers', async (req, res) => {
   try {
-    const now = Date.now(); // Sử dụng timestamp
-    const fiveMinutesAgo = now - 5 * 60000; // 5 phút trước (timestamp)
+    const now = Date.now();
+    const fiveMinutesAgo = now - 5 * 60000;
     
-    // Lấy tất cả shipper từ database
+    // Lấy tất cả shipper từ database - KHÔNG DÙNG lean() để có thể xử lý Mongoose documents
     const allShippers = await User.find({ role: 'shipper' })
-      .select('name email phone shipperProfile location locationUpdatedAt fcmToken isAvailable')
-      .lean();
+      .select('name email phone shipperProfile location locationUpdatedAt fcmToken isAvailable');
     
-    // FIX: Logic xác định online mới
+    // Sửa: Chuyển đổi thành plain object và xử lý thời gian
     const shippersWithStatus = allShippers.map(shipper => {
-      // Kiểm tra điều kiện online
-      const locationUpdatedAt = shipper.locationUpdatedAt 
-        ? new Date(shipper.locationUpdatedAt).getTime() // Chuyển sang timestamp
-        : 0;
+      const shipperObj = shipper.toObject(); // Chuyển Mongoose document thành plain object
       
-      // Tính toán thời gian chênh lệch (milliseconds)
+      // Sửa: Xử lý trường hợp locationUpdatedAt là string
+      const updatedAt = shipper.locationUpdatedAt instanceof Date ? 
+        shipper.locationUpdatedAt : 
+        new Date(shipper.locationUpdatedAt);
+      
+      const locationUpdatedAt = updatedAt.getTime ? updatedAt.getTime() : 0;
       const diff = now - locationUpdatedAt;
-      
-      // Online nếu cập nhật trong vòng 5 phút
       const isOnline = locationUpdatedAt > 0 && diff <= 300000;
       
       return {
-        ...shipper,
-        isOnline,
-        lastUpdateSeconds: Math.floor(diff / 1000) // DEBUG
+        ...shipperObj,
+        locationUpdatedAt: updatedAt, // Giữ nguyên kiểu Date
+        isOnline
       };
     });
     
     const onlineCount = shippersWithStatus.filter(s => s.isOnline).length;
     
-    // Format dữ liệu vị trí cho client
+    // Format dữ liệu vị trí
     const formattedShippers = shippersWithStatus.map(shipper => {
       if (shipper.location && shipper.location.coordinates) {
         return {
@@ -115,7 +113,6 @@ router.get('/shippers', async (req, res) => {
       return shipper;
     });
 
-    // FIX: Log debug chi tiết
     console.log('==== SHIPPER STATUS DEBUG ====');
     console.log(`Thời gian hiện tại: ${new Date(now)}`);
     console.log(`Thời gian 5 phút trước: ${new Date(fiveMinutesAgo)}`);
@@ -124,7 +121,7 @@ router.get('/shippers', async (req, res) => {
       console.log(`- Location Updated: ${s.locationUpdatedAt || 'Chưa cập nhật'}`);
       console.log(`- isOnline: ${s.isOnline}`);
       if (s.locationUpdatedAt) {
-        const diffMinutes = Math.floor((now - new Date(s.locationUpdatedAt).getTime()) / 60000);
+        const diffMinutes = (now - s.locationUpdatedAt.getTime()) / 60000;
         console.log(`- Cập nhật cách đây: ${diffMinutes.toFixed(2)} phút`);
       }
     });
