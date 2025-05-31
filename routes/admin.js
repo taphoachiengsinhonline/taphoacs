@@ -119,7 +119,7 @@ router.get('/shippers', async (req, res) => {
       console.log(`- Location Updated: ${s.locationUpdatedAt || 'Chưa cập nhật'}`);
       console.log(`- isOnline: ${s.isOnline}`);
       if (s.locationUpdatedAt) {
-        const diffMinutes = Math.floor((now - new Date(s.locationUpdatedAt).getTime()) / 60000;
+        const diffMinutes = Math.floor((now - new Date(s.locationUpdatedAt).getTime()) / 60000);
         console.log(`- Cập nhật cách đây: ${diffMinutes.toFixed(2)} phút`);
       }
     });
