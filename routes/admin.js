@@ -81,16 +81,32 @@ router.get('/shippers', async (req, res) => {
     const shippersWithStatus = allShippers.map(shipper => {
       // Kiểm tra điều kiện online
       const isOnline = (
-        shipper.locationUpdatedAt && 
-        new Date(shipper.locationUpdatedAt) >= fiveMinutesAgo &&
-        shipper.isAvailable === true
-      );
+  shipper.locationUpdatedAt && 
+  new Date(shipper.locationUpdatedAt) >= fiveMinutesAgo
+);
       
       return {
         ...shipper,
         isOnline
       };
     });
+
+
+  // Thêm đoạn này trước khi tính toán onlineCount
+const now = new Date();
+const fiveMinutesAgo = new Date(now.getTime() - 5 * 60000);
+
+// Tự động set isAvailable: false nếu không cập nhật vị trí trong 5 phút
+await User.updateMany(
+  { 
+    role: 'shipper',
+    locationUpdatedAt: { $lt: fiveMinutesAgo },
+    isAvailable: true
+  },
+  { $set: { isAvailable: false } }
+);
+
+
     
     const onlineCount = shippersWithStatus.filter(s => s.isOnline).length;
     
