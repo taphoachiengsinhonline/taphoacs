@@ -46,4 +46,34 @@ router.post('/shippers', verifyToken, isAdmin, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 }); 
+
+// routes/admin.js
+router.get('/shippers', async (req, res) => {
+  try {
+    const shippers = await User.find({ role: 'shipper' })
+      .select('name email phone shipperProfile isAvailable location')
+      .lean();
+    
+    // Format location data
+    const formattedShippers = shippers.map(shipper => {
+      if (shipper.location && shipper.location.coordinates) {
+        return {
+          ...shipper,
+          location: {
+            coordinates: [
+              shipper.location.coordinates[0], // longitude
+              shipper.location.coordinates[1]  // latitude
+            ]
+          }
+        };
+      }
+      return shipper;
+    });
+
+    res.json(formattedShippers);
+  } catch (error) {
+    res.status(500).json({ message: 'Lỗi server: ' + error.message });
+  }
+});
+
 module.exports = router;
