@@ -46,29 +46,40 @@ router.post('/update-location', verifyToken, async (req, res) => {
   try {
     const { latitude, longitude } = req.body;
     
-    // FIX: Sử dụng user từ req.user (đã được populate)
-    const user = req.user;
-    
-    // FIX: Cập nhật trực tiếp trên document
-    user.location = {
-      type: 'Point',
-      coordinates: [longitude, latitude]
-    };
-    user.locationUpdatedAt = new Date();
-    user.isAvailable = true;
+    // ✅ FIX: Chỉ cập nhật các trường liên quan đến vị trí
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      {
+        $set: {
+          location: {
+            type: 'Point',
+            coordinates: [longitude, latitude]
+          },
+          locationUpdatedAt: new Date(),
+          isAvailable: true
+        }
+      },
+      {
+        new: true, // Trả về document sau khi update
+        runValidators: false, // ✅ QUAN TRỌNG: Tắt validation
+        context: 'query' // ✅ Tránh lỗi context
+      }
+    );
 
-    // FIX: Sử dụng save() để kích hoạt hooks
-    await user.save();
+    // ✅ Kiểm tra kết quả cập nhật
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'Không tìm thấy người dùng' });
+    }
 
-    console.log(`[SHIPPER] Cập nhật vị trí thành công cho ${user.email}:`, {
-      coordinates: user.location.coordinates,
-      updatedAt: user.locationUpdatedAt.toISOString()
+    console.log(`[SHIPPER] Cập nhật vị trí thành công cho ${updatedUser.email}:`, {
+      coordinates: updatedUser.location.coordinates,
+      updatedAt: updatedUser.locationUpdatedAt.toISOString()
     });
     
     res.json({ 
       message: 'Cập nhật vị trí thành công',
-      location: user.location,
-      updatedAt: user.locationUpdatedAt.toISOString()
+      location: updatedUser.location,
+      updatedAt: updatedUser.locationUpdatedAt.toISOString()
     });
   } catch (error) {
     console.error('Lỗi cập nhật vị trí:', error);
