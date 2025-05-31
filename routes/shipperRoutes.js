@@ -46,22 +46,24 @@ router.post('/update-location', verifyToken, async (req, res) => {
   try {
     const { latitude, longitude } = req.body;
     
-    // Kiểm tra user tồn tại
+    // Sửa: Sử dụng findById thay vì findByIdAndUpdate
     const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({ message: 'Không tìm thấy người dùng' });
     }
 
-    // Cập nhật trực tiếp
+    // Sửa: Gán giá trị trực tiếp
     user.location = {
       type: 'Point',
       coordinates: [longitude, latitude]
     };
+    
+    // Sửa: Đảm bảo giá trị là Date object
     user.locationUpdatedAt = new Date();
     user.isAvailable = true;
 
-    // Lưu thay đổi
-    await user.save();
+    // Sửa: Sử dụng save() với validate
+    await user.save({ validateBeforeSave: true });
 
     console.log(`[SHIPPER] Cập nhật vị trí thành công cho ${user.email}:`, {
       coordinates: user.location.coordinates,
