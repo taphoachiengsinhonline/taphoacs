@@ -71,13 +71,12 @@ router.get('/shippers', async (req, res) => {
   try {
     const now = new Date();
     const fiveMinutesAgo = new Date(now.getTime() - 5 * 60000);
-     console.log(`[DEBUG] Current time: ${now}`);
-    console.log(`[DEBUG] 5 minutes ago: ${fiveMinutesAgo}`);
+    
     // Lấy tất cả shipper từ database
     const allShippers = await User.find({ role: 'shipper' })
       .select('name email phone shipperProfile location locationUpdatedAt fcmToken isAvailable')
       .lean();
-    console.log(`[DEBUG] Found ${allShippers.length} shippers in database`);
+    
     // Đánh dấu shipper online
     const shippersWithStatus = allShippers.map(shipper => {
       // Kiểm tra điều kiện online
@@ -86,12 +85,7 @@ router.get('/shippers', async (req, res) => {
         new Date(shipper.locationUpdatedAt) >= fiveMinutesAgo &&
         shipper.isAvailable === true
       );
-      console.log(`[DEBUG] Shipper: ${shipper.name || shipper.email}`);
-      console.log(`  - Location Updated At: ${locationUpdatedAt}`);
-      console.log(`  - Is location recent? ${isLocationUpdatedRecent}`);
-      console.log(`  - Is available? ${shipper.isAvailable}`);
-      console.log(`  - Has valid location? ${hasValidLocation}`);
-      console.log(`  =====> Is online? ${isOnline}`);
+      
       return {
         ...shipper,
         isOnline
