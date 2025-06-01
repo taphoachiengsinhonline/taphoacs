@@ -129,8 +129,8 @@ router.get('/shippers', async (req, res) => {
 
 router.put(
   '/shippers/:id',
-  verifyToken,
-  isAdmin,
+  //verifyToken,
+  //isAdmin,
   (req, res, next) => {
     console.log('[LOG] Đã chạm vào route PUT /admin/shippers/:id với id =', req.params.id);
     next();
