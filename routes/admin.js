@@ -125,6 +125,59 @@ router.get('/shippers', async (req, res) => {
   }
 });
 
+
+
+router.put('/shippers/:id', verifyToken, isAdmin, async (req, res) => {
+  try {
+    const shipperId = req.params.id;
+    const {
+      name,
+      email,
+      phone,
+      address,
+      shipperProfile: { vehicleType, licensePlate } = {}
+    } = req.body;
+
+    // Tìm shipper theo _id và cập nhật các trường cần thiết
+    const updated = await User.findByIdAndUpdate(
+      shipperId,
+      {
+        $set: {
+          name,
+          email,
+          phone,
+          address,
+          'shipperProfile.vehicleType': vehicleType,
+          'shipperProfile.licensePlate': licensePlate
+        }
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ message: 'Không tìm thấy shipper' });
+    }
+
+    res.json({
+      status: 'success',
+      data: {
+        _id: updated._id,
+        name: updated.name,
+        email: updated.email,
+        phone: updated.phone,
+        address: updated.address,
+        shipperProfile: updated.shipperProfile
+      }
+    });
+  } catch (error) {
+    console.error('Lỗi cập nhật shipper:', error);
+    res.status(500).json({ message: 'Lỗi server: ' + error.message });
+  }
+});
+
+
+
+
 // Gửi thông báo kiểm tra đến shipper
 router.post('/shippers/:id/test-notification', verifyToken, isAdmin, async (req, res) => {
   try {
