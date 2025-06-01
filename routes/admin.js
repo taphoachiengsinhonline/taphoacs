@@ -6,6 +6,11 @@ const { verifyToken, isAdmin } = require('../middlewares/authMiddleware');
 const bcrypt = require('bcrypt');
 const sendPushNotification = require('../utils/sendPushNotification');
 
+router.get('/ping', (req, res) => {
+  console.log('[LOG] Đã chạm vào GET /admin/ping');
+  return res.json({ status: 'pong' });
+});
+
 // Tạo tài khoản shipper mới (chỉ admin)
 router.post('/shippers', verifyToken, isAdmin, async (req, res) => {
   try {
