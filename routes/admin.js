@@ -189,41 +189,16 @@ router.post('/shippers/:id/fake-order', verifyToken, isAdmin, async (req, res) =
     const fakeAddress = '123 Đường kiểm tra, Quận 1, TP.HCM';
     const fakeAmount = Math.floor(Math.random() * 500000) + 50000;
     
-    // Gửi thông báo
+    // Gửi thông báo push
     await sendPushNotification(
       shipper.fcmToken,
       `Đơn hàng mới #${fakeOrderId}`,
       `Giao đến: ${fakeAddress} - ${fakeAmount.toLocaleString('vi-VN')}đ`
     );
 
+    // **Đã loại bỏ khối debug gây lỗi fiveMinutesAgo & formattedShippers**
 
-
-// Thêm đoạn này trước khi trả response
-console.log('==== DEBUG SHIPPER STATUS ====');
-console.log(`Thời gian hiện tại: ${new Date()}`);
-console.log(`Thời gian 5 phút trước: ${fiveMinutesAgo}`);
-
-formattedShippers.forEach((s, i) => {
-  console.log(`\nShipper ${i + 1}: ${s.name || s.email}`);
-  console.log(`- ID: ${s._id}`);
-  console.log(`- Location Updated: ${s.locationUpdatedAt || 'Chưa cập nhật'}`);
-  console.log(`- isAvailable: ${s.isAvailable}`);
-  console.log(`- Online Status: ${s.isOnline ? 'ONLINE' : 'OFFLINE'}`);
-  
-  if (s.locationUpdatedAt) {
-    const lastUpdate = new Date(s.locationUpdatedAt);
-    const diffMinutes = Math.floor((new Date() - lastUpdate) / 60000);
-    console.log(`- Last update: ${diffMinutes} phút trước`);
-  }
-});
-
-console.log('==============================');
-
-
-
-
-
-    
+    // Trả về kết quả thành công
     res.json({ 
       status: 'success',
       message: 'Đã gửi thông báo đơn hàng ảo',
