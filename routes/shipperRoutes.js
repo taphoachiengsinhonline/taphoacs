@@ -46,8 +46,10 @@ router.post('/update-location', verifyToken, async (req, res) => {
   try {
     const { latitude, longitude } = req.body;
 
-    // Lấy thời gian hiện tại tại múi giờ Asia/Ho_Chi_Minh (UTC+07:00)
-    const nowVN = moment().tz('Asia/Ho_Chi_Minh').toDate();
+    // 1. Lấy thời điểm hiện tại (UTC), rồi cộng thêm 7 giờ
+    const nowUTC = Date.now();                       // miliseconds kể từ 1970 tại UTC
+    const sevenHours = 7 * 60 * 60 * 1000;           // 7 giờ = 7*60*60*1000 ms
+    const nowVNDateObj = new Date(nowUTC + sevenHours);
 
     const updatedUser = await User.findByIdAndUpdate(
       req.user._id,
@@ -57,7 +59,7 @@ router.post('/update-location', verifyToken, async (req, res) => {
             type: 'Point',
             coordinates: [longitude, latitude]
           },
-          locationUpdatedAt: nowVN,   // ← dùng giờ +07
+          locationUpdatedAt: nowVNDateObj,  // ← giờ Việt Nam
           isAvailable: true
         }
       },
@@ -72,20 +74,12 @@ router.post('/update-location', verifyToken, async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy người dùng' });
     }
 
-    console.log(`[SHIPPER] Cập nhật vị trí cho ${updatedUser.email}:`, {
-      coordinates: updatedUser.location.coordinates,
-      updatedAt: moment(updatedUser.locationUpdatedAt)
-        .tz('Asia/Ho_Chi_Minh')
-        .format()
-    });
-
-    res.json({
+    // 2. Trả về thông tin cùng chuỗi ISO của giờ đã cộng +7
+    res.json({ 
       message: 'Cập nhật vị trí thành công',
       location: updatedUser.location,
-      // Trả về string format cho dễ đọc ở client nếu cần
-      updatedAt: moment(updatedUser.locationUpdatedAt)
-        .tz('Asia/Ho_Chi_Minh')
-        .format('YYYY-MM-DD HH:mm:ss')
+      // Ví dụ: "2025-06-01T03:00:00.000Z" (tương đương 10:00:00 GMT+7)
+      updatedAt: updatedUser.locationUpdatedAt.toISOString()
     });
   } catch (error) {
     console.error('Lỗi cập nhật vị trí:', error);
