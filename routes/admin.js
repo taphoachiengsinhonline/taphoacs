@@ -132,10 +132,7 @@ router.put(
   verifyToken,
   isAdmin,
   (req, res, next) => {
-    console.log(
-      '[DEBUG ADMIN ROUTE] Đã vào PUT /admin/shippers/:id, id =',
-      req.params.id
-    );
+    console.log('[LOG] Đã chạm vào route PUT /admin/shippers/:id với id =', req.params.id);
     next();
   },
   async (req, res) => {
