@@ -128,6 +128,10 @@ router.get('/shippers', async (req, res) => {
 
 
 router.put('/shippers/:id', verifyToken, isAdmin, async (req, res) => {
+  console.log(
+      '[DEBUG ADMIN ROUTE] Đã vào PUT /admin/shippers/:id, id =',
+      req.params.id
+    );
   try {
     const shipperId = req.params.id;
     const {
