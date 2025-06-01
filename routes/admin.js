@@ -74,8 +74,11 @@ router.get('/shippers', async (req, res) => {
     
     // FIX: Sử dụng Mongoose để lấy dữ liệu đầy đủ
     const shippers = await User.find({ role: 'shipper' })
-      .select('name email location locationUpdatedAt isAvailable')
-      .lean({ virtuals: true }); // Sử dụng virtuals
+  .select(
+    'name email address phone location locationUpdatedAt isAvailable ' +
+    'shipperProfile.vehicleType shipperProfile.licensePlate'
+  )
+  .lean({ virtuals: true });
 
     // FIX: Tính toán trạng thái online
     const processedShippers = shippers.map(shipper => {
