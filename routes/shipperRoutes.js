@@ -5,7 +5,7 @@ const Order = require('../models/Order');
 const User = require('../models/User');
 const bcrypt = require('bcrypt');
 const { sendPushNotificationToCustomer } = require('../utils/sendPushNotification');
-
+const moment = require('moment-timezone');
 // Route POST để tạo shipper mới
 router.post('/', verifyToken, isAdmin, async (req, res) => {
   try {
@@ -45,8 +45,10 @@ router.post('/', verifyToken, isAdmin, async (req, res) => {
 router.post('/update-location', verifyToken, async (req, res) => {
   try {
     const { latitude, longitude } = req.body;
-    
-    // ✅ FIX: Chỉ cập nhật các trường liên quan đến vị trí
+
+    // Lấy thời gian hiện tại tại múi giờ Asia/Ho_Chi_Minh (UTC+07:00)
+    const nowVN = moment().tz('Asia/Ho_Chi_Minh').toDate();
+
     const updatedUser = await User.findByIdAndUpdate(
       req.user._id,
       {
@@ -55,31 +57,35 @@ router.post('/update-location', verifyToken, async (req, res) => {
             type: 'Point',
             coordinates: [longitude, latitude]
           },
-          locationUpdatedAt: new Date(),
+          locationUpdatedAt: nowVN,   // ← dùng giờ +07
           isAvailable: true
         }
       },
       {
-        new: true, // Trả về document sau khi update
-        runValidators: false, // ✅ QUAN TRỌNG: Tắt validation
-        context: 'query' // ✅ Tránh lỗi context
+        new: true,
+        runValidators: false,
+        context: 'query'
       }
     );
 
-    // ✅ Kiểm tra kết quả cập nhật
     if (!updatedUser) {
       return res.status(404).json({ message: 'Không tìm thấy người dùng' });
     }
 
-    console.log(`[SHIPPER] Cập nhật vị trí thành công cho ${updatedUser.email}:`, {
+    console.log(`[SHIPPER] Cập nhật vị trí cho ${updatedUser.email}:`, {
       coordinates: updatedUser.location.coordinates,
-      updatedAt: updatedUser.locationUpdatedAt.toISOString()
+      updatedAt: moment(updatedUser.locationUpdatedAt)
+        .tz('Asia/Ho_Chi_Minh')
+        .format()
     });
-    
-    res.json({ 
+
+    res.json({
       message: 'Cập nhật vị trí thành công',
       location: updatedUser.location,
-      updatedAt: updatedUser.locationUpdatedAt.toISOString()
+      // Trả về string format cho dễ đọc ở client nếu cần
+      updatedAt: moment(updatedUser.locationUpdatedAt)
+        .tz('Asia/Ho_Chi_Minh')
+        .format('YYYY-MM-DD HH:mm:ss')
     });
   } catch (error) {
     console.error('Lỗi cập nhật vị trí:', error);
