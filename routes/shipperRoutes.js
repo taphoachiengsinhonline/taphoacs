@@ -124,22 +124,29 @@ router.put('/orders/:id/status', verifyToken, async (req, res) => {
   }
 });
 
+// routes/shippers.js (hoặc tên file tương ứng)
 router.get('/stats', verifyToken, async (req, res) => {
   try {
     const totalOrders = await Order.countDocuments({ shipper: req.user._id });
 
-    const orders = await Order.find({
-      shipper: req.user._id,
-      status: 'Hoàn thành'
-    });
+   // Lấy luôn mảng đơn “Hoàn thành” để đếm số lượng và tính doanh thu
+   const completedOrdersList = await Order.find({
+     shipper: req.user._id,
+     status: 'Hoàn thành'
+   });
+   const completedOrdersCount = completedOrdersList.length;
+   const totalRevenue = completedOrdersList.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
 
-    const totalRevenue = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-
-    res.json({ totalOrders, totalRevenue });
+   res.json({
+     totalOrders,
+     completedOrders: completedOrdersCount,
+     totalRevenue
+   });
   } catch (error) {
     res.status(500).json({ message: 'Lỗi khi lấy thống kê: ' + error.message });
   }
 });
+
 
 const Notification = require('../models/Notification');
 
