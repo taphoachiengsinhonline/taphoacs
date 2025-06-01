@@ -69,6 +69,8 @@ router.post('/shippers', verifyToken, isAdmin, async (req, res) => {
 router.get('/shippers', async (req, res) => {
   try {
     const now = Date.now();
+    const sevenHours = 7 * 60 * 60 * 1000; // 7h tính bằng ms
+    const nowVN = Date.now() + sevenHours;
     
     // FIX: Sử dụng Mongoose để lấy dữ liệu đầy đủ
     const shippers = await User.find({ role: 'shipper' })
@@ -78,7 +80,7 @@ router.get('/shippers', async (req, res) => {
     // FIX: Tính toán trạng thái online
     const processedShippers = shippers.map(shipper => {
       const updatedAt = shipper.locationUpdatedAt?.getTime() || 0;
-      const diff = now - updatedAt;
+      const diff = nowVN - updatedAt;
       const isOnline = diff > 0 && diff <= 300000; // 5 phút
       
       return {
