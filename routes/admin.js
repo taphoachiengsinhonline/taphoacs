@@ -6,10 +6,6 @@ const { verifyToken, isAdmin } = require('../middlewares/authMiddleware');
 const bcrypt = require('bcrypt');
 const sendPushNotification = require('../utils/sendPushNotification');
 
-router.get('/ping', (req, res) => {
-  console.log('[LOG] Đã chạm vào GET /admin/ping');
-  return res.json({ status: 'pong' });
-});
 
 // Tạo tài khoản shipper mới (chỉ admin)
 router.post('/shippers', verifyToken, isAdmin, async (req, res) => {
@@ -132,24 +128,53 @@ router.get('/shippers', async (req, res) => {
 
 
 
-router.put(
-  '/shippers/:id',
-  //verifyToken,
-  //isAdmin,
-  (req, res, next) => {
-    console.log('[LOG] Đã chạm vào route PUT /admin/shippers/:id với id =', req.params.id);
-    next();
-  },
-  async (req, res) => {
-    try {
-      const shipperId = req.params.id;
-      // … phần cập nhật
-    } catch (error) {
-      console.error('Lỗi cập nhật shipper:', error);
-      res.status(500).json({ message: 'Lỗi server: ' + error.message });
+router.put('/shippers/:id', verifyToken, isAdmin, async (req, res) => {
+  try {
+    const shipperId = req.params.id;
+    const {
+      name,
+      email,
+      phone,
+      address,
+      shipperProfile: { vehicleType, licensePlate } = {}
+    } = req.body;
+
+    // Tìm shipper theo _id và cập nhật các trường cần thiết
+    const updated = await User.findByIdAndUpdate(
+      shipperId,
+      {
+        $set: {
+          name,
+          email,
+          phone,
+          address,
+          'shipperProfile.vehicleType': vehicleType,
+          'shipperProfile.licensePlate': licensePlate
+        }
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ message: 'Không tìm thấy shipper' });
     }
+
+    res.json({
+      status: 'success',
+      data: {
+        _id: updated._id,
+        name: updated.name,
+        email: updated.email,
+        phone: updated.phone,
+        address: updated.address,
+        shipperProfile: updated.shipperProfile
+      }
+    });
+  } catch (error) {
+    console.error('Lỗi cập nhật shipper:', error);
+    res.status(500).json({ message: 'Lỗi server: ' + error.message });
   }
-);
+});
 
 
 
