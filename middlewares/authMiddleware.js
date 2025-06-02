@@ -24,9 +24,9 @@ exports.verifyToken = async (req, res, next) => {
     }
 
     // ⚡ FIX: Gán toàn bộ thông tin user vào req.user
-    req.user = user;
     req.user.isAdmin = user.role === 'admin';
-    
+    req.user = user;
+        
     next();
   } catch (err) {
     console.error('[AUTH] Lỗi verifyToken:', err);
