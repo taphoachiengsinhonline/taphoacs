@@ -87,6 +87,7 @@ exports.createOrder = async (req, res) => {
     const saved = await order.save();
 
     // 4. Gán shipper gần nhất (không block request)
+    console.log(`🟢 Bắt đầu gán shipper cho đơn ${saved._id}`);
     assignOrderToNearestShipper(saved._id)
       .catch(err => console.error('[assignOrder] error:', err));
 
