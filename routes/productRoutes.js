@@ -6,7 +6,7 @@ const Category = require('../models/Category');
 const User = require('../models/User');
 
 // Middleware kiểm tra quyền admin
-const { verifyToken, isAdmin } = require('../middlewares/authMiddleware');
+const { verifyToken, isAdmin ,isAdminMiddleware } = require('../middlewares/authMiddleware');
 
 // Hàm đệ quy lấy danh sách category con
 const getAllChildCategoryIds = async (parentId) => {
@@ -108,7 +108,7 @@ router.post('/', verifyToken, isAdmin, async (req, res) => {
 });
 
 // PUT /api/products/:id - Cập nhật sản phẩm (chỉ admin)
-router.put('/:id', isAdmin, async (req, res) => {
+router.put('/:id', isAdminMiddleware, async (req, res) => {
   try {
     const updateFields = ['name','price','stock','category','description','attributes','images','saleStartTime','saleEndTime'];
     const updateData = {};
