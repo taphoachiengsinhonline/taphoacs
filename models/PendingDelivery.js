@@ -13,8 +13,8 @@ const pendingDeliverySchema = new mongoose.Schema({
   }],
   status: {
     type: String,
-    enum: ['waiting', 'assigned', 'failed'],
-    default: 'waiting'
+    enum: ['pending', 'assigned', 'failed'],
+    default: 'pending'
   },
   createdAt: {
     type: Date,
