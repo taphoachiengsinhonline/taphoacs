@@ -48,7 +48,7 @@ exports.isAdminMiddleware = (req, res, next) => {
 };
 
 exports.isAdmin = (req, res, next) => {
-  if (req.user?.role !== 'admin' || !req.user.isAdmin) {
+  if (!req.user.isAdmin || req.user?.role !== 'admin' ) {
     return res.status(403).json({ message: 'Truy cập bị từ chối' });
   }
   next();
