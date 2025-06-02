@@ -26,7 +26,7 @@ exports.verifyToken = async (req, res, next) => {
     // ⚡ FIX: Gán toàn bộ thông tin user vào req.user
     req.user.isAdmin = user.role === 'admin';
     req.user = user;
-        
+    
     next();
   } catch (err) {
     console.error('[AUTH] Lỗi verifyToken:', err);
@@ -41,15 +41,17 @@ exports.verifyToken = async (req, res, next) => {
 };
 
 exports.isAdminMiddleware = (req, res, next) => {
-  if (!req.user || !req.user.isAdmin || req.user?.role !== 'admin') {
+  if (!req.user || !req.user.isAdmin) {
     return res.status(403).json({ message: 'Bạn không có quyền thực hiện thao tác này' });
   }
   next();
 };
 
+
 exports.isAdmin = (req, res, next) => {
-  if (!req.user.isAdmin || req.user?.role !== 'admin' ) {
+  if (req.user?.role !== 'admin' || !req.user?.isAdmin) {
     return res.status(403).json({ message: 'Truy cập bị từ chối' });
   }
   next();
 };
+
