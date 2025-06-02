@@ -41,7 +41,7 @@ exports.verifyToken = async (req, res, next) => {
 };
 
 exports.isAdminMiddleware = (req, res, next) => {
-  if (!req.user || !req.user.isAdmin) {
+  if (!req.user.isAdmin) {
     return res.status(403).json({ message: 'Bạn không có quyền thực hiện thao tác này' });
   }
   next();
