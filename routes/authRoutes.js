@@ -28,8 +28,11 @@ router.post('/register', async (req, res) => {
     try {
         const { name, email, password, address, phone, location } = req.body;
 
-        if (!name || !email || !password) {
-            return res.status(400).json({ status: 'error', message: 'Vui lòng điền đầy đủ các mục' });
+       if (!name || !email || !password || !address || !phone ) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Vui lòng điền đầy đủ: họ và tên, email, mật khẩu, địa chỉ, số điện thoại'
+      });
         }
 
         const existingUser = await User.findOne({ email });
