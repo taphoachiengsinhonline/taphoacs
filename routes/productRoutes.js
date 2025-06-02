@@ -108,7 +108,7 @@ router.post('/', verifyToken, isAdmin, async (req, res) => {
 });
 
 // PUT /api/products/:id - Cập nhật sản phẩm (chỉ admin)
-router.put('/:id', isAdminMiddleware, async (req, res) => {
+router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
   try {
     const updateFields = ['name','price','stock','category','description','attributes','images','saleStartTime','saleEndTime'];
     const updateData = {};
