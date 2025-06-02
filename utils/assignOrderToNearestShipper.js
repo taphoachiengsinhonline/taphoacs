@@ -70,10 +70,12 @@ async function assignOrderToNearestShipper(orderId) {
   // 5. Gửi push đến shipper
   if (next.fcmToken) {
     console.log(`[Assign] Gửi thông báo đến shipper ${next._id}`);
-   await sendPushNotification(next.fcmToken, {
+  await sendPushNotification(next.fcmToken, {
   title: '🛒 Đơn hàng mới',
-  body: `Bạn có đơn hàng #${order._id.slice(-6)} cách ${(next.distance/1000).toFixed(2)}km`, // ✅ order thay saved
-  data: { orderId: order._id.toString() }
+  body: `Bạn có đơn hàng #${order._id.toString().slice(-6)} cách ${(next.distance/1000).toFixed(2)}km`,
+  data: { 
+    orderId: order._id.toString() // Chuyển sang string
+  }
 });
   } else {
     console.log(`[Assign] Shipper ${next._id} chưa có fcmToken`);
