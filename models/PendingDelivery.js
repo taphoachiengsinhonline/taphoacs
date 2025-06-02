@@ -1,4 +1,7 @@
 const mongoose = require('mongoose');
+const nowUTC = Date.now();                       // miliseconds kể từ 1970 tại UTC
+const sevenHours = 7 * 60 * 60 * 1000;           // 7 giờ = 7*60*60*1000 ms
+const nowVNDateObj = new Date(nowUTC + sevenHours);
 
 const pendingDeliverySchema = new mongoose.Schema({
   orderId: {
@@ -18,7 +21,7 @@ const pendingDeliverySchema = new mongoose.Schema({
   },
   createdAt: {
     type: Date,
-    default: Date.now,
+    default: nowVNDateObj,
     expires: 300 // 5 phút sau sẽ tự xóa nếu chưa được xử lý
   }
 });
