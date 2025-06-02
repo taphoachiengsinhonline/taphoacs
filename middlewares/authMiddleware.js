@@ -41,14 +41,14 @@ exports.verifyToken = async (req, res, next) => {
 };
 
 exports.isAdminMiddleware = (req, res, next) => {
-  if (!req.user || !req.user.isAdmin) {
+  if (!req.user || !req.user.isAdmin || req.user?.role !== 'admin') {
     return res.status(403).json({ message: 'Bạn không có quyền thực hiện thao tác này' });
   }
   next();
 };
 
 exports.isAdmin = (req, res, next) => {
-  if (req.user?.role !== 'admin') {
+  if (req.user?.role !== 'admin' || !req.user.isAdmin) {
     return res.status(403).json({ message: 'Truy cập bị từ chối' });
   }
   next();
