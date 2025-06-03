@@ -5,18 +5,35 @@ const User = require('../models/User');
 const PendingDelivery = require('../models/PendingDelivery');
 const sendPushNotification = require('./sendPushNotification');
 
-async function assignOrderToNearestShipper(orderId) {
-  console.log(`[Assign] Bắt đầu gán shipper cho order ${orderId}`);
-  // 1. Lấy order
-  const order = await Order.findById(orderId);
-  if (!order) {
-    console.warn(`[Assign] Order ${orderId} không tồn tại`);
-    return;
-  }
-  if (order.shipper) {
-    console.log(`[Assign] Order ${orderId} đã có shipper: ${order.shipper}`);
-    return;
-  }
+const MAX_RETRY = 5; // Tối đa 5 lần chuyển đơn
+async function assignOrderToNearestShipper(orderId, retryCount = 0) {
+  console.log(`[Assign] Bắt đầu gán shipper cho order ${orderId} (lần ${retryCount + 1})`);
+  
+  try {
+    const order = await Order.findById(orderId);
+    if (!order || order.status !== 'Chờ xác nhận') return;
+
+    // Kiểm tra số lần thử
+    if (retryCount >= MAX_RETRY) {
+      console.log(`[Assign] Đã thử ${MAX_RETRY} lần không thành công. Hủy đơn ${orderId}`);
+      
+      // Cập nhật trạng thái hủy
+      await Order.findByIdAndUpdate(orderId, {
+        status: 'Đã hủy',
+        cancelReason: 'Không tìm thấy shipper phù hợp'
+      });
+      
+      // Gửi thông báo cho khách hàng
+      const customer = await User.findById(order.user);
+      if (customer?.fcmToken) {
+        await sendPushNotification(customer.fcmToken, {
+          title: 'Đơn hàng đã hủy',
+          body: `Đơn hàng #${order._id.toString().slice(-6)} đã hủy do không tìm được shipper`
+        });
+      }
+      
+      return;
+    }
 
   // 2. Load danh sách đã từng thử
   let pending = await PendingDelivery.findOne({ orderId });
@@ -69,17 +86,26 @@ async function assignOrderToNearestShipper(orderId) {
 
   // 5. Gửi push đến shipper
   if (next.fcmToken) {
-    console.log(`[Assign] Gửi thông báo đến shipper ${next._id}`);
-  await sendPushNotification(next.fcmToken, {
-  title: '🛒 Đơn hàng mới',
-  body: `Bạn có đơn hàng #${order._id.toString().slice(-6)} cách ${(next.distance/1000).toFixed(2)}km`,
-  data: { 
-    orderId: order._id.toString() // Chuyển sang string
+      await sendPushNotification(next.fcmToken, {
+        title: '🛒 Đơn hàng mới',
+        body: `Bạn có đơn hàng #${order._id.toString().slice(-6)} cách ${(next.distance/1000).toFixed(2)}km`,
+        data: { orderId: order._id.toString() }
+      });
+    }
+
+    // Hẹn giờ chuyển đơn nếu không nhận
+    setTimeout(async () => {
+      const freshOrder = await Order.findById(orderId);
+      if (freshOrder && freshOrder.status === 'Chờ xác nhận') {
+        console.log(`[Assign] 30s đã hết, chuyển sang shipper tiếp theo (lần ${retryCount + 1})`);
+        await assignOrderToNearestShipper(orderId, retryCount + 1);
+      }
+    }, 30000); // 30 giây
+
+  } catch (err) {
+    console.error('[assignOrder] error:', err);
   }
-});
-  } else {
-    console.log(`[Assign] Shipper ${next._id} chưa có fcmToken`);
-  }
+}
 
   // 6. Gửi admin (nếu cấu hình)
   if (process.env.ADMIN_FCM_TOKEN) {
