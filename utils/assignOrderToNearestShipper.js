@@ -1,4 +1,3 @@
-// utils/assignOrderToNearestShipper.js
 const Order = require('../models/Order');
 const User = require('../models/User');
 const PendingDelivery = require('../models/PendingDelivery');
@@ -40,6 +39,9 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
     let pending = await PendingDelivery.findOne({ orderId });
     const tried = pending?.triedShippers || [];
 
+    // Sửa tại đây: Tạo ObjectId đúng cách
+    const triedObjectIds = tried.map(id => new mongoose.Types.ObjectId(id));
+
     // Tìm shipper gần nhất chưa thử
     const candidates = await User.aggregate([
       {
@@ -53,7 +55,7 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
           query: {
             role: 'shipper',
             isAvailable: true,
-            _id: { $nin: tried.map(id => mongoose.Types.ObjectId(id)) }
+            _id: { $nin: triedObjectIds } // Sửa tại đây
           },
           spherical: true
         }
@@ -87,7 +89,8 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
         status: 'pending'
       });
     } else {
-      pending.triedShippers.push(next._id);
+      // Sửa tại đây: Chuyển đổi thành ObjectId
+      pending.triedShippers.push(new mongoose.Types.ObjectId(next._id));
     }
     await pending.save();
 
