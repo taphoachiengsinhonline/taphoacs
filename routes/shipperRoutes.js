@@ -184,4 +184,34 @@ router.post('/update-fcm-token', verifyToken, async (req, res) => {
 });
 
 
+router.post('/orders/:id/accept', verifyToken, async (req, res) => {
+  try {
+    // Kiểm tra xem shipper có được phép nhận đơn này không
+    const pending = await PendingDelivery.findOne({ orderId: req.params.id });
+    if (!pending || !pending.triedShippers.includes(req.user._id)) {
+      return res.status(403).json({ message: 'Bạn không được phép nhận đơn hàng này' });
+    }
+
+    // Tìm đơn hàng ở trạng thái "Chờ xác nhận"
+    const order = await Order.findOne({ _id: req.params.id, status: 'Chờ xác nhận' });
+    if (!order) {
+      return res.status(404).json({ message: 'Đơn hàng không tồn tại hoặc không ở trạng thái chờ xác nhận' });
+    }
+
+    // Gán shipper và cập nhật trạng thái
+    order.shipper = req.user._id;
+    order.status = 'Đang xử lý'; // Hoặc 'Đang lấy hàng' tùy theo luồng
+    await order.save();
+
+    // Xóa khỏi PendingDelivery sau khi nhận
+    await PendingDelivery.deleteOne({ orderId: order._id });
+
+    res.json({ message: 'Nhận đơn thành công', order });
+  } catch (error) {
+    console.error('Lỗi khi nhận đơn:', error);
+    res.status(500).json({ message: 'Lỗi server: ' + error.message });
+  }
+});
+
+
 module.exports = router;
