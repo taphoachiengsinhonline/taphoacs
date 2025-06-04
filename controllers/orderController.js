@@ -158,14 +158,29 @@ exports.countOrdersByStatus = async (req, res) => {
  */
 exports.getOrderById = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
+    const order = await Order.findById(req.params.id)
+      .populate('user', 'name phone')
+      .populate('shipper', 'name phone');
+
     if (!order) {
       return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
     }
-    if (!req.user.isAdmin && order.user.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Bạn không có quyền xem đơn hàng này' });
+
+    // Cho phép admin, khách hàng và shipper được giao xem đơn
+    const isAdmin = req.user?.isAdmin;
+    const isCustomer = order.user?._id.toString() === req.user?._id?.toString();
+    const isAssignedShipper = order.shipper?._id.toString() === req.user?._id?.toString();
+    
+    // Cho phép shipper xem đơn hàng chưa được nhận
+    const isShipperViewingPendingOrder = req.query.shipperView === 'true' && 
+                                        order.status === 'Chờ xác nhận' &&
+                                        req.user?.role === 'shipper';
+
+    if (isAdmin || isCustomer || isAssignedShipper || isShipperViewingPendingOrder) {
+      return res.json(order);
     }
-    return res.json(order);
+
+    return res.status(403).json({ message: 'Bạn không có quyền xem đơn hàng này' });
   } catch (err) {
     console.error('[getOrderById] error:', err);
     if (err.name === 'CastError') {
