@@ -89,14 +89,17 @@ router.post('/update-location', verifyToken, async (req, res) => {
 
 
 // Các route khác giữ nguyên
+// Sửa endpoint /shippers/assigned-orders
 router.get('/assigned-orders', verifyToken, async (req, res) => {
   try {
     const orders = await Order.find({ 
       shipper: req.user._id,
-      status: { $in: ['Đang giao', 'Đã nhận'] }
+      status: { $in: ['Đang xử lý', 'Đang giao', 'Đã nhận', 'Hoàn thành'] } // Thêm trạng thái
     }).sort('-createdAt');
+    console.log('[Backend] Assigned orders:', orders); // Debug
     res.json(orders);
   } catch (error) {
+    console.error('Lỗi server:', error);
     res.status(500).json({ message: 'Lỗi server: ' + error.message });
   }
 });
@@ -128,21 +131,21 @@ router.put('/orders/:id/status', verifyToken, async (req, res) => {
 router.get('/stats', verifyToken, async (req, res) => {
   try {
     const totalOrders = await Order.countDocuments({ shipper: req.user._id });
+    const completedOrdersList = await Order.find({
+      shipper: req.user._id,
+      status: 'Hoàn thành'
+    });
+    const completedOrdersCount = completedOrdersList.length;
+    const totalRevenue = completedOrdersList.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
 
-   // Lấy luôn mảng đơn “Hoàn thành” để đếm số lượng và tính doanh thu
-   const completedOrdersList = await Order.find({
-     shipper: req.user._id,
-     status: 'Hoàn thành'
-   });
-   const completedOrdersCount = completedOrdersList.length;
-   const totalRevenue = completedOrdersList.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-
-   res.json({
-     totalOrders,
-     completedOrders: completedOrdersCount,
-     totalRevenue
-   });
+    console.log('[Backend] Stats:', { totalOrders, completedOrdersCount, totalRevenue }); // Debug
+    res.json({
+      totalOrders,
+      completedOrders: completedOrdersCount,
+      totalRevenue
+    });
   } catch (error) {
+    console.error('Lỗi khi lấy thống kê:', error);
     res.status(500).json({ message: 'Lỗi khi lấy thống kê: ' + error.message });
   }
 });
