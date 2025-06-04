@@ -99,7 +99,8 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
       await sendPushNotification(next.fcmToken, {
         title: '🛒 Đơn hàng mới',
         body: `Bạn có đơn hàng #${order._id.toString().slice(-6)} cách ${(next.distance/1000).toFixed(2)}km`,
-        data: { orderId: order._id.toString() }
+        data: { orderId: order._id.toString() },
+        shipperView: "true" // Thêm tham số này
       });
     }
 
