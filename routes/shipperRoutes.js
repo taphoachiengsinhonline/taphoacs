@@ -94,7 +94,7 @@ router.get('/assigned-orders', verifyToken, async (req, res) => {
   try {
     const orders = await Order.find({ 
       shipper: req.user._id,
-      status: { $in: ['Đang xử lý', 'Đang giao', 'Đã nhận', 'Hoàn thành'] } // Thêm trạng thái
+      status: { $in: ['Đang xử lý', 'Đang giao', 'Đã giao', 'Đã huỷ'] } // Thêm trạng thái
     }).sort('-createdAt');
     console.log('[Backend] Assigned orders:', orders); // Debug
     res.json(orders);
