@@ -133,7 +133,7 @@ router.get('/stats', verifyToken, async (req, res) => {
     const totalOrders = await Order.countDocuments({ shipper: req.user._id });
     const completedOrdersList = await Order.find({
       shipper: req.user._id,
-      status: 'Hoàn thành'
+      status: 'Đã giao'
     });
     const completedOrdersCount = completedOrdersList.length;
     const totalRevenue = completedOrdersList.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
