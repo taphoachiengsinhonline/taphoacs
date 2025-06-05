@@ -237,134 +237,78 @@ router.post('/change-password', verifyToken, async (req, res) => {
 // Báo cáo doanh thu
 router.get('/revenue', verifyToken, async (req, res) => {
   try {
-    const { period, date } = req.query;
+    const { startDate, endDate } = req.query;
     const now = new Date();
 
-    // ---------------------------------------------
-    // 1. Tính previousMonthRevenue và previousMonthCompletedOrders
-    //    (tháng liền trước so với hiện tại)
-    // Ví dụ: nếu bây giờ là 15/06/2025 thì tháng trước = 05/2025
-    //    startPrev = 2025-05-01 00:00:00
-    //    endPrev   = 2025-05-31 23:59:59.999
-    // ---------------------------------------------
-    const yearNow = now.getFullYear();
-    const monthNow = now.getMonth(); // 0-based (0 = Jan, 5 = Jun)
-    // Xác định tháng trước (lùi 1 nếu monthNow>0; nếu monthNow=0 (tháng 1), tháng trước = tháng 12 của năm trước)
-    const prevMonth = monthNow === 0 ? 11 : monthNow - 1; // 0..11
-    const prevYear = monthNow === 0 ? yearNow - 1 : yearNow;
+    let fromDate, toDate;
 
-    // startPrev: ngày đầu tháng trước, 00:00:00
-    const startPrev = new Date(prevYear, prevMonth, 1, 0, 0, 0, 0);
-    // endPrev: ngày cuối cùng của tháng trước, 23:59:59.999
-    const endPrev  = new Date(prevYear, prevMonth + 1, 1, 0, 0, 0, 0) - 1;
-    // (ta có thể tạo new Date(prevYear, prevMonth+1, 0) để tự động về ngày 0 của tháng+1, tức cuối của tháng trước)
-    // const endPrev = new Date(prevYear, prevMonth + 1, 0, 23, 59, 59, 999);
-
-    // Query Mongo để lấy tất cả đơn “Đã giao” của shipper trong khoảng startPrev -> endPrev
-    const prevOrders = await Order.find({
-      shipper: req.user._id,
-      status: 'Đã giao',
-      createdAt: { $gte: startPrev, $lte: new Date(endPrev) }
-    });
-
-    const previousMonthRevenue = prevOrders.reduce((sum, o) => sum + (o.total || 0), 0);
-    const previousMonthCompletedOrders = prevOrders.length;
-
-    // ---------------------------------------------
-    // 2. Nếu client truyền `date=YYYY-MM-DD`, ta chỉ tính doanh thu của đúng ngày đó
-    //    VD: date = '2025-06-03'
-    //    startDate = '2025-06-03 00:00:00'
-    //    endDate   = '2025-06-03 23:59:59.999'
-    //    Trả về { totalRevenue, completedOrders } cho ngày đó + previousMonthXXX
-    // ---------------------------------------------
-    if (date) {
-      // Kiểm tra format date hợp lệ (có thể dùng regex đơn giản)
-      // Ở đây giả sử client đã gửi đúng 'YYYY-MM-DD'
-      const parts = date.split('-');
-      if (
-        parts.length !== 3 ||
-        isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])
-      ) {
-        return res.status(400).json({ message: 'Ngày không hợp lệ (phải YYYY-MM-DD)' });
+    if (startDate || endDate) {
+      // Cả hai phải có, nếu thiếu 1 thì báo lỗi
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: 'Cần truyền cả startDate và endDate (YYYY-MM-DD)' });
       }
 
-      const year = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1; // 0-based
-      const day = parseInt(parts[2], 10);
+      // Parse thô startDate và endDate
+      const partsStart = startDate.split('-');
+      const partsEnd = endDate.split('-');
 
-      // Tạo startDate và endDate
-      const startDate = new Date(year, month, day, 0, 0, 0, 0);
-      const endDate   = new Date(year, month, day, 23, 59, 59, 999);
+      if (
+        partsStart.length !== 3 || partsEnd.length !== 3 ||
+        isNaN(partsStart[0]) || isNaN(partsStart[1]) || isNaN(partsStart[2]) ||
+        isNaN(partsEnd[0]) || isNaN(partsEnd[1]) || isNaN(partsEnd[2])
+      ) {
+        return res.status(400).json({ message: 'Định dạng startDate hoặc endDate không hợp lệ (phải YYYY-MM-DD)' });
+      }
 
-      // Lấy orders đã giao trong ngày đó
-      const dailyOrders = await Order.find({
-        shipper: req.user._id,
-        status: 'Đã giao',
-        createdAt: { $gte: startDate, $lte: endDate }
-      });
+      const yearS = parseInt(partsStart[0], 10);
+      const monthS = parseInt(partsStart[1], 10) - 1;
+      const dayS = parseInt(partsStart[2], 10);
+      const yearE = parseInt(partsEnd[0], 10);
+      const monthE = parseInt(partsEnd[1], 10) - 1;
+      const dayE = parseInt(partsEnd[2], 10);
 
-      const totalRevenueToday = dailyOrders.reduce((sum, o) => sum + (o.total || 0), 0);
-      const completedOrdersToday = dailyOrders.length;
+      fromDate = new Date(yearS, monthS, dayS, 0, 0, 0, 0);
+      toDate   = new Date(yearE, monthE, dayE, 23, 59, 59, 999);
 
-      return res.json({
-        // thông tin ngày cụ thể
-        periodType: 'daily',
-        period: date, // '2025-06-03'
-        totalRevenue: totalRevenueToday,
-        completedOrders: completedOrdersToday,
-        // phần tháng trước
-        previousMonthRevenue,
-        previousMonthCompletedOrders
-      });
+      if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+        return res.status(400).json({ message: 'startDate hoặc endDate không phải ngày hợp lệ' });
+      }
+      if (toDate < fromDate) {
+        return res.status(400).json({ message: 'endDate phải lớn hơn hoặc bằng startDate' });
+      }
+
+      // Kiểm tra khoảng cách <= 3 tháng (~93 ngày)
+      const diffMs = toDate.getTime() - fromDate.getTime();
+      const maxRangeMs = 1000 * 60 * 60 * 24 * 93; // 93 ngày * 24h * 60p * 60s * 1000ms
+      if (diffMs > maxRangeMs) {
+        return res.status(400).json({ message: 'Khoảng thời gian không vượt quá 3 tháng' });
+      }
+    } else {
+      // Nếu không truyền startDate & endDate, lấy ngày hôm nay
+      const year0 = now.getFullYear();
+      const month0 = now.getMonth();
+      const day0 = now.getDate();
+      fromDate = new Date(year0, month0, day0, 0, 0, 0, 0);
+      toDate   = new Date(year0, month0, day0, 23, 59, 59, 999);
     }
 
-    // ---------------------------------------------
-    // 3. Nếu không có `date`, xét đến `period` như cũ (daily/weekly/monthly/yearly)
-    //    (không cần support mảng details nữa, chỉ trả summary cho khoảng)
-    // ---------------------------------------------
-    if (!period) {
-      return res.status(400).json({ message: 'Thiếu tham số period hoặc date' });
-    }
-
-    // Tính startDate suất phát từ period (giống trước)
-    let startDate;
-    switch (period) {
-      case 'daily':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-        break;
-      case 'weekly':
-        const d = now.getDay(); // 0..6 (0 = Chủ nhật)
-        startDate = new Date(now);
-        startDate.setDate(now.getDate() - d);
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      case 'monthly':
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-        break;
-      case 'yearly':
-        startDate = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
-        break;
-      default:
-        return res.status(400).json({ message: 'Thời gian không hợp lệ' });
-    }
-
-    // Lấy tất cả orders “Đã giao” từ startDate đến hiện tại
+    // Tiến hành query: các order “Đã giao” có createdAt từDate <= createdAt <= toDate
     const orders = await Order.find({
       shipper: req.user._id,
       status: 'Đã giao',
-      createdAt: { $gte: startDate }
+      createdAt: { $gte: fromDate, $lte: toDate }
     });
 
     const totalRevenue = orders.reduce((sum, o) => sum + (o.total || 0), 0);
     const completedOrders = orders.length;
 
     return res.json({
-      periodType: period,            // 'daily'|'weekly'|'monthly'|'yearly'
-      // Không trả mảng chi tiết, chỉ summary cho khoảng
+      period: {
+        startDate: fromDate.toISOString().split('T')[0], // 'YYYY-MM-DD'
+        endDate: toDate.toISOString().split('T')[0]
+      },
       totalRevenue,
-      completedOrders,
-      previousMonthRevenue,
-      previousMonthCompletedOrders
+      completedOrders
     });
   } catch (error) {
     console.error('Lỗi báo cáo doanh thu:', error);
