@@ -13,6 +13,64 @@ const assignOrderToNearestShipper = require('../utils/assignOrderToNearestShippe
  * 4. Gán shipper gần nhất bất đồng bộ
  * 5. Gửi notification cho admin
  */
+const validateSaleTime = (product, nowMin) => {
+  const toMin = str => {
+    const [h, m] = str.split(':').map(Number);
+    return h * 60 + m;
+  };
+  
+  const start = toMin(product.saleStartTime);
+  const end = toMin(product.saleEndTime);
+  
+  if (start <= end) {
+    return nowMin >= start && nowMin <= end;
+  } 
+  return nowMin >= start || nowMin <= end;
+};
+
+const processOrderItem = async (item) => {
+  const prod = await Product.findById(item.productId);
+  if (!prod) {
+    throw new Error(`Sản phẩm "${item.name}" không tồn tại`);
+  }
+
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
+  if (prod.saleStartTime && prod.saleEndTime) {
+    if (!validateSaleTime(prod, nowMin)) {
+      throw new Error(`Sản phẩm "${prod.name}" chỉ bán từ ${prod.saleStartTime} đến ${prod.saleEndTime}`);
+    }
+  }
+
+  if (prod.countInStock < item.quantity) {
+    throw new Error(`Sản phẩm "${prod.name}" không đủ hàng trong kho`);
+  }
+  
+  prod.countInStock -= item.quantity;
+  await prod.save();
+  return prod;
+};
+
+const notifyAdmins = async (order, total, userName) => {
+  const admins = await User.find({
+    role: 'admin',
+    fcmToken: { $exists: true, $ne: null }
+  });
+  
+  for (const admin of admins) {
+    try {
+      await sendPushNotification(admin.fcmToken, {
+        title: '🛒 Đơn hàng mới',
+        body: `#${order._id.toString().slice(-6)} từ ${userName || 'khách'}: ${total.toLocaleString()}đ`,
+        data: { orderId: order._id }
+      });
+    } catch (e) {
+      console.error(`[notify admin] error for admin ${admin._id}:`, e);
+    }
+  }
+};
+
 exports.createOrder = async (req, res) => {
   try {
     const {
@@ -20,7 +78,7 @@ exports.createOrder = async (req, res) => {
       total,
       phone,
       shippingAddress,
-      shippingLocation,   // { type: 'Point', coordinates: [lng, lat] }
+      shippingLocation,
       customerName,
       paymentMethod
     } = req.body;
@@ -34,43 +92,12 @@ exports.createOrder = async (req, res) => {
     }
 
     // 2. Kiểm tra khung giờ & giảm tồn kho
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-
+    const itemProcessing = [];
     for (const item of items) {
-      const prod = await Product.findById(item.productId);
-      if (!prod) {
-        return res.status(404).json({ message: `Sản phẩm "${item.name}" không tồn tại` });
-      }
-
-      // Khung giờ bán (nếu có)
-      if (prod.saleStartTime && prod.saleEndTime) {
-        const toMin = str => {
-          const [h, m] = str.split(':').map(Number);
-          return h * 60 + m;
-        };
-        const start = toMin(prod.saleStartTime);
-        const end   = toMin(prod.saleEndTime);
-        let ok;
-        if (start <= end) {
-          ok = nowMin >= start && nowMin <= end;
-        } else {
-          ok = nowMin >= start || nowMin <= end;
-        }
-        if (!ok) {
-          return res.status(400).json({
-            message: `Sản phẩm "${prod.name}" chỉ bán từ ${prod.saleStartTime} đến ${prod.saleEndTime}`
-          });
-        }
-      }
-
-      // Kiểm tra kho
-      if (prod.countInStock < item.quantity) {
-        return res.status(400).json({ message: `Sản phẩm "${prod.name}" không đủ hàng trong kho` });
-      }
-      prod.countInStock -= item.quantity;
-      await prod.save();
+      itemProcessing.push(processOrderItem(item));
     }
+    
+    await Promise.all(itemProcessing);
 
     // 3. Tạo & lưu đơn
     const order = new Order({
@@ -84,33 +111,35 @@ exports.createOrder = async (req, res) => {
       status: 'Chờ xác nhận',
       user: req.user._id
     });
-    const saved = await order.save();
+    
+    const savedOrder = await order.save();
 
     // 4. Gán shipper gần nhất (không block request)
-    console.log(`🟢 Bắt đầu gán shipper cho đơn ${saved._id}`);
-    assignOrderToNearestShipper(saved._id)
+    console.log(`🟢 Bắt đầu gán shipper cho đơn ${savedOrder._id}`);
+    assignOrderToNearestShipper(savedOrder._id)
       .catch(err => console.error('[assignOrder] error:', err));
 
     // 5. Gửi notification cho admin
-    const admins = await User.find({
-      role: 'admin',
-      fcmToken: { $exists: true, $ne: null }
-    });
-    for (const a of admins) {
-      sendPushNotification(a.fcmToken, {
-        title: '🛒 Đơn hàng mới',
-        body: `#${saved._id.slice(-6)} từ ${req.user.name || 'khách'}: ${total.toLocaleString()}đ`,
-        data: { orderId: saved._id }
-      }).catch(e => console.error('[notify admin] error:', e));
-    }
+    const userName = req.user?.name;
+    notifyAdmins(savedOrder, total, userName);
 
     return res.status(201).json({
       message: 'Đơn hàng đã được tạo thành công',
-      order: saved
+      order: savedOrder
     });
   } catch (err) {
     console.error('[createOrder] error:', err);
-    return res.status(500).json({ message: 'Lỗi server khi tạo đơn hàng', error: err.message });
+    
+    // Xác định mã lỗi phù hợp
+    const statusCode = err.message.includes('không tồn tại') || 
+                      err.message.includes('không đủ hàng') ||
+                      err.message.includes('chỉ bán từ') 
+                      ? 400 : 500;
+
+    return res.status(statusCode).json({ 
+      message: err.message || 'Lỗi server khi tạo đơn hàng',
+      error: err.message 
+    });
   }
 };
 
