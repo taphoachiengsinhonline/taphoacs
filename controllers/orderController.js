@@ -290,6 +290,7 @@ exports.updateOrderStatus = async (req, res) => {
  * Hủy đơn (user hoặc admin)
  */
 exports.cancelOrder = async (req, res) => {
+  order.timestamps.canceledAt = new Date(Date.now() + 7*60*60*1000);
   try {
     const query = req.user.isAdmin
       ? { _id: req.params.id }
