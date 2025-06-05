@@ -83,7 +83,20 @@ const orderSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null
+  },
+
+
+  timestamps: {
+    createdAt: { type: Date, default: () => new Date(Date.now() + 7*60*60*1000) }, // GMT+7
+    acceptedAt: Date,     // Thời điểm shipper nhận đơn
+    processingAt: Date,   // Thời điểm bắt đầu xử lý
+    deliveringAt: Date,   // Thời điểm bắt đầu giao hàng
+    deliveredAt: Date,    // Thời điểm giao thành công
+    canceledAt: Date,     // Thời điểm hủy
   }
+
+
+  
 }, {
   versionKey: false,
   timestamps: true
