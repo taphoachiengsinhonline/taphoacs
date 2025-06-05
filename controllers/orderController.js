@@ -125,7 +125,10 @@ exports.createOrder = async (req, res) => {
 
     return res.status(201).json({
       message: 'Đơn hàng đã được tạo thành công',
-      order: savedOrder
+      order: {
+        ...savedOrder.toObject(),
+        timestamps: savedOrder.timestamps
+      }
     });
   } catch (err) {
     console.error('[createOrder] error:', err);
@@ -152,7 +155,12 @@ exports.getMyOrders = async (req, res) => {
     const query = { user: req.user._id };
     if (status) query.status = status;
     const orders = await Order.find(query).sort({ createdAt: -1 });
-    return res.status(200).json(orders);
+    return res.status(200).json(
+      orders.map(o => ({
+        ...o.toObject(),
+        timestamps: o.timestamps
+      }))
+    );
   } catch (err) {
     console.error('[getMyOrders] error:', err);
     return res.status(500).json({ message: 'Lỗi server khi lấy đơn hàng của bạn' });
@@ -206,7 +214,10 @@ exports.getOrderById = async (req, res) => {
                                         req.user?.role === 'shipper';
 
     if (isAdmin || isCustomer || isAssignedShipper || isShipperViewingPendingOrder) {
-      return res.json(order);
+      return res.json({
+        ...order.toObject(),
+        timestamps: order.timestamps
+      });
     }
 
     return res.status(403).json({ message: 'Bạn không có quyền xem đơn hàng này' });
@@ -229,7 +240,12 @@ exports.getAllOrders = async (req, res) => {
     const orders = await Order.find(query)
       .populate('user', 'name email')
       .sort({ createdAt: -1 });
-    return res.json(orders);
+    return res.json(
+      orders.map(o => ({
+        ...o.toObject(),
+        timestamps: o.timestamps
+      }))
+    );
   } catch (err) {
     console.error('[getAllOrders] error:', err);
     return res.status(500).json({ message: 'Lỗi server khi lấy danh sách đơn hàng', error: err.message });
@@ -270,7 +286,13 @@ exports.updateOrderStatus = async (req, res) => {
 
     
     const updated = await order.save();
-    return res.json({ message: 'Cập nhật trạng thái thành công', order: updated });
+    return res.json({ 
+      message: 'Cập nhật trạng thái thành công', 
+      order: {
+        ...updated.toObject(),
+        timestamps: updated.timestamps
+      }
+    });
   } catch (err) {
     console.error('[updateOrderStatus] error:', err);
     if (err.name === 'ValidationError') {
@@ -290,7 +312,6 @@ exports.updateOrderStatus = async (req, res) => {
  * Hủy đơn (user hoặc admin)
  */
 exports.cancelOrder = async (req, res) => {
-  order.timestamps.canceledAt = new Date(Date.now() + 7*60*60*1000);
   try {
     const query = req.user.isAdmin
       ? { _id: req.params.id }
@@ -303,8 +324,15 @@ exports.cancelOrder = async (req, res) => {
       return res.status(400).json({ message: 'Chỉ có thể hủy đơn ở trạng thái "Chờ xác nhận"' });
     }
     order.status = 'Đã hủy';
+    order.timestamps.canceledAt = new Date(Date.now() + 7*60*60*1000);
     const updated = await order.save();
-    return res.json({ message: 'Hủy đơn hàng thành công', order: updated });
+    return res.json({ 
+      message: 'Hủy đơn hàng thành công', 
+      order: {
+        ...updated.toObject(),
+        timestamps: updated.timestamps
+      }
+    });
   } catch (err) {
     console.error('[cancelOrder] error:', err);
     if (err.name === 'CastError') {
@@ -313,10 +341,3 @@ exports.cancelOrder = async (req, res) => {
     return res.status(500).json({ message: 'Lỗi server khi hủy đơn hàng', error: err.message });
   }
 };
-
-res.json({
-  ...order.toObject(),
-  timestamps: order.timestamps
-});
-
-
