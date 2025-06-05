@@ -240,12 +240,16 @@ router.get('/revenue', verifyToken, async (req, res) => {
   try {
     const now = new Date();
     let startDate;
+    
     switch (period) {
       case 'daily':
-        startDate = new Date(now.setHours(0, 0, 0, 0));
+        startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
         break;
       case 'weekly':
-        startDate = new Date(now.setDate(now.getDate() - now.getDay()));
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - startDate.getDay()); // Đầu tuần (Chủ nhật)
+        startDate.setHours(0, 0, 0, 0);
         break;
       case 'monthly':
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -268,6 +272,7 @@ router.get('/revenue', verifyToken, async (req, res) => {
 
     res.json({ totalRevenue, completedOrders });
   } catch (error) {
+    console.error('Lỗi báo cáo doanh thu:', error);
     res.status(500).json({ message: 'Lỗi server: ' + error.message });
   }
 });
