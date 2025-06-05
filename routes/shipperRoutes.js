@@ -218,5 +218,59 @@ router.post('/orders/:id/accept', verifyToken, async (req, res) => {
   }
 });
 
+// Đổi mật khẩu
+router.post('/change-password', verifyToken, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  try {
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user || !(await bcrypt.compare(currentPassword, user.password))) {
+      return res.status(401).json({ message: 'Mật khẩu hiện tại không đúng' });
+    }
+    user.password = newPassword;
+    await user.save();
+    res.json({ message: 'Đổi mật khẩu thành công' });
+  } catch (error) {
+    res.status(500).json({ message: 'Lỗi server: ' + error.message });
+  }
+});
+
+// Báo cáo doanh thu
+router.get('/revenue', verifyToken, async (req, res) => {
+  const { period } = req.query; // daily, weekly, monthly, yearly
+  try {
+    const now = new Date();
+    let startDate;
+    switch (period) {
+      case 'daily':
+        startDate = new Date(now.setHours(0, 0, 0, 0));
+        break;
+      case 'weekly':
+        startDate = new Date(now.setDate(now.getDate() - now.getDay()));
+        break;
+      case 'monthly':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case 'yearly':
+        startDate = new Date(now.getFullYear(), 0, 1);
+        break;
+      default:
+        return res.status(400).json({ message: 'Thời gian không hợp lệ' });
+    }
+
+    const orders = await Order.find({
+      shipper: req.user._id,
+      status: 'Đã giao',
+      createdAt: { $gte: startDate },
+    });
+
+    const totalRevenue = orders.reduce((sum, order) => sum + (order.total || 0), 0);
+    const completedOrders = orders.length;
+
+    res.json({ totalRevenue, completedOrders });
+  } catch (error) {
+    res.status(500).json({ message: 'Lỗi server: ' + error.message });
+  }
+});
+
 
 module.exports = router;
