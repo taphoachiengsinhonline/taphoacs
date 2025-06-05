@@ -313,3 +313,10 @@ exports.cancelOrder = async (req, res) => {
     return res.status(500).json({ message: 'Lỗi server khi hủy đơn hàng', error: err.message });
   }
 };
+
+res.json({
+  ...order.toObject(),
+  timestamps: order.timestamps
+});
+
+
