@@ -99,7 +99,7 @@ const orderSchema = new mongoose.Schema({
   
 }, {
   versionKey: false,
-  timestamps: true
+  //timestamps: true
 });
 
 // Validate tổng tiền
