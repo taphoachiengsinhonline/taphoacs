@@ -1,7 +1,23 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+
+const rateLimit = require('express-rate-limit');
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 phút
+  max: 20, // Giới hạn 20 requests
+  message: 'Quá nhiều yêu cầu, vui lòng thử lại sau 15 phút'
+});
+
+
+
+
 exports.verifyToken = async (req, res, next) => {
+   const token = extractToken(req);
+  if (await isTokenRevoked(token)) {
+    return res.status(401).json({ message: 'Token đã bị thu hồi' });
+  }
+  
   try {
     let token = req.headers['authorization'] || req.headers['x-access-token'];
     if (token && token.startsWith('Bearer ')) {
@@ -51,5 +67,14 @@ exports.isAdmin = (req, res, next) => {
   if (req.user?.role !== 'admin') {
     return res.status(403).json({ message: 'Truy cập bị từ chối' });
   }
+  next();
+};
+
+exports.securityHeaders = (req, res, next) => {
+  res.set({
+    'Content-Security-Policy': "default-src 'self'",
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY'
+  });
   next();
 };
