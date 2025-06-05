@@ -250,6 +250,25 @@ exports.updateOrderStatus = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
     }
     order.status = status;
+
+
+    const now = new Date(Date.now() + 7*60*60*1000); // GMT+7
+    switch(status) {
+      case 'Đang xử lý':
+        order.timestamps.acceptedAt = now;
+        break;
+      case 'Đang giao':
+        order.timestamps.deliveringAt = now;
+        break;
+      case 'Đã giao':
+        order.timestamps.deliveredAt = now;
+        break;
+      case 'Đã hủy':
+        order.timestamps.canceledAt = now;
+        break;
+    }
+
+    
     const updated = await order.save();
     return res.json({ message: 'Cập nhật trạng thái thành công', order: updated });
   } catch (err) {
