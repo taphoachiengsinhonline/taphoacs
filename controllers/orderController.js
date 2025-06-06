@@ -207,7 +207,13 @@ exports.countOrdersByStatus = async (req, res) => {
       return acc;
     }, { pending: 0, confirmed: 0, shipped: 0, delivered: 0, canceled: 0 });
 
-    res.json(formatted);
+    res.json({
+      'Chờ xác nhận': formatted['Chờ xác nhận'] || 0,
+      'Đang xử lý': formatted['Đang xử lý'] || 0,
+      'Đang giao': formatted['Đang giao'] || 0,
+      'Đã giao': formatted['Đã giao'] || 0,
+      'Đã hủy': formatted['Đã hủy'] || 0
+    });
   } catch (err) {
     console.error('[countOrdersByStatus] error:', err);
     res.status(500).json({ message: 'Lỗi server' });
