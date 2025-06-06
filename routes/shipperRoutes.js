@@ -8,7 +8,7 @@ const User = require('../models/User');
 const bcrypt = require('bcrypt');
 const { sendPushNotificationToCustomer } = require('../utils/sendPushNotification');
 // Route POST để tạo shipper mới
-router.get('/order-counts', verifyToken, shipperController.getOrderCounts);
+
 router.post('/', verifyToken, isAdmin, async (req, res) => {
   try {
     const { email, password, name, phone, vehicleType, licensePlate } = req.body;
@@ -316,5 +316,6 @@ router.get('/revenue', verifyToken, async (req, res) => {
     return res.status(500).json({ message: 'Lỗi server: ' + error.message });
   }
 });
+router.get('/order-counts', verifyToken, shipperController.getOrderCounts);
 
 module.exports = router;
