@@ -1,27 +1,44 @@
 // routes/NotificationRoutes.js
+// routes/NotificationRoutes.js
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const { verifyToken } = require('../middlewares/authMiddleware'); // Thêm middleware
 
 // ✅ API lưu fcmToken
-router.post('/save-push-token', async (req, res) => {
-  const userId = req.headers['x-user-id'];
+router.post('/save-push-token', verifyToken, async (req, res) => { // Thêm middleware
   const { token } = req.body;
 
-  if (!userId || !token) {
-    return res.status(400).json({ message: 'Thiếu userId hoặc token' });
+  if (!token) {
+    return res.status(400).json({ 
+      success: false,
+      message: 'Thiếu FCM token' 
+    });
   }
 
   try {
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: 'Không tìm thấy user' });
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Người dùng không tồn tại' 
+      });
+    }
 
     user.fcmToken = token;
     await user.save();
 
-    res.json({ message: 'Lưu token thành công' });
+    res.json({ 
+      success: true,
+      message: 'Lưu FCM token thành công' 
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Lỗi server', error: err.message });
+    console.error('[savePushToken] error:', err);
+    res.status(500).json({ 
+      success: false,
+      message: 'Lỗi server',
+      error: err.message 
+    });
   }
 });
 
