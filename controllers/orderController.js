@@ -101,7 +101,7 @@ exports.createOrder = async (req, res) => {
     });
 
     const savedOrder = await order.save();
-
+    console.log('New order created with createdAt:', savedOrder.timestamps.createdAt);
     console.log(`🟢 Bắt đầu gán shipper cho đơn ${savedOrder._id}`);
     assignOrderToNearestShipper(savedOrder._id)
       .catch(err => console.error('[assignOrder] error:', err));
