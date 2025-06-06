@@ -78,7 +78,10 @@ exports.createOrder = async (req, res) => {
 
     return res.status(201).json({
       message: 'Tạo đơn thành công',
-      order: { ...savedOrder.toObject(), timestamps: savedOrder.timestamps }
+      order: { 
+    ...savedOrder.toObject(), 
+    timestamps: savedOrder.timestamps
+  }
     });
   } catch (err) {
     const statusCode = err.message.includes('không tồn tại') || err.message.includes('không đủ hàng') || err.message.includes('chỉ bán từ') ? 400 : 500;
