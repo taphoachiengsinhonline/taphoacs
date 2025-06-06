@@ -196,27 +196,21 @@ exports.getMyOrders = async (req, res) => {
 
 exports.countOrdersByStatus = async (req, res) => {
   try {
-    const counts = await Order.aggregate([
-      { $match: { user: req.user._id } },
-      { $group: { _id: "$status", count: { $sum: 1 } } },
-      { $project: { _id: 0, status: "$_id", count: 1 } }
-    ]);
-
-    const formatted = counts.reduce((acc, cur) => {
-      acc[cur.status.replace(/ /g, '').toLowerCase()] = cur.count;
+    const all = await Order.find({ user: req.user._id });
+    const counts = all.reduce((acc, o) => {
+      switch (o.status) {
+        case 'Chờ xác nhận': acc.pending++; break;
+        case 'Đang xử lý':    acc.confirmed++; break;
+        case 'Đang giao':     acc.shipped++; break;
+        case 'Đã giao':       acc.delivered++; break;
+        case 'Đã hủy':        acc.canceled++; break;
+      }
       return acc;
-    }, { pending: 0, confirmed: 0, shipped: 0, delivered: 0, canceled: 0 });
-
-    res.json({
-      'Chờ xác nhận': formatted['Chờ xác nhận'] || 0,
-      'Đang xử lý': formatted['Đang xử lý'] || 0,
-      'Đang giao': formatted['Đang giao'] || 0,
-      'Đã giao': formatted['Đã giao'] || 0,
-      'Đã hủy': formatted['Đã hủy'] || 0
-    });
+    }, { pending:0, confirmed:0, shipped:0, delivered:0, canceled:0 });
+    return res.status(200).json(counts);
   } catch (err) {
     console.error('[countOrdersByStatus] error:', err);
-    res.status(500).json({ message: 'Lỗi server' });
+    return res.status(500).json({ message: 'Lỗi server khi đếm đơn hàng theo trạng thái' });
   }
 };
 
