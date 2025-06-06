@@ -179,7 +179,7 @@ exports.countOrdersByStatus = async (req, res) => {
         case 'Đang xử lý':    acc.confirmed++; break;
         case 'Đang giao':     acc.shipped++; break;
         case 'Đã giao':       acc.delivered++; break;
-        case 'Đã huỷ':        acc.canceled++; break;
+        case 'Đã hủy':        acc.canceled++; break;
       }
       return acc;
     }, { pending:0, confirmed:0, shipped:0, delivered:0, canceled:0 });
