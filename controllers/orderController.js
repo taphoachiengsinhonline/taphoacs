@@ -326,17 +326,78 @@ exports.acceptOrder = async (req, res) => {
     if (order.status !== 'Chờ xác nhận') {
       return res.status(400).json({ message: 'Đơn hàng không thể nhận' });
     }
+    
+    // Sửa: Cập nhật thời gian GMT+7 cho tất cả trường hợp
+    const now = new Date(Date.now() + 7*60*60*1000);
+    
     order.status = 'Đang xử lý';
-    order.shipper = req.user._id; // Giả sử req.user chứa shipper ID
+    order.shipper = req.user._id;
+    
+    // Đảm bảo timestamps tồn tại
     order.timestamps = order.timestamps || {};
-    order.timestamps.acceptedAt = new Date();
+    order.timestamps.acceptedAt = now;
+    
     await order.save();
-    res.json({ order });
+    
+    res.json({ 
+      message: 'Nhận đơn thành công',
+      order: {
+        ...order.toObject(),
+        timestamps: order.timestamps
+      }
+    });
   } catch (error) {
     console.error('Lỗi nhận đơn:', error);
     res.status(500).json({ message: 'Lỗi server' });
   }
 };
 
+// Thêm hàm cập nhật trạng thái cho shipper
+exports.updateOrderStatusByShipper = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const order = await Order.findById(req.params.id);
+    
+    if (!order) {
+      return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
+    }
+    
+    // Kiểm tra quyền: chỉ shipper được giao đơn mới được cập nhật
+    if (order.shipper.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Bạn không có quyền cập nhật đơn này' });
+    }
+    
+    const now = new Date(Date.now() + 7*60*60*1000);
+    order.status = status;
+    
+    // Cập nhật timestamps tương ứng
+    order.timestamps = order.timestamps || {};
+    
+    switch(status) {
+      case 'Đang giao':
+        order.timestamps.deliveringAt = now;
+        break;
+      case 'Đã giao':
+        order.timestamps.deliveredAt = now;
+        break;
+      case 'Đã hủy':
+        order.timestamps.canceledAt = now;
+        break;
+    }
+    
+    await order.save();
+    
+    res.json({ 
+      message: 'Cập nhật trạng thái thành công',
+      order: {
+        ...order.toObject(),
+        timestamps: order.timestamps
+      }
+    });
+  } catch (error) {
+    console.error('Lỗi cập nhật trạng thái:', error);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
+};
 
 
