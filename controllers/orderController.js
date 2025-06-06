@@ -175,11 +175,11 @@ exports.countOrdersByStatus = async (req, res) => {
     const all = await Order.find({ user: req.user._id });
     const counts = all.reduce((acc, o) => {
       switch (o.status) {
-        case 'Chờ xác nhận': acc.pending++; break;
-        case 'Đang xử lý':    acc.confirmed++; break;
-        case 'Đang giao':     acc.shipped++; break;
-        case 'Đã giao':       acc.delivered++; break;
-        case 'Đã hủy':        acc.canceled++; break;
+        case 'pending': acc.pending++; break;
+        case 'confrimed':    acc.confirmed++; break;
+        case 'shipped':     acc.shipped++; break;
+        case 'delivered':       acc.delivered++; break;
+        case 'canceled':        acc.canceled++; break;
       }
       return acc;
     }, { pending:0, confirmed:0, shipped:0, delivered:0, canceled:0 });
