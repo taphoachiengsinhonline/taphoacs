@@ -85,7 +85,7 @@ const orderSchema = new mongoose.Schema({
     default: null
   },
   timestamps: {
-    createdAt: { type: Date, default: () => new Date(Date.now() + 0) }, // GMT+7
+    createdAt: Date,
     acceptedAt: Date,     // Thời điểm shipper nhận đơn
     processingAt: Date,   // Thời điểm bắt đầu xử lý
     deliveringAt: Date,   // Thời điểm bắt đầu giao hàng
