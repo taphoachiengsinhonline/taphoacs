@@ -315,3 +315,28 @@ exports.cancelOrder = async (req, res) => {
     return res.status(500).json({ message: 'Lỗi server khi hủy đơn hàng', error: err.message });
   }
 };
+
+
+exports.acceptOrder = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
+    }
+    if (order.status !== 'Chờ xác nhận') {
+      return res.status(400).json({ message: 'Đơn hàng không thể nhận' });
+    }
+    order.status = 'Đang xử lý';
+    order.shipper = req.user._id; // Giả sử req.user chứa shipper ID
+    order.timestamps = order.timestamps || {};
+    order.timestamps.acceptedAt = new Date();
+    await order.save();
+    res.json({ order });
+  } catch (error) {
+    console.error('Lỗi nhận đơn:', error);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
+};
+
+
+
