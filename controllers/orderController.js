@@ -4,6 +4,7 @@ const User = require('../models/User');
 const sendPushNotification = require('../utils/sendPushNotification');
 const assignOrderToNearestShipper = require('../utils/assignOrderToNearestShipper');
 
+// ========== Hệ thống chung ==========
 const validateSaleTime = (product, nowMin) => {
   const toMin = str => {
     const [h, m] = str.split(':').map(Number);
@@ -13,25 +14,20 @@ const validateSaleTime = (product, nowMin) => {
   const start = toMin(product.saleStartTime);
   const end = toMin(product.saleEndTime);
 
-  if (start <= end) {
-    return nowMin >= start && nowMin <= end;
-  }
-  return nowMin >= start || nowMin <= end;
+  return start <= end 
+    ? nowMin >= start && nowMin <= end
+    : nowMin >= start || nowMin <= end;
 };
 
 const processOrderItem = async (item) => {
   const prod = await Product.findById(item.productId);
-  if (!prod) {
-    throw new Error(`Sản phẩm "${item.name}" không tồn tại`);
-  }
+  if (!prod) throw new Error(`Sản phẩm "${item.name}" không tồn tại`);
 
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
 
-  if (prod.saleStartTime && prod.saleEndTime) {
-    if (!validateSaleTime(prod, nowMin)) {
-      throw new Error(`Sản phẩm "${prod.name}" chỉ bán từ ${prod.saleStartTime} đến ${prod.saleEndTime}`);
-    }
+  if (prod.saleStartTime && prod.saleEndTime && !validateSaleTime(prod, nowMin)) {
+    throw new Error(`Sản phẩm "${prod.name}" chỉ bán từ ${prod.saleStartTime} đến ${prod.saleEndTime}`);
   }
 
   if (prod.countInStock < item.quantity) {
@@ -44,49 +40,25 @@ const processOrderItem = async (item) => {
 };
 
 const notifyAdmins = async (order, total, userName) => {
-  const admins = await User.find({
-    role: 'admin',
-    fcmToken: { $exists: true, $ne: null }
-  });
-
+  const admins = await User.find({ role: 'admin', fcmToken: { $exists: true } });
   for (const admin of admins) {
-    try {
-      await sendPushNotification(admin.fcmToken, {
-        title: '🛒 Đơn hàng mới',
-        body: `#${order._id.toString().slice(-6)} từ ${userName || 'khách'}: ${total.toLocaleString()}đ`,
-        data: { orderId: order._id }
-      });
-    } catch (e) {
-      console.error(`[notify admin] error for admin ${admin._id}:`, e);
-    }
+    await sendPushNotification(admin.fcmToken, {
+      title: '🛒 Đơn hàng mới',
+      body: `#${order._id.toString().slice(-6)} từ ${userName || 'khách'}: ${total.toLocaleString()}đ`,
+      data: { orderId: order._id }
+    }).catch(e => console.error(`[notify admin] error for admin ${admin._id}:`, e));
   }
 };
 
+// ========== Tạo và quản lý đơn hàng ==========
 exports.createOrder = async (req, res) => {
   try {
-    const {
-      items,
-      total,
-      phone,
-      shippingAddress,
-      shippingLocation,
-      customerName,
-      paymentMethod
-    } = req.body;
+    const { items, total, phone, shippingAddress, shippingLocation, customerName, paymentMethod } = req.body;
 
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ message: 'Giỏ hàng không được để trống' });
-    }
-    if (!phone || !shippingAddress || !shippingLocation) {
-      return res.status(400).json({ message: 'Thiếu số điện thoại, địa chỉ hoặc tọa độ giao hàng' });
-    }
+    if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: 'Giỏ hàng không được để trống' });
+    if (!phone || !shippingAddress || !shippingLocation) return res.status(400).json({ message: 'Thiếu thông tin bắt buộc' });
 
-    const itemProcessing = [];
-    for (const item of items) {
-      itemProcessing.push(processOrderItem(item));
-    }
-
-    await Promise.all(itemProcessing);
+    await Promise.all(items.map(processOrderItem));
 
     const order = new Order({
       items,
@@ -101,77 +73,144 @@ exports.createOrder = async (req, res) => {
     });
 
     const savedOrder = await order.save();
-    console.log('New order created with createdAt:', savedOrder.timestamps.createdAt);
-    console.log(`🟢 Bắt đầu gán shipper cho đơn ${savedOrder._id}`);
-    assignOrderToNearestShipper(savedOrder._id)
-      .catch(err => console.error('[assignOrder] error:', err));
-
-    const userName = req.user?.name;
-    notifyAdmins(savedOrder, total, userName);
+    assignOrderToNearestShipper(savedOrder._id).catch(console.error);
+    notifyAdmins(savedOrder, total, req.user?.name);
 
     return res.status(201).json({
-      message: 'Đơn hàng đã được tạo thành công',
-      order: {
-        ...savedOrder.toObject(),
-        timestamps: savedOrder.timestamps
-      }
+      message: 'Tạo đơn thành công',
+      order: { ...savedOrder.toObject(), timestamps: savedOrder.timestamps }
     });
   } catch (err) {
-    console.error('[createOrder] error:', err);
-    const statusCode = err.message.includes('không tồn tại') || 
-                      err.message.includes('không đủ hàng') ||
-                      err.message.includes('chỉ bán từ') 
-                      ? 400 : 500;
-
-    return res.status(statusCode).json({ 
-      message: err.message || 'Lỗi server khi tạo đơn hàng',
-      error: err.message 
-    });
+    const statusCode = err.message.includes('không tồn tại') || err.message.includes('không đủ hàng') || err.message.includes('chỉ bán từ') ? 400 : 500;
+    return res.status(statusCode).json({ message: err.message || 'Lỗi server' });
   }
 };
 
-exports.getMyOrders = async (req, res) => {
+// ========== Shipper ==========
+exports.acceptOrder = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
+    if (order.status !== 'Chờ xác nhận') return res.status(400).json({ message: 'Đơn không khả dụng' });
+
+    order.status = 'Đang xử lý';
+    order.shipper = req.user._id;
+    order.timestamps.acceptedAt = new Date();
+    
+    const updated = await order.save();
+    res.json({ 
+      message: 'Nhận đơn thành công',
+      order: { ...updated.toObject(), timestamps: updated.timestamps }
+    });
+  } catch (error) {
+    console.error('Lỗi nhận đơn:', error);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
+};
+
+exports.updateOrderStatusByShipper = async (req, res) => {
+  try {
+    const { status, cancelReason } = req.body;
+    const order = await Order.findById(req.params.id);
+    
+    if (!order) return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
+    if (order.shipper.toString() !== req.user._id.toString()) return res.status(403).json({ message: 'Không có quyền thao tác' });
+
+    const validTransitions = {
+      'Đang xử lý': ['Đang giao', 'Đã hủy'],
+      'Đang giao': ['Đã giao', 'Đã hủy']
+    };
+
+    if (!validTransitions[order.status]?.includes(status)) {
+      return res.status(400).json({ message: 'Chuyển trạng thái không hợp lệ' });
+    }
+
+    order.status = status;
+    const now = new Date();
+
+    switch(status) {
+      case 'Đang giao': order.timestamps.deliveringAt = now; break;
+      case 'Đã giao': order.timestamps.deliveredAt = now; break;
+      case 'Đã hủy': 
+        order.timestamps.canceledAt = now;
+        order.cancelReason = cancelReason || 'Không có lý do';
+        break;
+    }
+
+    const updated = await order.save();
+    res.json({ 
+      message: 'Cập nhật trạng thái thành công',
+      order: { ...updated.toObject(), timestamps: updated.timestamps }
+    });
+  } catch (error) {
+    console.error('Lỗi cập nhật:', error);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
+};
+
+exports.getShipperOrders = async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
-    const query = { user: req.user._id };
-    if (status) query.status = status;
     const options = {
       page: parseInt(page),
       limit: parseInt(limit),
       sort: { createdAt: -1 }
     };
-    const orders = await Order.paginate(query, options);
-    return res.status(200).json({
-      docs: orders.docs.map(o => ({
-        ...o.toObject(),
-        timestamps: o.timestamps
-      })),
-      totalPages: orders.totalPages,
-      page: orders.page
+
+    const result = await Order.paginate(
+      { shipper: req.user._id, ...(status && { status }) },
+      options
+    );
+
+    res.json({
+      orders: result.docs.map(doc => ({ ...doc.toObject(), timestamps: doc.timestamps })),
+      totalPages: result.totalPages,
+      currentPage: result.page,
+      totalOrders: result.totalDocs
+    });
+  } catch (error) {
+    console.error('Lỗi lấy đơn shipper:', error);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
+};
+
+// ========== Hệ thống chung ==========
+exports.getMyOrders = async (req, res) => {
+  try {
+    const { status, page = 1, limit = 10 } = req.query;
+    const result = await Order.paginate(
+      { user: req.user._id, ...(status && { status }) },
+      { page, limit, sort: { createdAt: -1 } }
+    );
+
+    res.json({
+      docs: result.docs.map(doc => ({ ...doc.toObject(), timestamps: doc.timestamps })),
+      totalPages: result.totalPages,
+      page: result.page
     });
   } catch (err) {
     console.error('[getMyOrders] error:', err);
-    return res.status(500).json({ message: 'Lỗi server khi lấy đơn hàng của bạn' });
+    res.status(500).json({ message: 'Lỗi server' });
   }
 };
 
 exports.countOrdersByStatus = async (req, res) => {
   try {
-    const all = await Order.find({ user: req.user._id });
-    const counts = all.reduce((acc, o) => {
-      switch (o.status) {
-        case 'Chờ xác nhận': acc.pending++; break;
-        case 'Đang xử lý': acc.confirmed++; break;
-        case 'Đang giao': acc.shipped++; break;
-        case 'Đã giao': acc.delivered++; break;
-        case 'Đã hủy': acc.canceled++; break;
-      }
+    const counts = await Order.aggregate([
+      { $match: { user: req.user._id } },
+      { $group: { _id: "$status", count: { $sum: 1 } } },
+      { $project: { _id: 0, status: "$_id", count: 1 } }
+    ]);
+
+    const formatted = counts.reduce((acc, cur) => {
+      acc[cur.status.replace(/ /g, '').toLowerCase()] = cur.count;
       return acc;
-    }, { pending:0, confirmed:0, shipped:0, delivered:0, canceled:0 });
-    return res.status(200).json(counts);
+    }, { pending: 0, confirmed: 0, shipped: 0, delivered: 0, canceled: 0 });
+
+    res.json(formatted);
   } catch (err) {
     console.error('[countOrdersByStatus] error:', err);
-    return res.status(500).json({ message: 'Lỗi server khi đếm đơn hàng theo trạng thái' });
+    res.status(500).json({ message: 'Lỗi server' });
   }
 };
 
@@ -181,223 +220,92 @@ exports.getOrderById = async (req, res) => {
       .populate('user', 'name phone')
       .populate('shipper', 'name phone');
 
-    if (!order) {
-      return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
-    }
+    if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
 
-    const isAdmin = req.user?.isAdmin;
-    const isCustomer = order.user?._id.toString() === req.user?._id?.toString();
-    const isAssignedShipper = order.shipper?._id.toString() === req.user?._id?.toString();
-    const isShipperViewingPendingOrder = req.query.shipperView === 'true' &&
-      order.status === 'Chờ xác nhận' &&
-      req.user?.role === 'shipper';
+    const canView = [
+      req.user.isAdmin,
+      order.user?._id.equals(req.user._id),
+      order.shipper?._id.equals(req.user._id),
+      req.query.shipperView === 'true' && order.status === 'Chờ xác nhận' && req.user.role === 'shipper'
+    ].some(Boolean);
 
-    if (isAdmin || isCustomer || isAssignedShipper || isShipperViewingPendingOrder) {
-      return res.json({
-        ...order.toObject(),
-        timestamps: order.timestamps
-      });
-    }
-
-    return res.status(403).json({ message: 'Bạn không có quyền xem đơn hàng này' });
+    canView 
+      ? res.json({ ...order.toObject(), timestamps: order.timestamps })
+      : res.status(403).json({ message: 'Không có quyền truy cập' });
   } catch (err) {
     console.error('[getOrderById] error:', err);
-    if (err.name === 'CastError') {
-      return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
-    }
-    return res.status(500).json({ message: 'Lỗi server khi lấy chi tiết đơn hàng' });
+    res.status(err.name === 'CastError' ? 400 : 500).json({ message: err.message || 'Lỗi server' });
   }
 };
 
 exports.getAllOrders = async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
-    const query = status ? { status } : {};
-    const options = {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      sort: { createdAt: -1 },
-      populate: 'user'
-    };
-    const orders = await Order.paginate(query, options);
-    return res.json({
-      docs: orders.docs.map(o => ({
-        ...o.toObject(),
-        timestamps: o.timestamps
-      })),
-      totalPages: orders.totalPages,
-      page: orders.page
+    const result = await Order.paginate(
+      { ...(status && { status }) },
+      { page, limit, sort: { createdAt: -1 }, populate: 'user' }
+    );
+
+    res.json({
+      docs: result.docs.map(doc => ({ ...doc.toObject(), timestamps: doc.timestamps })),
+      totalPages: result.totalPages,
+      page: result.page
     });
   } catch (err) {
     console.error('[getAllOrders] error:', err);
-    return res.status(500).json({ message: 'Lỗi server khi lấy danh sách đơn hàng', error: err.message });
+    res.status(500).json({ message: 'Lỗi server' });
   }
 };
 
 exports.updateOrderStatus = async (req, res) => {
   try {
     const { status } = req.body;
-    if (!status) {
-      return res.status(400).json({ message: 'Thiếu trường status' });
-    }
-    const order = await Order.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
-    }
-    order.status = status;
+    if (!status) return res.status(400).json({ message: 'Thiếu trạng thái' });
 
-    const now = new Date(Date.now() + 7*60*60*1000); // GMT+7
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+
+    const now = new Date();
+    order.status = status;
+    
     switch(status) {
-      case 'Đang xử lý':
-        order.timestamps.acceptedAt = now;
-        break;
-      case 'Đang giao':
-        order.timestamps.deliveringAt = now;
-        break;
-      case 'Đã giao':
-        order.timestamps.deliveredAt = now;
-        break;
-      case 'Đã hủy':
-        order.timestamps.canceledAt = now;
-        break;
+      case 'Đang xử lý': order.timestamps.acceptedAt = now; break;
+      case 'Đang giao': order.timestamps.deliveringAt = now; break;
+      case 'Đã giao': order.timestamps.deliveredAt = now; break;
+      case 'Đã hủy': order.timestamps.canceledAt = now; break;
     }
 
     const updated = await order.save();
-    return res.json({
-      message: 'Cập nhật trạng thái thành công',
-      order: {
-        ...updated.toObject(),
-        timestamps: updated.timestamps
-      }
+    res.json({
+      message: 'Cập nhật thành công',
+      order: { ...updated.toObject(), timestamps: updated.timestamps }
     });
   } catch (err) {
     console.error('[updateOrderStatus] error:', err);
-    if (err.name === 'ValidationError') {
-      return res.status(400).json({
-        message: 'Trạng thái không hợp lệ',
-        validStatuses: ['Chờ xác nhận','Đang xử lý','Đang giao','Đã giao','Đã hủy']
-      });
-    }
-    if (err.name === 'CastError') {
-      return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
-    }
-    return res.status(500).json({ message: 'Lỗi server khi cập nhật đơn hàng', error: err.message });
+    res.status(err.name === 'ValidationError' ? 400 : 500).json({ message: err.message || 'Lỗi server' });
   }
 };
 
 exports.cancelOrder = async (req, res) => {
   try {
-    const query = req.user.isAdmin
-      ? { _id: req.params.id }
+    const query = req.user.isAdmin 
+      ? { _id: req.params.id } 
       : { _id: req.params.id, user: req.user._id };
+
     const order = await Order.findOne(query);
-    if (!order) {
-      return res.status(404).json({ message: 'Không tìm thấy đơn hàng hoặc không có quyền' });
-    }
-    if (order.status !== 'Chờ xác nhận') {
-      return res.status(400).json({ message: 'Chỉ có thể hủy đơn ở trạng thái "Chờ xác nhận"' });
-    }
+    if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+    if (order.status !== 'Chờ xác nhận') return res.status(400).json({ message: 'Chỉ hủy được đơn chưa xử lý' });
+
     order.status = 'Đã hủy';
-    order.timestamps.canceledAt = new Date(Date.now() + 7*60*60*1000);
+    order.timestamps.canceledAt = new Date();
     const updated = await order.save();
-    return res.json({
-      message: 'Hủy đơn hàng thành công',
-      order: {
-        ...updated.toObject(),
-        timestamps: updated.timestamps
-      }
+    
+    res.json({
+      message: 'Hủy đơn thành công',
+      order: { ...updated.toObject(), timestamps: updated.timestamps }
     });
   } catch (err) {
     console.error('[cancelOrder] error:', err);
-    if (err.name === 'CastError') {
-      return res.status(400).json({ message: 'ID đơn hàng không hợp lệ' });
-    }
-    return res.status(500).json({ message: 'Lỗi server khi hủy đơn hàng', error: err.message });
+    res.status(err.name === 'CastError' ? 400 : 500).json({ message: err.message || 'Lỗi server' });
   }
 };
-
-
-exports.acceptOrder = async (req, res) => {
-  try {
-    const order = await Order.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
-    }
-    if (order.status !== 'Chờ xác nhận') {
-      return res.status(400).json({ message: 'Đơn hàng không thể nhận' });
-    }
-    
-    // Sửa: Cập nhật thời gian GMT+7 cho tất cả trường hợp
-    const now = new Date(Date.now() + 7*60*60*1000);
-    
-    order.status = 'Đang xử lý';
-    order.shipper = req.user._id;
-    
-    // Đảm bảo timestamps tồn tại
-    order.timestamps = order.timestamps || {};
-    order.timestamps.acceptedAt = now;
-    
-    await order.save();
-    
-    res.json({ 
-      message: 'Nhận đơn thành công',
-      order: {
-        ...order.toObject(),
-        timestamps: order.timestamps
-      }
-    });
-  } catch (error) {
-    console.error('Lỗi nhận đơn:', error);
-    res.status(500).json({ message: 'Lỗi server' });
-  }
-};
-
-// Thêm hàm cập nhật trạng thái cho shipper
-exports.updateOrderStatusByShipper = async (req, res) => {
-  try {
-    const { status } = req.body;
-    const order = await Order.findById(req.params.id);
-    
-    if (!order) {
-      return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
-    }
-    
-    // Kiểm tra quyền: chỉ shipper được giao đơn mới được cập nhật
-    if (order.shipper.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Bạn không có quyền cập nhật đơn này' });
-    }
-    
-    const now = new Date(Date.now() + 7*60*60*1000);
-    order.status = status;
-    
-    // Cập nhật timestamps tương ứng
-    order.timestamps = order.timestamps || {};
-    
-    switch(status) {
-      case 'Đang giao':
-        order.timestamps.deliveringAt = now;
-        break;
-      case 'Đã giao':
-        order.timestamps.deliveredAt = now;
-        break;
-      case 'Đã hủy':
-        order.timestamps.canceledAt = now;
-        break;
-    }
-    
-    await order.save();
-    
-    res.json({ 
-      message: 'Cập nhật trạng thái thành công',
-      order: {
-        ...order.toObject(),
-        timestamps: order.timestamps
-      }
-    });
-  } catch (error) {
-    console.error('Lỗi cập nhật trạng thái:', error);
-    res.status(500).json({ message: 'Lỗi server' });
-  }
-};
-
-
