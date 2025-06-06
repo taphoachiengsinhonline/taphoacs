@@ -16,7 +16,11 @@ router.put('/:id',        verifyToken, isAdminMiddleware, orderController.update
 
 // Hủy đơn (user hoặc admin)
 router.put('/:id/cancel', verifyToken,           orderController.cancelOrder);
+
 router.post('/shippers/orders/:id/accept', verifyToken, orderController.acceptOrder);
 router.put('/shippers/orders/:id/status', verifyToken, orderController.updateOrderStatusByShipper);
+router.get('/shippers/orders', verifyToken, orderController.getShipperOrders);
+
+
 
 module.exports = router;
