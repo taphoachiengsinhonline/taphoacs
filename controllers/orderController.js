@@ -176,7 +176,7 @@ exports.countOrdersByStatus = async (req, res) => {
     const counts = all.reduce((acc, o) => {
       switch (o.status) {
         case 'pending': acc.pending++; break;
-        case 'confrimed':    acc.confirmed++; break;
+        case 'confirmed':    acc.confirmed++; break;
         case 'shipped':     acc.shipped++; break;
         case 'delivered':       acc.delivered++; break;
         case 'canceled':        acc.canceled++; break;
