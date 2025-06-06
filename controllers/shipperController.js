@@ -1,6 +1,3 @@
-// Thêm route mới trong routes/shipperRoutes.js
-router.get('/order-counts', verifyToken, shipperController.getOrderCounts);
-
 // Thêm controller trong controllers/shipperController.js
 exports.getOrderCounts = async (req, res) => {
   try {
