@@ -95,7 +95,7 @@ exports.acceptOrder = async (req, res) => {
 
     order.status = 'Đang xử lý';
     order.shipper = req.user._id;
-    order.timestamps.acceptedAt = new Date();
+    order.timestamps.acceptedAt = now;
     
     const updated = await order.save();
     res.json({ 
