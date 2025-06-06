@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const mongoosePaginate = require('mongoose-paginate-v2');
 
 const orderItemSchema = new mongoose.Schema({
   productId: { 
@@ -57,7 +58,6 @@ const orderSchema = new mongoose.Schema({
     minlength: 10,
     trim: true
   },
-  // ← THÊM TRƯỜNG NÀY
   shippingLocation: {
     type: {
       type: String,
@@ -84,8 +84,6 @@ const orderSchema = new mongoose.Schema({
     ref: 'User',
     default: null
   },
-
-
   timestamps: {
     createdAt: { type: Date, default: () => new Date(Date.now() + 7*60*60*1000) }, // GMT+7
     acceptedAt: Date,     // Thời điểm shipper nhận đơn
@@ -94,13 +92,12 @@ const orderSchema = new mongoose.Schema({
     deliveredAt: Date,    // Thời điểm giao thành công
     canceledAt: Date,     // Thời điểm hủy
   }
-
-
-  
 }, {
   versionKey: false,
-  //timestamps: true
 });
+
+// Tích hợp plugin mongoose-paginate-v2
+orderSchema.plugin(mongoosePaginate);
 
 // Validate tổng tiền
 orderSchema.pre('validate', function(next) {
