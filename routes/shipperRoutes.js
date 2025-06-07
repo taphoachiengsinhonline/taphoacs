@@ -92,20 +92,35 @@ router.post('/update-location', verifyToken, async (req, res) => {
 
 
 // Các route khác giữ nguyên
-// Sửa endpoint /shippers/assigned-orders
 router.get('/assigned-orders', verifyToken, async (req, res) => {
   try {
-    const orders = await Order.find({ 
-      shipper: req.user._id,
-      status: { $in: ['Đang xử lý', 'Đang giao', 'Đã giao', 'Đã huỷ'] } // Thêm trạng thái
-    }).sort('-createdAt');
-    console.log('[Backend] Assigned orders:', orders); // Debug
-    res.json(orders);
+    const { page = 1, limit = 10, status, from, to } = req.query;
+    // Build filter
+    const filter = { shipper: req.user._id };
+    if (status) filter.status = status;
+    if (from && to) {
+      filter.createdAt = { 
+        $gte: new Date(from),
+        $lte: new Date(to)
+      };
+    }
+    // Sử dụng mongoose-paginate-v2
+    const result = await Order.paginate(filter, {
+      page: parseInt(page, 10),
+      limit: parseInt(limit, 10),
+      sort: { createdAt: -1 }
+    });
+    res.json({
+      orders: result.docs.map(d => ({ ...d.toObject(), timestamps: d.timestamps })),
+      totalPages: result.totalPages,
+      currentPage: result.page
+    });
   } catch (error) {
-    console.error('Lỗi server:', error);
+    console.error('[assigned-orders] error:', error);
     res.status(500).json({ message: 'Lỗi server: ' + error.message });
   }
 });
+
 
 router.put('/orders/:id/status', verifyToken, async (req, res) => {
   try {
