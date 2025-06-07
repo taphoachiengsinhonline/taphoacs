@@ -154,7 +154,9 @@ router.get('/stats', verifyToken, async (req, res) => {
       status: 'Đã giao'
     });
     const completedOrdersCount = completedOrdersList.length;
-    const totalRevenue = completedOrdersList.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+    const totalRevenue = completedOrdersList.reduce(
+  (sum, order) => sum + (order.total || 0), 0
+);
 
     console.log('[Backend] Stats:', { totalOrders, completedOrdersCount, totalRevenue }); // Debug
     res.json({
