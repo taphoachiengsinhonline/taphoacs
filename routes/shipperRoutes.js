@@ -92,34 +92,36 @@ router.post('/update-location', verifyToken, async (req, res) => {
 
 
 // Các route khác giữ nguyên
+// GET danh sách đơn đã gán, phân trang, filter status & khoảng thời gian
 router.get('/assigned-orders', verifyToken, async (req, res) => {
   try {
     const { page = 1, limit = 10, status, from, to } = req.query;
-    // Build filter
     const filter = { shipper: req.user._id };
     if (status) filter.status = status;
     if (from && to) {
-      filter.createdAt = { 
+      filter.createdAt = {
         $gte: new Date(from),
         $lte: new Date(to)
       };
     }
-    // Sử dụng mongoose-paginate-v2
+
     const result = await Order.paginate(filter, {
-      page: parseInt(page, 10),
+      page:  parseInt(page, 10),
       limit: parseInt(limit, 10),
-      sort: { createdAt: -1 }
+      sort:  { createdAt: -1 }
     });
-    res.json({
+
+    return res.json({
       orders: result.docs.map(d => ({ ...d.toObject(), timestamps: d.timestamps })),
       totalPages: result.totalPages,
       currentPage: result.page
     });
   } catch (error) {
     console.error('[assigned-orders] error:', error);
-    res.status(500).json({ message: 'Lỗi server: ' + error.message });
+    return res.status(500).json({ message: 'Lỗi server khi lấy đơn hàng đã gán' });
   }
 });
+
 
 
 router.put('/orders/:id/status', verifyToken, async (req, res) => {
