@@ -272,72 +272,37 @@ router.get('/revenue', verifyToken, async (req, res) => {
     const { startDate, endDate } = req.query;
     const now = new Date();
 
+    // Sử dụng moment-timezone để xử lý múi giờ VN
+    const moment = require('moment-timezone');
+    
     let fromDate, toDate;
 
-    if (startDate || endDate) {
-      // Cả hai phải có, nếu thiếu 1 thì báo lỗi
-      if (!startDate || !endDate) {
-        return res.status(400).json({ message: 'Cần truyền cả startDate và endDate (YYYY-MM-DD)' });
-      }
-
-      // Parse thô startDate và endDate
-      const partsStart = startDate.split('-');
-      const partsEnd = endDate.split('-');
-
-      if (
-        partsStart.length !== 3 || partsEnd.length !== 3 ||
-        isNaN(partsStart[0]) || isNaN(partsStart[1]) || isNaN(partsStart[2]) ||
-        isNaN(partsEnd[0]) || isNaN(partsEnd[1]) || isNaN(partsEnd[2])
-      ) {
-        return res.status(400).json({ message: 'Định dạng startDate hoặc endDate không hợp lệ (phải YYYY-MM-DD)' });
-      }
-
-      const yearS = parseInt(partsStart[0], 10);
-      const monthS = parseInt(partsStart[1], 10) - 1;
-      const dayS = parseInt(partsStart[2], 10);
-      const yearE = parseInt(partsEnd[0], 10);
-      const monthE = parseInt(partsEnd[1], 10) - 1;
-      const dayE = parseInt(partsEnd[2], 10);
-
-      fromDate = new Date(yearS, monthS, dayS, 0, 0, 0, 0);
-      toDate   = new Date(yearE, monthE, dayE, 23, 59, 59, 999);
-
-      if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
-        return res.status(400).json({ message: 'startDate hoặc endDate không phải ngày hợp lệ' });
-      }
-      if (toDate < fromDate) {
-        return res.status(400).json({ message: 'endDate phải lớn hơn hoặc bằng startDate' });
-      }
-
-      // Kiểm tra khoảng cách <= 3 tháng (~93 ngày)
-      const diffMs = toDate.getTime() - fromDate.getTime();
-      const maxRangeMs = 1000 * 60 * 60 * 24 * 93; // 93 ngày * 24h * 60p * 60s * 1000ms
-      if (diffMs > maxRangeMs) {
-        return res.status(400).json({ message: 'Khoảng thời gian không vượt quá 3 tháng' });
-      }
+    if (startDate && endDate) {
+      // Xử lý theo múi giờ VN
+      fromDate = moment.tz(startDate, 'Asia/Ho_Chi_Minh').startOf('day').toDate();
+      toDate = moment.tz(endDate, 'Asia/Ho_Chi_Minh').endOf('day').toDate();
     } else {
-      // Nếu không truyền startDate & endDate, lấy ngày hôm nay
-      const year0 = now.getFullYear();
-      const month0 = now.getMonth();
-      const day0 = now.getDate();
-      fromDate = new Date(year0, month0, day0, 0, 0, 0, 0);
-      toDate   = new Date(year0, month0, day0, 23, 59, 59, 999);
+      // Mặc định là hôm nay theo giờ VN
+      const todayVN = moment().tz('Asia/Ho_Chi_Minh');
+      fromDate = todayVN.startOf('day').toDate();
+      toDate = todayVN.endOf('day').toDate();
     }
 
-    // Tiến hành query: các order “Đã giao” có createdAt từDate <= createdAt <= toDate
+    // Tiến hành query
     const orders = await Order.find({
       shipper: req.user._id,
       status: 'Đã giao',
       'timestamps.deliveredAt': { $gte: fromDate, $lte: toDate }
     });
 
-    const totalRevenue = orders.reduce((sum, o) => sum + (o.total || 0), 0);
+     const totalRevenue = orders.reduce((sum, o) => sum + (o.total || 0), 0);
     const completedOrders = orders.length;
 
+    // Trả về ngày theo định dạng YYYY-MM-DD
     return res.json({
       period: {
-        startDate: fromDate.toISOString().split('T')[0], // 'YYYY-MM-DD'
-        endDate: toDate.toISOString().split('T')[0]
+        startDate: moment(fromDate).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD'),
+        endDate: moment(toDate).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD')
       },
       totalRevenue,
       completedOrders
