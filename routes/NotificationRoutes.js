@@ -1,3 +1,9 @@
+// routes/NotificationRoutes.js
+const express = require('express');
+const router = express.Router();
+const User = require('../models/User');
+const { verifyToken } = require('../middlewares/authMiddleware');
+
 router.post('/save-push-token', verifyToken, async (req, res) => {
   const { token } = req.body;
   
@@ -31,7 +37,7 @@ router.post('/save-push-token', verifyToken, async (req, res) => {
       message: 'Lưu FCM token thành công' 
     });
   } catch (err) {
-    console.error('[savePushToken] error:', err);
+    console.error('[SAVE-PUSH-TOKEN] error:', err);
     res.status(500).json({ 
       success: false,
       message: 'Lỗi server',
@@ -39,3 +45,5 @@ router.post('/save-push-token', verifyToken, async (req, res) => {
     });
   }
 });
+
+module.exports = router;
