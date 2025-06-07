@@ -2,8 +2,8 @@ const axios = require('axios');
 
 module.exports = async (token, notificationData) => {
   try {
-    // Sửa đổi cấu trúc thông báo theo đúng chuẩn Expo
-    const message = {
+    // Tạo message an toàn với giá trị mặc định
+    const safeNotification = {
       to: token,
       sound: 'default',
       title: notificationData.title || 'Thông báo',
@@ -11,7 +11,8 @@ module.exports = async (token, notificationData) => {
       data: notificationData.data || {}
     };
 
-    const response = await axios.post('https://exp.host/--/api/v2/push/send', [message], {
+    // Gửi dưới dạng mảng các message
+    const response = await axios.post('https://exp.host/--/api/v2/push/send', [safeNotification], {
       headers: {
         'Accept': 'application/json',
         'Accept-encoding': 'gzip, deflate',
@@ -22,6 +23,8 @@ module.exports = async (token, notificationData) => {
     return response.data;
   } catch (error) {
     console.error('Error sending push notification:', error.response?.data || error.message);
-    throw error;
+    
+    // Xử lý lỗi không ảnh hưởng đến luồng chính
+    return { error: true, details: error.response?.data || error.message };
   }
 };
