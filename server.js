@@ -10,7 +10,6 @@ const cartRoutes = require('./routes/cartRoutes');
 const shipperRoutes = require('./routes/shipperRoutes');
 const adminRoutes = require('./routes/admin');
 const userRoutes = require('./routes/userRoutes');
-const notificationRoutes = require('./routes/NotificationRoutes');
 require('dotenv').config();
 
 const app = express();
@@ -62,7 +61,7 @@ app.use('/api/v1/cart', cartRoutes); // Thêm route giỏ hàng
 app.use('/api/v1/shippers', shipperRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/users', userRoutes);
-app.use('/api/v1/notifications', notificationRoutes);
+
 
 
 // 404 Handler
