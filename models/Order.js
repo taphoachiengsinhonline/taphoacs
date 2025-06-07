@@ -99,8 +99,6 @@ const orderSchema = new mongoose.Schema({
   versionKey: false,
 });
 
-// Tích hợp plugin mongoose-paginate-v2
-orderSchema.plugin(mongoosePaginate);
 
 // Validate tổng tiền
 orderSchema.pre('validate', function(next) {
@@ -115,6 +113,7 @@ orderSchema.pre('validate', function(next) {
   next();
 });
 
+// Tích hợp plugin mongoose-paginate-v2
+orderSchema.plugin(mongoosePaginate);
 orderSchema.index({ shippingLocation: '2dsphere' });
-
 module.exports = mongoose.model('Order', orderSchema);
