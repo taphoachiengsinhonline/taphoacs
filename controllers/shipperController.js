@@ -15,9 +15,10 @@ exports.getOrderCounts = async (req, res) => {
     const { start, end } = getCurrentMonthRange();
     const counts = await Order.aggregate([
       { $match: {
-          shipper: req.user._id,
-          createdAt: { $gte: new Date(start), $lte: new Date(end) }
-      }},
+    shipper: req.user._id,
+    "timestamps.acceptedAt": { $gte: new Date(start), $lte: new Date(end) }
+}},
+
       { $group: { _id: "$status", count: { $sum: 1 } }},
       { $group: {
           _id: null,
