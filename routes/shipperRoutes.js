@@ -93,13 +93,20 @@ router.post('/update-location', verifyToken, async (req, res) => {
 
 // Các route khác giữ nguyên
 // GET danh sách đơn đã gán, phân trang, filter status & khoảng thời gian
+// routes/shipperRoutes.js
+
 router.get('/assigned-orders', verifyToken, async (req, res) => {
   try {
     const { page = 1, limit = 10, status, from, to } = req.query;
     const filter = { shipper: req.user._id };
-    if (status) filter.status = status;
+
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+
     if (from && to) {
-      filter.createdAt = {
+      // Lọc theo thời điểm shipper nhận đơn (acceptedAt), không phải createdAt
+      filter['timestamps.acceptedAt'] = {
         $gte: new Date(from),
         $lte: new Date(to)
       };
@@ -108,7 +115,7 @@ router.get('/assigned-orders', verifyToken, async (req, res) => {
     const result = await Order.paginate(filter, {
       page:  parseInt(page, 10),
       limit: parseInt(limit, 10),
-      sort:  { createdAt: -1 }
+      sort:  { 'timestamps.acceptedAt': -1 } // ưu tiên vừa nhận gần nhất
     });
 
     return res.json({
@@ -121,6 +128,7 @@ router.get('/assigned-orders', verifyToken, async (req, res) => {
     return res.status(500).json({ message: 'Lỗi server khi lấy đơn hàng đã gán' });
   }
 });
+
 
 
 
