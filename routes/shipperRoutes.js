@@ -312,6 +312,87 @@ router.get('/revenue', verifyToken, async (req, res) => {
     return res.status(500).json({ message: 'Lỗi server: ' + error.message });
   }
 });
+
+
+// Thêm vào routes/shipperRoutes.js
+router.get('/revenue/monthly', verifyToken, async (req, res) => {
+  try {
+    const { year, month } = req.query;
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+
+    // Xác định tháng/năm cần lấy
+    const targetYear = parseInt(year) || currentYear;
+    const targetMonth = parseInt(month) || currentMonth;
+
+    // Tính ngày đầu và cuối tháng (theo múi giờ VN)
+    const moment = require('moment-timezone');
+    const startDate = moment.tz(`${targetYear}-${targetMonth}-01`, 'Asia/Ho_Chi_Minh').startOf('month');
+    const endDate = startDate.clone().endOf('month');
+
+    // Lấy dữ liệu đơn hàng
+    const orders = await Order.find({
+      shipper: req.user._id,
+      status: 'Đã giao',
+      'timestamps.deliveredAt': {
+        $gte: startDate.toDate(),
+        $lte: endDate.toDate()
+      }
+    });
+
+    // Tính tổng doanh thu tháng
+    const totalMonthly = orders.reduce((sum, order) => sum + order.total, 0);
+
+    // Nhóm dữ liệu theo ngày
+    const dailyStats = {};
+    orders.forEach(order => {
+      const deliveryDate = moment(order.timestamps.deliveredAt)
+        .tz('Asia/Ho_Chi_Minh')
+        .format('YYYY-MM-DD');
+      
+      if (!dailyStats[deliveryDate]) {
+        dailyStats[deliveryDate] = {
+          revenue: 0,
+          orders: 0
+        };
+      }
+      
+      dailyStats[deliveryDate].revenue += order.total;
+      dailyStats[deliveryDate].orders += 1;
+    });
+
+    // Tạo mảng kết quả cho tất cả ngày trong tháng
+    const dailyDetails = [];
+    let currentDay = startDate.clone();
+    
+    while (currentDay <= endDate) {
+      const dateStr = currentDay.format('YYYY-MM-DD');
+      dailyDetails.push({
+        date: dateStr,
+        revenue: dailyStats[dateStr]?.revenue || 0,
+        orders: dailyStats[dateStr]?.orders || 0
+      });
+      currentDay.add(1, 'day');
+    }
+
+    res.json({
+      period: {
+        startDate: startDate.format('YYYY-MM-DD'),
+        endDate: endDate.format('YYYY-MM-DD')
+      },
+      totalMonthly,
+      dailyDetails
+    });
+  } catch (error) {
+    console.error('Lỗi báo cáo tháng:', error);
+    res.status(500).json({ message: 'Lỗi server: ' + error.message });
+  }
+});
+
+
+
+
+
 router.get('/order-counts', verifyToken, shipperController.getOrderCounts);
 
 module.exports = router;
