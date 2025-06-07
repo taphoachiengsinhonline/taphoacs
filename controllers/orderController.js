@@ -3,6 +3,7 @@ const Product = require('../models/Product');
 const User = require('../models/User');
 const sendPushNotification = require('../utils/sendPushNotification');
 const assignOrderToNearestShipper = require('../utils/assignOrderToNearestShipper');
+const sendPushNotificationToCustomer = require('../utils/sendPushNotification');
 
 // ========== Hệ thống chung ==========
 const validateSaleTime = (product, nowMin) => {
@@ -141,9 +142,35 @@ exports.updateOrderStatusByShipper = async (req, res) => {
     }
 
     const updated = await order.save();
-    if (typeof sendPushNotificationToCustomer === 'function') {
-    sendPushNotificationToCustomer(order.user, `Đơn #${order._id.toString().slice(-6)} đang được giao đến bạn`);
-  }
+    
+      if (updated.user && ['Đang giao', 'Đã giao', 'Đã huỷ'].includes(status)) {
+      try {
+        const customer = await User.findById(updated.user);
+        if (customer && customer.fcmToken) {
+          let message = '';
+          switch(status) {
+            case 'Đang giao':
+              message = `Đơn hàng #${order._id.toString().slice(-6)} đang được giao đến bạn`;
+              break;
+            case 'Đã giao':
+              message = `Đơn hàng #${order._id.toString().slice(-6)} đã giao thành công`;
+              break;
+            case 'Đã huỷ':
+              message = `Đơn hàng #${order._id.toString().slice(-6)} đã bị huỷ`;
+              break;
+          }
+          
+          await sendPushNotificationToCustomer(customer.fcmToken, {
+            title: 'Cập nhật đơn hàng',
+            body: message,
+            data: { orderId: order._id.toString() }
+          });
+        }
+      } catch (notifError) {
+        console.error('Lỗi gửi thông báo:', notifError);
+      }
+    }
+
     res.json({ 
       message: 'Cập nhật trạng thái thành công',
       order: { ...updated.toObject(), timestamps: updated.timestamps }
