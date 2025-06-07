@@ -1,12 +1,5 @@
 // routes/NotificationRoutes.js
-// routes/NotificationRoutes.js
-const express = require('express');
-const router = express.Router();
-const User = require('../models/User');
-const { verifyToken } = require('../middlewares/authMiddleware'); // Thêm middleware
-
-// ✅ API lưu fcmToken
-router.post('/save-push-token', verifyToken, async (req, res) => { // Thêm middleware
+router.post('/save-push-token', verifyToken, async (req, res) => {
   const { token } = req.body;
 
   if (!token) {
@@ -41,5 +34,3 @@ router.post('/save-push-token', verifyToken, async (req, res) => { // Thêm midd
     });
   }
 });
-
-module.exports = router;
