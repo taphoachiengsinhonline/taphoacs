@@ -141,6 +141,9 @@ exports.updateOrderStatusByShipper = async (req, res) => {
     }
 
     const updated = await order.save();
+    if (typeof sendPushNotificationToCustomer === 'function') {
+    sendPushNotificationToCustomer(order.user, `Đơn #${order._id.toString().slice(-6)} đang được giao đến bạn`);
+  }
     res.json({ 
       message: 'Cập nhật trạng thái thành công',
       order: { ...updated.toObject(), timestamps: updated.timestamps }
