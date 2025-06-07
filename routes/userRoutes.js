@@ -54,4 +54,29 @@ router.post('/update-location', verifyToken, async (req, res) => {
   }
 });
 
+
+router.post('/update-fcm-token', verifyToken, async (req, res) => {
+  try {
+    const { fcmToken } = req.body;
+    if (!fcmToken) {
+      return res.status(400).json({ message: 'Thiếu fcmToken' });
+    }
+    
+    // Cập nhật token cho user đang đăng nhập
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      { fcmToken },
+      { new: true }
+    );
+    
+    res.json({
+      message: 'Cập nhật FCM token thành công',
+      fcmToken: updatedUser.fcmToken
+    });
+  } catch (error) {
+    console.error('Lỗi update fcmToken:', error);
+    res.status(500).json({ message: 'Lỗi server: ' + error.message });
+  }
+});
+
 module.exports = router;
