@@ -120,8 +120,8 @@ exports.updateOrderStatusByShipper = async (req, res) => {
     if (order.shipper.toString() !== req.user._id.toString()) return res.status(403).json({ message: 'Không có quyền thao tác' });
 
     const validTransitions = {
-      'Đang xử lý': ['Đang giao', 'Đã hủy'],
-      'Đang giao': ['Đã giao', 'Đã hủy']
+      'Đang xử lý': ['Đang giao', 'Đã huỷ'],
+      'Đang giao': ['Đã giao', 'Đã huỷ']
     };
 
     if (!validTransitions[order.status]?.includes(status)) {
@@ -134,7 +134,7 @@ exports.updateOrderStatusByShipper = async (req, res) => {
     switch(status) {
       case 'Đang giao': order.timestamps.deliveringAt = now; break;
       case 'Đã giao': order.timestamps.deliveredAt = now; break;
-      case 'Đã hủy': 
+      case 'Đã huỷ': 
         order.timestamps.canceledAt = now;
         order.cancelReason = cancelReason || 'Không có lý do';
         break;
@@ -206,7 +206,7 @@ exports.countOrdersByStatus = async (req, res) => {
         case 'Đang xử lý':    acc.confirmed++; break;
         case 'Đang giao':     acc.shipped++; break;
         case 'Đã giao':       acc.delivered++; break;
-        case 'Đã hủy':        acc.canceled++; break;
+        case 'Đã huỷ':        acc.canceled++; break;
       }
       return acc;
     }, { pending:0, confirmed:0, shipped:0, delivered:0, canceled:0 });
@@ -275,7 +275,7 @@ exports.updateOrderStatus = async (req, res) => {
       case 'Đang xử lý': order.timestamps.acceptedAt = now; break;
       case 'Đang giao': order.timestamps.deliveringAt = now; break;
       case 'Đã giao': order.timestamps.deliveredAt = now; break;
-      case 'Đã hủy': order.timestamps.canceledAt = now; break;
+      case 'Đã huỷ': order.timestamps.canceledAt = now; break;
     }
 
     const updated = await order.save();
@@ -299,12 +299,12 @@ exports.cancelOrder = async (req, res) => {
     if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
     if (order.status !== 'Chờ xác nhận') return res.status(400).json({ message: 'Chỉ hủy được đơn chưa xử lý' });
 
-    order.status = 'Đã hủy';
+    order.status = 'Đã huỷ';
     order.timestamps.canceledAt = new Date();
     const updated = await order.save();
     
     res.json({
-      message: 'Hủy đơn thành công',
+      message: 'Huỷ đơn thành công',
       order: { ...updated.toObject(), timestamps: updated.timestamps }
     });
   } catch (err) {
