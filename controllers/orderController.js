@@ -177,11 +177,11 @@ exports.updateOrderStatusByShipper = async (req, res) => {
           }
           
           // Gửi thông báo an toàn
-          await sendPushNotification(customer.fcmToken, {
-            title: 'Cập nhật đơn hàng',
-            body: messageBody,
-            data: { orderId }
-          });
+         await safeNotify(customer.fcmToken, {
+  title: 'Cập nhật đơn hàng',
+  body: messageBody,
+  data: { orderId }
+});
         }
       } catch (notifError) {
         console.error('Lỗi gửi thông báo cho khách hàng:', notifError);
