@@ -95,15 +95,43 @@ router.post('/update-location', verifyToken, async (req, res) => {
 // Sửa endpoint /shippers/assigned-orders
 router.get('/assigned-orders', verifyToken, async (req, res) => {
   try {
-    const orders = await Order.find({ 
+    const { page = 1, limit = 10 } = req.query;
+    const { start, end } = shipperController.getCurrentMonthRange();
+    
+    const query = { 
       shipper: req.user._id,
-      status: { $in: ['Đang xử lý', 'Đang giao', 'Đã giao', 'Đã huỷ'] } // Thêm trạng thái
-    }).sort('-createdAt');
-    console.log('[Backend] Assigned orders:', orders); // Debug
-    res.json(orders);
+      createdAt: { $gte: start, $lte: end }
+    };
+    
+    // Thêm filter status nếu có
+    if (req.query.status && req.query.status !== 'all') {
+      query.status = req.query.status;
+    }
+
+    console.log('[assigned-orders] Query:', JSON.stringify(query, null, 2));
+    
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sort: { createdAt: -1 }
+    };
+
+    const result = await Order.paginate(query, options);
+    
+    console.log(`[assigned-orders] Found ${result.docs.length} orders`);
+    
+    res.json({
+      orders: result.docs,
+      totalPages: result.totalPages,
+      currentPage: result.page,
+      totalOrders: result.totalDocs
+    });
   } catch (error) {
     console.error('Lỗi server:', error);
-    res.status(500).json({ message: 'Lỗi server: ' + error.message });
+    res.status(500).json({ 
+      message: 'Lỗi server: ' + error.message,
+      stack: error.stack // Trả về stack trace để debug
+    });
   }
 });
 
