@@ -1,6 +1,7 @@
-// routes/NotificationRoutes.js
 router.post('/save-push-token', verifyToken, async (req, res) => {
   const { token } = req.body;
+  
+  console.log(`[SAVE-PUSH-TOKEN] User: ${req.user._id}, Token: ${token}`);
 
   if (!token) {
     return res.status(400).json({ 
@@ -18,8 +19,12 @@ router.post('/save-push-token', verifyToken, async (req, res) => {
       });
     }
 
-    user.fcmToken = token;
-    await user.save();
+    // Chỉ cập nhật nếu token mới
+    if (user.fcmToken !== token) {
+      user.fcmToken = token;
+      await user.save();
+      console.log(`[SAVE-PUSH-TOKEN] Updated token for user ${user._id}`);
+    }
 
     res.json({ 
       success: true,
