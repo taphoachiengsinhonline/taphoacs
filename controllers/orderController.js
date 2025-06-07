@@ -4,6 +4,7 @@ const User = require('../models/User');
 const sendPushNotification = require('../utils/sendPushNotification');
 const assignOrderToNearestShipper = require('../utils/assignOrderToNearestShipper');
 const sendPushNotificationToCustomer = require('../utils/sendPushNotification');
+const { safeNotify } = require('../utils/notificationMiddleware');
 
 // ========== Hệ thống chung ==========
 const validateSaleTime = (product, nowMin) => {
@@ -52,11 +53,11 @@ const notifyAdmins = async (order, total, userName) => {
       const totalFormatted = total ? total.toLocaleString() : '0';
       
       // Tạo thông báo an toàn
-      await sendPushNotification(admin.fcmToken, {
-        title: '🛒 Đơn hàng mới',
-        body: `#${orderIdShort} từ ${customerName}: ${totalFormatted}đ`,
-        data: { orderId }
-      });
+     await safeNotify(admin.fcmToken, {
+  title: '🛒 Đơn hàng mới',
+  body: `#${orderIdShort} từ ${customerName}: ${totalFormatted}đ`,
+  data: { orderId }
+});
     } catch (e) {
       console.error(`[notify admin] error for admin ${admin._id}:`, e);
     }
