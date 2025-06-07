@@ -71,7 +71,7 @@ const orderSchema = new mongoose.Schema({
   },
   status: { 
     type: String,
-    enum: ['Chờ xác nhận','Đang xử lý','Đang giao','Đã giao','Đã hủy'],
+    enum: ['Chờ xác nhận','Đang xử lý','Đang giao','Đã giao','Đã huỷ'],
     default: 'Chờ xác nhận'
   },
   paymentMethod: {
@@ -93,7 +93,7 @@ const orderSchema = new mongoose.Schema({
     processingAt: Date,   // Thời điểm bắt đầu xử lý
     deliveringAt: Date,   // Thời điểm bắt đầu giao hàng
     deliveredAt: Date,    // Thời điểm giao thành công
-    canceledAt: Date,     // Thời điểm hủy
+    canceledAt: Date,     // Thời điểm huỷ
   }
 }, {
   versionKey: false,
