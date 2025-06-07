@@ -42,12 +42,24 @@ const processOrderItem = async (item) => {
 
 const notifyAdmins = async (order, total, userName) => {
   const admins = await User.find({ role: 'admin', fcmToken: { $exists: true } });
+  
   for (const admin of admins) {
-    await sendPushNotification(admin.fcmToken, {
-      title: '🛒 Đơn hàng mới',
-      body: `#${order._id.toString().slice(-6)} từ ${userName || 'khách'}: ${total.toLocaleString()}đ`,
-      data: { orderId: order._id }
-    }).catch(e => console.error(`[notify admin] error for admin ${admin._id}:`, e));
+    try {
+      // Đảm bảo tất cả giá trị đều hợp lệ
+      const orderId = order._id.toString();
+      const orderIdShort = orderId.slice(-6);
+      const customerName = userName || 'khách';
+      const totalFormatted = total ? total.toLocaleString() : '0';
+      
+      // Tạo thông báo an toàn
+      await sendPushNotification(admin.fcmToken, {
+        title: '🛒 Đơn hàng mới',
+        body: `#${orderIdShort} từ ${customerName}: ${totalFormatted}đ`,
+        data: { orderId }
+      });
+    } catch (e) {
+      console.error(`[notify admin] error for admin ${admin._id}:`, e);
+    }
   }
 };
 
@@ -143,31 +155,35 @@ exports.updateOrderStatusByShipper = async (req, res) => {
 
     const updated = await order.save();
     
-      if (updated.user && ['Đang giao', 'Đã giao', 'Đã huỷ'].includes(status)) {
+       if (updated.user && ['Đang giao', 'Đã giao', 'Đã huỷ'].includes(status)) {
       try {
         const customer = await User.findById(updated.user);
         if (customer && customer.fcmToken) {
-          let message = '';
+          const orderId = order._id.toString();
+          const orderIdShort = orderId.slice(-6);
+          let messageBody = '';
+          
           switch(status) {
             case 'Đang giao':
-              message = `Đơn hàng #${order._id.toString().slice(-6)} đang được giao đến bạn`;
+              messageBody = `Đơn hàng #${orderIdShort} đang được giao đến bạn`;
               break;
             case 'Đã giao':
-              message = `Đơn hàng #${order._id.toString().slice(-6)} đã giao thành công`;
+              messageBody = `Đơn hàng #${orderIdShort} đã giao thành công`;
               break;
             case 'Đã huỷ':
-              message = `Đơn hàng #${order._id.toString().slice(-6)} đã bị huỷ`;
+              messageBody = `Đơn hàng #${orderIdShort} đã bị huỷ`;
               break;
           }
           
-          await sendPushNotificationToCustomer(customer.fcmToken, {
+          // Gửi thông báo an toàn
+          await sendPushNotification(customer.fcmToken, {
             title: 'Cập nhật đơn hàng',
-            body: message,
-            data: { orderId: order._id.toString() }
+            body: messageBody,
+            data: { orderId }
           });
         }
       } catch (notifError) {
-        console.error('Lỗi gửi thông báo:', notifError);
+        console.error('Lỗi gửi thông báo cho khách hàng:', notifError);
       }
     }
 
