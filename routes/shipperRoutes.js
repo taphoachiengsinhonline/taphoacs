@@ -328,7 +328,7 @@ router.get('/revenue', verifyToken, async (req, res) => {
     const orders = await Order.find({
       shipper: req.user._id,
       status: 'Đã giao',
-      createdAt: { $gte: fromDate, $lte: toDate }
+      'timestamps.deliveredAt': { $gte: fromDate, $lte: toDate }
     });
 
     const totalRevenue = orders.reduce((sum, o) => sum + (o.total || 0), 0);
