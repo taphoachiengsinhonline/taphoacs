@@ -112,6 +112,17 @@ router.get('/assigned-orders', verifyToken, async (req, res) => {
       };
     }
 
+
+    if (search) {
+      const regex = new RegExp(search, 'i');
+      filter.$or = [
+         { phone: regex },
+        { customerName: regex },
+         { 'items.name': regex }
+        ];
+      }
+
+ 
     const result = await Order.paginate(filter, {
       page:  parseInt(page, 10),
       limit: parseInt(limit, 10),
