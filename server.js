@@ -62,7 +62,8 @@ app.use('/api/v1/cart', cartRoutes); // Thêm route giỏ hàng
 app.use('/api/v1/shippers', shipperRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/users', userRoutes);
-app.use('/notifications', notificationRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
+
 
 // 404 Handler
 app.use((req, res, next) => {
