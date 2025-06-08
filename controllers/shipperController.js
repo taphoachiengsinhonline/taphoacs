@@ -1,5 +1,9 @@
+// controllers/shipperController.js
 const Order = require('../models/Order');
-// Thêm controller trong controllers/shipperController.js
+const User = require('../models/User');
+const sendPushNotificationToCustomer = require('./sendPushNotificationToCustomer');
+
+
 const getCurrentMonthRange = () => {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -46,3 +50,33 @@ exports.getOrderCounts = async (req, res) => {
   }
 };
 
+exports.acceptOrder = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
+    if (order.status !== 'Chờ xác nhận') return res.status(400).json({ message: 'Đơn không khả dụng' });
+
+    order.status = 'Đang xử lý';
+    order.shipper = req.user._id;
+    order.timestamps.acceptedAt = new Date();
+    
+    const updated = await order.save();
+    
+    // Gửi thông báo cho khách hàng
+    const customer = await User.findById(order.user);
+    if (customer?.fcmToken) {
+      await sendPushNotificationToCustomer(customer.fcmToken, {
+        title: 'Đơn hàng của bạn đã được nhận',
+        body: `Đơn hàng #${order._id.toString().slice(-6)} đã có shipper nhận. Vui lòng chờ giao hàng!`
+      });
+    }
+    
+    res.json({ 
+      message: 'Nhận đơn thành công',
+      order: { ...updated.toObject(), timestamps: updated.timestamps }
+    });
+  } catch (error) {
+    console.error('Lỗi nhận đơn:', error);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
+};
