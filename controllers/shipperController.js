@@ -1,7 +1,7 @@
 // controllers/shipperController.js
 const Order = require('../models/Order');
 const User = require('../models/User');
-const sendPushNotificationToCustomer = require('./sendPushNotificationToCustomer');
+const sendPushNotificationToCustomer = require('../utils/sendPushNotificationToCustomer');
 
 
 const getCurrentMonthRange = () => {
