@@ -115,6 +115,23 @@ exports.acceptOrder = async (req, res) => {
     order.timestamps.acceptedAt = new Date();
     
     const updated = await order.save();
+     if (updated.user) {
+      try {
+        const customer = await User.findById(updated.user);
+        if (customer?.fcmToken) {
+          const orderId = order._id.toString();
+          const orderIdShort = orderId.slice(-6);
+          await safeNotify(customer.fcmToken, {
+            title: 'Shipper đã nhận đơn',
+            body: `Đơn hàng #${orderIdShort} đã được shipper nhận và đang chuẩn bị giao`,
+            data: { orderId }
+          });
+        }
+      } catch (notifError) {
+        console.error('Lỗi gửi thông báo cho khách hàng:', notifError);
+      }
+    }
+    
     res.json({ 
       message: 'Nhận đơn thành công',
       order: { ...updated.toObject(), timestamps: updated.timestamps }
