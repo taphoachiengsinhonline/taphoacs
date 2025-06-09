@@ -4,42 +4,28 @@ const PendingDelivery = require('../models/PendingDelivery');
 const sendPushNotification = require('./sendPushNotification');
 const mongoose = require('mongoose');
 
+const MAX_RETRY = 5; // Tối đa 5 vòng lặp
+const RETRY_DELAY = 30000; // 30 giây
 
 async function assignOrderToNearestShipper(orderId, retryCount = 0) {
-  console.log(`[Assign] Bắt đầu gán shipper cho order ${orderId} (lần ${retryCount + 1})`);
-  const MAX_RETRY = 5; // Tối đa 5 vòng
-  const NOTIFICATION_TIMEOUT = 30000; // 30 giây
+  console.log(`[Assign] Bắt đầu gán shipper cho order ${orderId} (vòng ${retryCount + 1}/5)`);
+  
   try {
     const order = await Order.findById(orderId);
     if (!order || order.status !== 'Chờ xác nhận') return;
 
-    // Kiểm tra số lần thử
+    // Kiểm tra số vòng lặp
     if (retryCount >= MAX_RETRY) {
-      console.log(`[Assign] Đã thử ${MAX_RETRY} lần không thành công. Hủy đơn ${orderId}`);
-      
-      // Cập nhật trạng thái hủy
-      await Order.findByIdAndUpdate(orderId, {
-        status: 'Đã hủy',
-        cancelReason: 'Không tìm thấy shipper phù hợp'
-      });
-      
-      // Gửi thông báo cho khách hàng
-      const customer = await User.findById(order.user);
-      if (customer?.fcmToken) {
-        await sendPushNotification(customer.fcmToken, {
-          title: 'Đơn hàng đã hủy',
-          body: `Đơn hàng #${order._id.toString().slice(-6)} đã hủy do không tìm được shipper`
-        });
-      }
-      
+      console.log(`[Assign] Đã thử 5 vòng không thành công. Reset và thử lại từ đầu.`);
+      await assignOrderToNearestShipper(orderId, 0); // Reset về vòng 0
       return;
     }
 
-    // Load danh sách đã từng thử
+    // Load danh sách shipper đã thử
     let pending = await PendingDelivery.findOne({ orderId });
     const tried = pending?.triedShippers || [];
 
-    // Sửa tại đây: Tạo ObjectId đúng cách
+    // Tạo ObjectId đúng cách
     const triedObjectIds = tried.map(id => new mongoose.Types.ObjectId(id));
 
     // Tìm shipper gần nhất chưa thử
@@ -55,7 +41,7 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
           query: {
             role: 'shipper',
             isAvailable: true,
-            _id: { $nin: triedObjectIds } // Sửa tại đây
+            _id: { $nin: triedObjectIds }
           },
           spherical: true
         }
@@ -63,67 +49,58 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
       { $limit: 3 }
     ]);
 
+    // Không tìm thấy shipper phù hợp
     if (!candidates || candidates.length === 0) {
       console.log(`[Assign] Không tìm thấy shipper phù hợp cho order ${orderId}`);
       
-      // Chuyển sang lần thử tiếp theo
+      // Chờ 30s và thử lại
       setTimeout(async () => {
         const freshOrder = await Order.findById(orderId);
         if (freshOrder && freshOrder.status === 'Chờ xác nhận') {
-          console.log(`[Assign] Không tìm thấy shipper, chuyển sang lần thử ${retryCount + 1}`);
+          console.log(`[Assign] Thử lại vòng ${retryCount + 1}`);
           await assignOrderToNearestShipper(orderId, retryCount + 1);
         }
-      }, 30000);
-      
+      }, RETRY_DELAY);
       return;
     }
 
-    const next = candidates[0];
-    console.log(`[Assign] Thử gán shipper ${next._id} (cách ${(next.distance/1000).toFixed(2)}km)`);
+    const nextShipper = candidates[0];
+    const distance = (nextShipper.distance / 1000).toFixed(2);
+    console.log(`[Assign] Thử gán shipper ${nextShipper._id} (cách ${distance}km)`);
 
     // Cập nhật PendingDelivery
     if (!pending) {
       pending = new PendingDelivery({
         orderId,
-        triedShippers: [next._id],
+        triedShippers: [nextShipper._id],
         status: 'pending'
       });
     } else {
-      // Sửa tại đây: Chuyển đổi thành ObjectId
-      pending.triedShippers.push(new mongoose.Types.ObjectId(next._id));
+      pending.triedShippers.push(new mongoose.Types.ObjectId(nextShipper._id));
     }
     await pending.save();
 
-    // Gửi push đến shipper
-    if (next.fcmToken) {
-    await sendPushNotification(next.fcmToken, {
-      title: '🛒 ĐƠN HÀNG MỚI',
-      body: `Bạn có đơn hàng mới #${order._id.toString().slice(-6)} cách ${(next.distance/1000).toFixed(2)}km`,
-      data: { 
-        orderId: order._id.toString(),
-        notificationType: 'newOrderModal',
-        distance: (next.distance/1000).toFixed(2)
-      }
-    });
-  }
-
-    // Gửi admin (nếu cấu hình)
-    if (process.env.ADMIN_FCM_TOKEN) {
-      await sendPushNotification(process.env.ADMIN_FCM_TOKEN, {
-        title: 'Đơn hàng mới',
-        body: `Đơn ${orderId} cần gán shipper`,
-        data: { orderId }
+    // Gửi push notification với thông tin modal
+    if (nextShipper.fcmToken) {
+      await sendPushNotification(nextShipper.fcmToken, {
+        title: '🛒 ĐƠN HÀNG MỚI',
+        body: `Bạn có đơn hàng mới cách ${distance}km`,
+        data: { 
+          orderId: order._id.toString(),
+          notificationType: 'newOrderModal',
+          distance
+        }
       });
     }
 
-    // Hẹn giờ chuyển đơn nếu không nhận
+    // Hẹn giờ chuyển sang shipper tiếp theo sau 30s
     setTimeout(async () => {
       const freshOrder = await Order.findById(orderId);
       if (freshOrder && freshOrder.status === 'Chờ xác nhận') {
-        console.log(`[Assign] 30s đã hết, chuyển sang shipper tiếp theo (lần ${retryCount + 1})`);
-        await assignOrderToNearestShipper(orderId, retryCount + 1);
+        console.log(`[Assign] 30s đã hết, chuyển sang shipper tiếp theo (vòng ${retryCount})`);
+        await assignOrderToNearestShipper(orderId, retryCount);
       }
-    }, 30000); // 30 giây
+    }, RETRY_DELAY);
 
   } catch (err) {
     console.error('[assignOrder] error:', err);
@@ -132,8 +109,8 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
     setTimeout(async () => {
       const freshOrder = await Order.findById(orderId);
       if (freshOrder && freshOrder.status === 'Chờ xác nhận') {
-        console.log(`[Assign] Thử lại sau lỗi (lần ${retryCount + 1})`);
-        await assignOrderToNearestShipper(orderId, retryCount + 1);
+        console.log(`[Assign] Thử lại sau lỗi (vòng ${retryCount})`);
+        await assignOrderToNearestShipper(orderId, retryCount);
       }
     }, 5000);
   }
