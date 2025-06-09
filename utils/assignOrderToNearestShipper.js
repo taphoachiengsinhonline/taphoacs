@@ -4,11 +4,11 @@ const PendingDelivery = require('../models/PendingDelivery');
 const sendPushNotification = require('./sendPushNotification');
 const mongoose = require('mongoose');
 
-const MAX_RETRY = 5; // Tối đa 5 lần chuyển đơn
 
 async function assignOrderToNearestShipper(orderId, retryCount = 0) {
   console.log(`[Assign] Bắt đầu gán shipper cho order ${orderId} (lần ${retryCount + 1})`);
-  
+  const MAX_RETRY = 5; // Tối đa 5 vòng
+  const NOTIFICATION_TIMEOUT = 30000; // 30 giây
   try {
     const order = await Order.findById(orderId);
     if (!order || order.status !== 'Chờ xác nhận') return;
@@ -96,13 +96,16 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
 
     // Gửi push đến shipper
     if (next.fcmToken) {
-      await sendPushNotification(next.fcmToken, {
-        title: '🛒 Đơn hàng mới',
-        body: `Bạn có đơn hàng #${order._id.toString().slice(-6)} cách ${(next.distance/1000).toFixed(2)}km`,
-        data: { orderId: order._id.toString() },
-        shipperView: "true" // Thêm tham số này
-      });
-    }
+    await sendPushNotification(next.fcmToken, {
+      title: '🛒 ĐƠN HÀNG MỚI',
+      body: `Bạn có đơn hàng mới #${order._id.toString().slice(-6)} cách ${(next.distance/1000).toFixed(2)}km`,
+      data: { 
+        orderId: order._id.toString(),
+        notificationType: 'newOrderModal',
+        distance: (next.distance/1000).toFixed(2)
+      }
+    });
+  }
 
     // Gửi admin (nếu cấu hình)
     if (process.env.ADMIN_FCM_TOKEN) {
