@@ -150,6 +150,17 @@ exports.updateOrderStatusByShipper = async (req, res) => {
     if (!order) return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
     if (order.shipper.toString() !== req.user._id.toString()) return res.status(403).json({ message: 'Không có quyền thao tác' });
 
+    // Thêm validation cho số lượng đơn tối đa
+    if (status === 'Đang xử lý') {
+      const activeOrders = await Order.countDocuments({
+        shipper: req.user._id,
+        status: { $in: ['Đang xử lý', 'Đang giao'] }
+      });
+      if (activeOrders >= 5) {
+        return res.status(400).json({ message: 'Đã đạt tối đa 5 đơn cùng lúc' });
+      }
+    }
+
     const validTransitions = {
       'Đang xử lý': ['Đang giao', 'Đã huỷ'],
       'Đang giao': ['Đã giao', 'Đã huỷ']
