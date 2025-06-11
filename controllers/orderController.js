@@ -6,7 +6,6 @@ const assignOrderToNearestShipper = require('../utils/assignOrderToNearestShippe
 const sendPushNotificationToCustomer = require('../utils/sendPushNotification');
 const { safeNotify } = require('../utils/notificationMiddleware');
 
-// ========== Hệ thống chung ==========
 const validateSaleTime = (product, nowMin) => {
   const toMin = str => {
     const [h, m] = str.split(':').map(Number);
@@ -46,25 +45,22 @@ const notifyAdmins = async (order, total, userName) => {
   
   for (const admin of admins) {
     try {
-      // Đảm bảo tất cả giá trị đều hợp lệ
       const orderId = order._id.toString();
       const orderIdShort = orderId.slice(-6);
       const customerName = userName || 'khách';
       const totalFormatted = total ? total.toLocaleString() : '0';
       
-      // Tạo thông báo an toàn
-     await safeNotify(admin.fcmToken, {
-  title: '🛒 Đơn hàng mới',
-  body: `#${orderIdShort} từ ${customerName}: ${totalFormatted}đ`,
-  data: { orderId }
-});
+      await safeNotify(admin.fcmToken, {
+        title: '🛒 Đơn hàng mới',
+        body: `#${orderIdShort} từ ${customerName}: ${totalFormatted}đ`,
+        data: { orderId }
+      });
     } catch (e) {
       console.error(`[notify admin] error for admin ${admin._id}:`, e);
     }
   }
 };
 
-// ========== Tạo và quản lý đơn hàng ==========
 exports.createOrder = async (req, res) => {
   try {
     const { items, total, phone, shippingAddress, shippingLocation, customerName, paymentMethod } = req.body;
@@ -93,9 +89,9 @@ exports.createOrder = async (req, res) => {
     return res.status(201).json({
       message: 'Tạo đơn thành công',
       order: { 
-    ...savedOrder.toObject(), 
-    timestamps: savedOrder.timestamps
-  }
+        ...savedOrder.toObject(), 
+        timestamps: savedOrder.timestamps
+      }
     });
   } catch (err) {
     const statusCode = err.message.includes('không tồn tại') || err.message.includes('không đủ hàng') || err.message.includes('chỉ bán từ') ? 400 : 500;
@@ -103,35 +99,25 @@ exports.createOrder = async (req, res) => {
   }
 };
 
-// ========== Shipper ==========
 exports.acceptOrder = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
     if (order.status !== 'Chờ xác nhận') return res.status(400).json({ message: 'Đơn không khả dụng' });
 
+    const activeOrders = await Order.countDocuments({
+      shipper: req.user._id,
+      status: { $in: ['Đang xử lý', 'Đang giao'] }
+    });
+    if (activeOrders >= 5) {
+      return res.status(400).json({ message: 'Mỗi shipper chỉ được nhận tối đa 5 đơn cùng lúc' });
+    }
+
     order.status = 'Đang xử lý';
     order.shipper = req.user._id;
     order.timestamps.acceptedAt = new Date();
     
     const updated = await order.save();
-     if (updated.user) {
-      try {
-        const customer = await User.findById(updated.user);
-        if (customer?.fcmToken) {
-          const orderId = order._id.toString();
-          const orderIdShort = orderId.slice(-6);
-          await safeNotify(customer.fcmToken, {
-            title: 'Shipper đã nhận đơn',
-            body: `Đơn hàng #${orderIdShort} đã được shipper nhận và đang chuẩn bị giao`,
-            data: { orderId }
-          });
-        }
-      } catch (notifError) {
-        console.error('Lỗi gửi thông báo cho khách hàng:', notifError);
-      }
-    }
-    
     res.json({ 
       message: 'Nhận đơn thành công',
       order: { ...updated.toObject(), timestamps: updated.timestamps }
@@ -173,7 +159,7 @@ exports.updateOrderStatusByShipper = async (req, res) => {
 
     const updated = await order.save();
     
-       if (updated.user && ['Đang giao', 'Đã giao', 'Đã huỷ'].includes(status)) {
+    if (updated.user && ['Đang giao', 'Đã giao', 'Đã huỷ'].includes(status)) {
       try {
         const customer = await User.findById(updated.user);
         if (customer && customer.fcmToken) {
@@ -193,12 +179,11 @@ exports.updateOrderStatusByShipper = async (req, res) => {
               break;
           }
           
-          // Gửi thông báo an toàn
-         await safeNotify(customer.fcmToken, {
-  title: 'Cập nhật đơn hàng',
-  body: messageBody,
-  data: { orderId }
-});
+          await safeNotify(customer.fcmToken, {
+            title: 'Cập nhật đơn hàng',
+            body: messageBody,
+            data: { orderId }
+          });
         }
       } catch (notifError) {
         console.error('Lỗi gửi thông báo cho khách hàng:', notifError);
@@ -241,7 +226,6 @@ exports.getShipperOrders = async (req, res) => {
   }
 };
 
-// ========== Hệ thống chung ==========
 exports.getMyOrders = async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
