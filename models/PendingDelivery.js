@@ -14,10 +14,6 @@ const pendingDeliverySchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }],
-  retryCount: {
-    type: Number,
-    default: 0
-  },
   status: {
     type: String,
     enum: ['pending', 'assigned', 'failed'],
@@ -25,8 +21,8 @@ const pendingDeliverySchema = new mongoose.Schema({
   },
   createdAt: {
     type: Date,
-    default: Date.now,
-    expires: 300 // Tự động xóa sau 5 phút
+    default: nowVNDateObj,
+    expires: 300 // 5 phút sau sẽ tự xóa nếu chưa được xử lý
   }
 });
 
