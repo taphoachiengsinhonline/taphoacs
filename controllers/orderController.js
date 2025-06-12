@@ -3,10 +3,8 @@ const Product = require('../models/Product');
 const User = require('../models/User');
 const sendPushNotification = require('../utils/sendPushNotification');
 const assignOrderToNearestShipper = require('../utils/assignOrderToNearestShipper');
-const sendPushNotificationToCustomer = require('../utils/sendPushNotification');
 const { safeNotify } = require('../utils/notificationMiddleware');
 
-// ========== Hệ thống chung ==========
 const validateSaleTime = (product, nowMin) => {
   const toMin = str => {
     const [h, m] = str.split(':').map(Number);
@@ -46,25 +44,25 @@ const notifyAdmins = async (order, total, userName) => {
   
   for (const admin of admins) {
     try {
-      // Đảm bảo tất cả giá trị đều hợp lệ
       const orderId = order._id.toString();
       const orderIdShort = orderId.slice(-6);
       const customerName = userName || 'khách';
       const totalFormatted = total ? total.toLocaleString() : '0';
       
-      // Tạo thông báo an toàn
-     await safeNotify(admin.fcmToken, {
-  title: '🛒 Đơn hàng mới',
-  body: `#${orderIdShort} từ ${customerName}: ${totalFormatted}đ`,
-  data: { orderId }
-});
+      await safeNotify(admin.fcmToken, {
+        title: '🛒 Đơn hàng mới',
+        body: `#${orderIdShort} từ ${customerName}: ${totalFormatted}đ`,
+        data: { 
+          orderId,
+          shipperView: "true"
+        }
+      });
     } catch (e) {
       console.error(`[notify admin] error for admin ${admin._id}:`, e);
     }
   }
 };
 
-// ========== Tạo và quản lý đơn hàng ==========
 exports.createOrder = async (req, res) => {
   try {
     const { items, total, phone, shippingAddress, shippingLocation, customerName, paymentMethod } = req.body;
@@ -93,9 +91,9 @@ exports.createOrder = async (req, res) => {
     return res.status(201).json({
       message: 'Tạo đơn thành công',
       order: { 
-    ...savedOrder.toObject(), 
-    timestamps: savedOrder.timestamps
-  }
+        ...savedOrder.toObject(), 
+        timestamps: savedOrder.timestamps
+      }
     });
   } catch (err) {
     const statusCode = err.message.includes('không tồn tại') || err.message.includes('không đủ hàng') || err.message.includes('chỉ bán từ') ? 400 : 500;
@@ -103,7 +101,6 @@ exports.createOrder = async (req, res) => {
   }
 };
 
-// ========== Shipper ==========
 exports.acceptOrder = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -124,7 +121,10 @@ exports.acceptOrder = async (req, res) => {
           await safeNotify(customer.fcmToken, {
             title: 'Shipper đã nhận đơn',
             body: `Đơn hàng #${orderIdShort} đã được shipper nhận và đang chuẩn bị giao`,
-            data: { orderId }
+            data: { 
+              orderId,
+              shipperView: "false"
+            }
           });
         }
       } catch (notifError) {
@@ -150,7 +150,6 @@ exports.updateOrderStatusByShipper = async (req, res) => {
     if (!order) return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
     if (order.shipper.toString() !== req.user._id.toString()) return res.status(403).json({ message: 'Không có quyền thao tác' });
 
-    // Thêm validation cho số lượng đơn tối đa
     if (status === 'Đang xử lý') {
       const activeOrders = await Order.countDocuments({
         shipper: req.user._id,
@@ -204,12 +203,14 @@ exports.updateOrderStatusByShipper = async (req, res) => {
               break;
           }
           
-          // Gửi thông báo an toàn
          await safeNotify(customer.fcmToken, {
-  title: 'Cập nhật đơn hàng',
-  body: messageBody,
-  data: { orderId }
-});
+            title: 'Cập nhật đơn hàng',
+            body: messageBody,
+            data: { 
+              orderId,
+              shipperView: "false"
+            }
+        });
         }
       } catch (notifError) {
         console.error('Lỗi gửi thông báo cho khách hàng:', notifError);
@@ -252,7 +253,6 @@ exports.getShipperOrders = async (req, res) => {
   }
 };
 
-// ========== Hệ thống chung ==========
 exports.getMyOrders = async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
