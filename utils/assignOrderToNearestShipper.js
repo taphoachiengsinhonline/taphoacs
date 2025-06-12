@@ -58,43 +58,48 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
 
     // Tìm shipper khả dụng
     const candidates = await User.aggregate([
-      {
-        $geoNear: {
-          near: { type: 'Point', coordinates: order.shippingLocation.coordinates },
-          distanceField: 'distance',
-          maxDistance: 10000,
-          query: {
-            role: 'shipper',
-            isAvailable: true,
-            _id: { $nin: triedShippers.map(id => new mongoose.Types.ObjectId(id)) },
-          },
-          spherical: true,
-        },
+  {
+    $geoNear: {
+      near: { type: 'Point', coordinates: order.shippingLocation.coordinates },
+      distanceField: 'distance',
+      maxDistance: 10000,
+      query: {
+        role: 'shipper',
+        isAvailable: true,
+        _id: { $nin: triedShippers.map(id => new mongoose.Types.ObjectId(id)) },
       },
-      {
-        $lookup: {
-          from: 'orders',
-          let: { userId: '$_id' },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ['$shipper', '$$userId'] },
-                    { $in: ['$status', ['Đang xử lý', 'Đang giao']] },
-                  ],
-                },
-              },
+      spherical: true,
+    },
+  },
+  {
+    $lookup: {
+      from: 'orders',
+      let: { userId: '$_id' },
+      pipeline: [
+        {
+          $match: {
+            $expr: {
+              $and: [
+                { $eq: ['$shipper', '$$userId'] },
+                { $in: ['$status', ['Đang xử lý', 'Đang giao']] },
+              ],
             },
-          ],
-          as: 'active_orders',
+          },
         },
-      },
-      {
-        $match: { 'active_orders': { $size: { $lt: 5 } } },
-      },
-      { $limit: 1 }, // Chỉ lấy 1 shipper mỗi lần
-    ]);
+      ],
+      as: 'active_orders',
+    },
+  },
+  {
+    $addFields: {
+      active_order_count: { $size: '$active_orders' },
+    },
+  },
+  {
+    $match: { active_order_count: { $lt: 5 } },
+  },
+  { $limit: 1 },
+]);
 
     console.log(`[Assign] Tìm thấy ${candidates.length} shipper khả dụng trong chu kỳ ${retryCount + 1}`);
 
