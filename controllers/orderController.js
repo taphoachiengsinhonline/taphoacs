@@ -1,3 +1,4 @@
+// Giữ nguyên các import và hàm phụ
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
@@ -65,10 +66,23 @@ const notifyAdmins = async (order, total, userName) => {
 
 exports.createOrder = async (req, res) => {
   try {
-    const { items, total, phone, shippingAddress, shippingLocation, customerName, paymentMethod } = req.body;
+    const { 
+      items, 
+      total, 
+      phone, 
+      shippingAddress, 
+      shippingLocation, 
+      customerName, 
+      paymentMethod, 
+      shippingFee, 
+      voucherDiscount, 
+      voucherCode 
+    } = req.body;
 
     if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: 'Giỏ hàng không được để trống' });
     if (!phone || !shippingAddress || !shippingLocation) return res.status(400).json({ message: 'Thiếu thông tin bắt buộc' });
+    if (typeof shippingFee !== 'number' || shippingFee < 0) return res.status(400).json({ message: 'Phí ship không hợp lệ' });
+    if (typeof voucherDiscount !== 'number' || voucherDiscount < 0) return res.status(400).json({ message: 'Giảm giá voucher không hợp lệ' });
 
     await Promise.all(items.map(processOrderItem));
 
@@ -80,6 +94,9 @@ exports.createOrder = async (req, res) => {
       shippingLocation,
       customerName,
       paymentMethod,
+      shippingFee,
+      voucherDiscount,
+      voucherCode,
       status: 'Chờ xác nhận',
       user: req.user._id
     });
@@ -101,6 +118,7 @@ exports.createOrder = async (req, res) => {
   }
 };
 
+// Giữ nguyên các hàm khác
 exports.acceptOrder = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -112,7 +130,7 @@ exports.acceptOrder = async (req, res) => {
     order.timestamps.acceptedAt = new Date();
     
     const updated = await order.save();
-     if (updated.user) {
+    if (updated.user) {
       try {
         const customer = await User.findById(updated.user);
         if (customer?.fcmToken) {
@@ -183,7 +201,7 @@ exports.updateOrderStatusByShipper = async (req, res) => {
 
     const updated = await order.save();
     
-       if (updated.user && ['Đang giao', 'Đã giao', 'Đã huỷ'].includes(status)) {
+    if (updated.user && ['Đang giao', 'Đã giao', 'Đã huỷ'].includes(status)) {
       try {
         const customer = await User.findById(updated.user);
         if (customer && customer.fcmToken) {
@@ -203,14 +221,14 @@ exports.updateOrderStatusByShipper = async (req, res) => {
               break;
           }
           
-         await safeNotify(customer.fcmToken, {
+          await safeNotify(customer.fcmToken, {
             title: 'Cập nhật đơn hàng',
             body: messageBody,
             data: { 
               orderId,
               shipperView: "false"
             }
-        });
+          });
         }
       } catch (notifError) {
         console.error('Lỗi gửi thông báo cho khách hàng:', notifError);
