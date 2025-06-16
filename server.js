@@ -1,15 +1,16 @@
-// server.js
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const authRoutes = require('./routes/authRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
-const productRoutes  = require('./routes/productRoutes');
+const productRoutes = require('./routes/productRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const cartRoutes = require('./routes/cartRoutes');
 const shipperRoutes = require('./routes/shipperRoutes');
 const adminRoutes = require('./routes/admin');
 const userRoutes = require('./routes/userRoutes');
+const shippingRoutes = require('./routes/shippingRoutes'); // Thêm
+const voucherRoutes = require('./routes/voucherRoutes'); // Thêm
 require('dotenv').config();
 
 const app = express();
@@ -52,17 +53,16 @@ const connectDB = async () => {
 connectDB();
 
 // Routes
-app.use(express.json());
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/categories', categoryRoutes);
 app.use('/api/v1/products', productRoutes);
 app.use('/api/v1/orders', orderRoutes);
-app.use('/api/v1/cart', cartRoutes); // Thêm route giỏ hàng
+app.use('/api/v1/cart', cartRoutes);
 app.use('/api/v1/shippers', shipperRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/users', userRoutes);
-
-
+app.use('/api/v1/shipping', shippingRoutes); // Thêm
+app.use('/api/v1/vouchers', voucherRoutes); // Thêm
 
 // 404 Handler
 app.use((req, res, next) => {
