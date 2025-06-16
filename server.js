@@ -12,7 +12,7 @@ const userRoutes = require('./routes/userRoutes');
 const shippingRoutes = require('./routes/shippingRoutes'); // Thêm
 const voucherRoutes = require('./routes/voucherRoutes'); // Thêm
 require('dotenv').config();
-const initShippingFees = require('./utils/initData');
+const {initShippingFees} = require('./utils/initData');
 const app = express();
 
 app.use(cors({
