@@ -84,21 +84,36 @@ const orderSchema = new mongoose.Schema({
     ref: 'User',
     default: null
   },
+  shippingFee: {
+    type: Number,
+    required: true,
+    min: 0,
+    default: 0
+  },
+  voucherDiscount: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
+  voucherCode: {
+    type: String,
+    trim: true,
+    default: null
+  },
   timestamps: {
-     createdAt: { 
+    createdAt: { 
       type: Date, 
-      default: Date.now // <-- Thêm dòng này
+      default: Date.now
     }, 
-    acceptedAt: Date,     // Thời điểm shipper nhận đơn
-    processingAt: Date,   // Thời điểm bắt đầu xử lý
-    deliveringAt: Date,   // Thời điểm bắt đầu giao hàng
-    deliveredAt: Date,    // Thời điểm giao thành công
-    canceledAt: Date,     // Thời điểm huỷ
+    acceptedAt: Date,
+    processingAt: Date,
+    deliveringAt: Date,
+    deliveredAt: Date,
+    canceledAt: Date
   }
 }, {
-  versionKey: false,
+  versionKey: false
 });
-
 
 // Validate tổng tiền
 orderSchema.pre('validate', function(next) {
@@ -106,8 +121,9 @@ orderSchema.pre('validate', function(next) {
     const calced = this.items
       .reduce((acc, i) => acc + i.price * i.quantity, 0)
       .toFixed(2);
-    if (this.total.toFixed(2) !== calced) {
-      this.invalidate('total', `Tổng tiền không khớp (${this.total} ≠ ${calced})`);
+    const totalWithShipping = (parseFloat(calced) + this.shippingFee - (this.voucherDiscount || 0)).toFixed(2);
+    if (this.total.toFixed(2) !== totalWithShipping) {
+      this.invalidate('total', `Tổng tiền không khớp (${this.total} ≠ ${totalWithShipping})`);
     }
   }
   next();
