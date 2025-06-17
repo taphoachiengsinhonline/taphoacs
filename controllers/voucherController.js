@@ -1,6 +1,7 @@
 const Voucher = require('../models/Voucher');
 const UserVoucher = require('../models/UserVoucher');
 const Settings = require('../models/Settings');
+const crypto = require('crypto');
 
 // Lấy danh sách voucher có thể thu thập
 exports.getAvailableVouchers = async (req, res) => {
@@ -46,7 +47,7 @@ exports.getMyVouchers = async (req, res) => {
   }
 };
 
-// Tạo voucher (admin only)
+// Tạo một voucher (admin only)
 exports.createVoucher = async (req, res) => {
   try {
     const { code, type, value, expiryDate, maxCollects, isFeatured, isNewUserVoucher } = req.body;
@@ -77,6 +78,46 @@ exports.createVoucher = async (req, res) => {
     res.status(err.code === 11000 ? 400 : 500).json({
       message: err.code === 11000 ? 'Mã voucher đã tồn tại' : 'Lỗi server'
     });
+  }
+};
+
+// Tạo hàng loạt voucher (admin only)
+exports.createBulkVouchers = async (req, res) => {
+  try {
+    const { quantity, type, value, expiryDate, maxCollects, isFeatured } = req.body;
+    if (!quantity || !type || !value || !expiryDate || !maxCollects) {
+      return res.status(400).json({ message: 'Thiếu thông tin cần thiết' });
+    }
+    if (!['fixed', 'percentage'].includes(type)) {
+      return res.status(400).json({ message: 'Loại giảm giá không hợp lệ' });
+    }
+    if (parseInt(quantity) <= 0 || parseInt(value) <= 0 || parseInt(maxCollects) <= 0) {
+      return res.status(400).json({ message: 'Số lượng, giá trị giảm, và số lần thu thập phải lớn hơn 0' });
+    }
+    if (new Date(expiryDate) <= new Date()) {
+      return res.status(400).json({ message: 'Thời hạn sử dụng phải là ngày trong tương lai' });
+    }
+
+    const vouchers = [];
+    for (let i = 0; i < quantity; i++) {
+      vouchers.push({
+        code: `SHIP-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+        type,
+        value: parseInt(value),
+        expiryDate: new Date(expiryDate),
+        maxCollects: parseInt(maxCollects),
+        currentCollects: 0,
+        isActive: true,
+        isFeatured: isFeatured || false,
+        applicableTo: 'shipping'
+      });
+    }
+
+    const createdVouchers = await Voucher.insertMany(vouchers);
+    res.status(201).json({ message: `Tạo ${quantity} voucher thành công`, vouchers: createdVouchers });
+  } catch (err) {
+    console.error('[createBulkVouchers] error:', err);
+    res.status(500).json({ message: 'Lỗi server' });
   }
 };
 
