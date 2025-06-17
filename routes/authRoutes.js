@@ -188,10 +188,10 @@ router.post('/refresh-token', async (req, res) => {
   } catch (error) {
     console.error('Refresh token error:', error);
     if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ status: 'error', message: 'Refresh token đã hết hạn' });
+      return res.status(401).json({ status: 'error', message: 'Refresh token đã hết hạn, vui lòng đăng nhập lại' });
     }
     if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ status: 'error', message: 'Refresh token không hợp lệ' });
+      return res.status(401).json({ status: 'error', message: 'Refresh token không hợp lệ, vui lòng đăng nhập lại' });
     }
     return res.status(401).json({ status: 'error', message: 'Lỗi xác thực refresh token' });
   }
