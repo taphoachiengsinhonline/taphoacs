@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Voucher = require('../models/Voucher');
 const UserVoucher = require('../models/UserVoucher');
 const Settings = require('../models/Settings');
@@ -209,7 +210,11 @@ exports.grantNewUserVoucher = async (userId) => {
 
 exports.getAllVouchers = async (req, res) => {
   try {
-    const vouchers = await Voucher.find().sort({ createdAt: -1 });
+    const query = {};
+    if (req.query.applicableTo) {
+      query.applicableTo = req.query.applicableTo;
+    }
+    const vouchers = await Voucher.find(query).sort({ createdAt: -1 });
     res.status(200).json({
       message: 'Lấy danh sách voucher thành công',
       vouchers
@@ -222,7 +227,11 @@ exports.getAllVouchers = async (req, res) => {
 
 exports.getVoucherById = async (req, res) => {
   try {
-    const voucher = await Voucher.findById(req.params.id);
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'ID voucher không hợp lệ' });
+    }
+    const voucher = await Voucher.findById(id);
     if (!voucher) {
       return res.status(404).json({ message: 'Voucher không tồn tại' });
     }
@@ -235,8 +244,12 @@ exports.getVoucherById = async (req, res) => {
 
 exports.updateVoucher = async (req, res) => {
   try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'ID voucher không hợp lệ' });
+    }
     const updates = req.body;
-    const voucher = await Voucher.findByIdAndUpdate(req.params.id, updates, { new: true });
+    const voucher = await Voucher.findByIdAndUpdate(id, updates, { new: true });
     if (!voucher) {
       return res.status(404).json({ message: 'Voucher không tồn tại' });
     }
