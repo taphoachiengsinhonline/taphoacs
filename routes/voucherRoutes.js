@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const voucherController = require('../controllers/voucherController');
-const authMiddleware = require('../middlewares/authMiddleware.js');
+const authMiddleware = require('../middlewares/authRoutes.js');
 
 // API cho người dùng
 router.get('/available', voucherController.getAvailableVouchers); // Lấy voucher có thể thu thập
