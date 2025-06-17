@@ -292,17 +292,20 @@ exports.getMyOrders = async (req, res) => {
 
 exports.countOrdersByStatus = async (req, res) => {
   try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: 'Phiên đăng nhập không hợp lệ' });
+    }
     const all = await Order.find({ user: req.user._id });
     const counts = all.reduce((acc, o) => {
       switch (o.status) {
         case 'Chờ xác nhận': acc.pending++; break;
-        case 'Đang xử lý':    acc.confirmed++; break;
-        case 'Đang giao':     acc.shipped++; break;
-        case 'Đã giao':       acc.delivered++; break;
-        case 'Đã huỷ':        acc.canceled++; break;
+        case 'Đang xử lý': acc.confirmed++; break;
+        case 'Đang giao': acc.shipped++; break;
+        case 'Đã giao': acc.delivered++; break;
+        case 'Đã huỷ': acc.canceled++; break;
       }
       return acc;
-    }, { pending:0, confirmed:0, shipped:0, delivered:0, canceled:0 });
+    }, { pending: 0, confirmed: 0, shipped: 0, delivered: 0, canceled: 0 });
     return res.status(200).json(counts);
   } catch (err) {
     console.error('[countOrdersByStatus] error:', err);
