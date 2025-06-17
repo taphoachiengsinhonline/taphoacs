@@ -277,3 +277,17 @@ exports.grantNewUserVoucher = async (userId) => {
     console.error('[grantNewUserVoucher] error:', err);
   }
 };
+
+
+exports.getAllVouchers = async (req, res) => {
+  try {
+    const vouchers = await Voucher.find().sort({ createdAt: -1 });
+    res.status(200).json({
+      message: 'Lấy danh sách voucher thành công',
+      vouchers
+    });
+  } catch (error) {
+    console.error('[getAllVouchers] error:', error);
+    res.status(500).json({ message: 'Lỗi server', error: error.message });
+  }
+};
