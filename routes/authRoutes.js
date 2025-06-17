@@ -169,6 +169,7 @@ router.post('/login', async (req, res) => {
 // Làm mới token
 router.post('/refresh-token', async (req, res) => {
   const { refreshToken } = req.body;
+  console.log('[DEBUG] Refresh token request:', { refreshToken: refreshToken ? 'Provided' : 'Missing' });
 
   if (!refreshToken) {
     return res.status(400).json({ status: 'error', message: 'Thiếu refresh token' });
@@ -176,7 +177,16 @@ router.post('/refresh-token', async (req, res) => {
 
   try {
     const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
-    const { accessToken, refreshToken: newRefreshToken } = generateTokens(decoded.userId);
+    console.log('[DEBUG] Decoded refresh token:', decoded);
+
+    const user = await User.findById(decoded.userId);
+    if (!user) {
+      console.log('[DEBUG] User not found for ID:', decoded.userId);
+      return res.status(401).json({ status: 'error', message: 'Người dùng không tồn tại' });
+    }
+
+    const { accessToken, refreshToken: newRefreshToken } = generateTokens(user._id);
+    console.log('[DEBUG] New tokens generated:', { accessToken: 'Generated', refreshToken: 'Generated' });
 
     return res.status(200).json({
       status: 'success',
