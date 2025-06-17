@@ -13,5 +13,6 @@ router.post('/apply', verifyToken, voucherController.applyVoucher); // Áp dụn
 router.post('/', verifyToken, isAdmin, voucherController.createVoucher); // Tạo voucher
 router.delete('/:id', verifyToken, isAdmin, voucherController.deleteVoucher); // Xóa voucher
 router.put('/new-user-settings', verifyToken, isAdmin, voucherController.updateNewUserVoucherSettings); // Cài đặt voucher khách mới
+router.post('/bulk', restrictTo('admin'), voucherController.createBulkVouchers);
 
 module.exports = router;
