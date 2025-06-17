@@ -3,6 +3,36 @@ const UserVoucher = require('../models/UserVoucher');
 const Settings = require('../models/Settings');
 const crypto = require('crypto');
 
+
+exports.createBulkVouchers = async (req, res) => {
+  try {
+    const { vouchers } = req.body; // Expect array of voucher objects
+    if (!Array.isArray(vouchers) || vouchers.length === 0) {
+      return res.status(400).json({ message: 'Vouchers array is required' });
+    }
+
+    // Validate and create vouchers
+    const createdVouchers = await Voucher.insertMany(
+      vouchers.map(voucher => ({
+        ...voucher,
+        createdBy: req.user._id,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }))
+    );
+
+    res.status(201).json({
+      message: 'Vouchers được tạo thành công',
+      vouchers: createdVouchers
+    });
+  } catch (error) {
+    console.error('Error creating bulk vouchers:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+
+
 // Lấy danh sách voucher có thể thu thập
 exports.getAvailableVouchers = async (req, res) => {
   try {
