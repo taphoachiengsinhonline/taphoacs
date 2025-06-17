@@ -32,9 +32,21 @@ const isAdminMiddleware = isAdmin;
 // Thêm verifyAdmin để tương thích với voucherRoutes.js
 const verifyAdmin = isAdmin;
 
+
+const restrictTo = (...roles) => {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ message: 'Bạn không có quyền truy cập' });
+    }
+    next();
+  };
+};
+
+
 module.exports = {
   verifyToken,
   isAdmin,
   isAdminMiddleware,
   verifyAdmin,
+  restrictTo
 };
