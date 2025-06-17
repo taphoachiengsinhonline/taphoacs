@@ -7,7 +7,7 @@ exports.createBulkVouchers = async (req, res) => {
   try {
     const { vouchers } = req.body;
     if (!Array.isArray(vouchers) || vouchers.length === 0) {
-      return res.status(400).json({ message: 'Vouchers array is required' });
+      return res.status(400).json({ message: 'Yêu cầu mảng vouchers không rỗng' });
     }
     const createdVouchers = await Voucher.insertMany(
       vouchers.map(voucher => ({
@@ -18,12 +18,12 @@ exports.createBulkVouchers = async (req, res) => {
       }))
     );
     res.status(201).json({
-      message: 'Vouchers được tạo thành công',
+      message: 'Tạo vouchers thành công',
       vouchers: createdVouchers
     });
   } catch (error) {
-    console.error('Error creating bulk vouchers:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Lỗi tạo bulk vouchers:', error);
+    res.status(500).json({ message: 'Lỗi server', error: error.message });
   }
 };
 
@@ -45,7 +45,7 @@ exports.getAvailableVouchers = async (req, res) => {
     }
     res.json(vouchers);
   } catch (err) {
-    console.error('[getAvailableVouchers] error:', err);
+    console.error('[getAvailableVouchers] lỗi:', err);
     res.status(500).json({ message: 'Lỗi server' });
   }
 };
@@ -61,7 +61,7 @@ exports.getMyVouchers = async (req, res) => {
       .filter(v => v && v.isActive && v.expiryDate > new Date());
     res.json(vouchers);
   } catch (err) {
-    console.error('[getMyVouchers] error:', err);
+    console.error('[getMyVouchers] lỗi:', err);
     res.status(500).json({ message: 'Lỗi server' });
   }
 };
@@ -91,7 +91,7 @@ exports.createVoucher = async (req, res) => {
     await voucher.save();
     res.status(201).json({ message: 'Tạo voucher thành công', voucher });
   } catch (err) {
-    console.error('[createVoucher] error:', err);
+    console.error('[createVoucher] lỗi:', err);
     res.status(err.code === 11000 ? 400 : 500).json({
       message: err.code === 11000 ? 'Mã voucher đã tồn tại' : 'Lỗi server'
     });
@@ -115,7 +115,7 @@ exports.collectVoucher = async (req, res) => {
     await voucher.save();
     res.status(200).json({ message: 'Thu thập voucher thành công' });
   } catch (err) {
-    console.error('[collectVoucher] error:', err);
+    console.error('[collectVoucher] lỗi:', err);
     res.status(500).json({ message: 'Lỗi server' });
   }
 };
@@ -141,7 +141,7 @@ exports.applyVoucher = async (req, res) => {
     discount = Math.min(discount, shippingFee);
     res.json({ message: 'Áp dụng voucher thành công', discount });
   } catch (err) {
-    console.error('[applyVoucher] error:', err);
+    console.error('[applyVoucher] lỗi:', err);
     res.status(500).json({ message: 'Lỗi server' });
   }
 };
@@ -154,7 +154,7 @@ exports.deleteVoucher = async (req, res) => {
     }
     res.json({ message: 'Xóa voucher thành công' });
   } catch (err) {
-    console.error('[deleteVoucher] error:', err);
+    console.error('[deleteVoucher] lỗi:', err);
     res.status(500).json({ message: 'Lỗi server' });
   }
 };
@@ -180,7 +180,7 @@ exports.updateNewUserVoucherSettings = async (req, res) => {
     await settings.save();
     res.json({ message: 'Cập nhật cài đặt thành công', settings });
   } catch (err) {
-    console.error('[updateNewUserVoucherSettings] error:', err);
+    console.error('[updateNewUserVoucherSettings] lỗi:', err);
     res.status(500).json({ message: 'Lỗi server' });
   }
 };
@@ -203,7 +203,7 @@ exports.grantNewUserVoucher = async (userId) => {
     voucher.currentCollects += 1;
     await voucher.save();
   } catch (err) {
-    console.error('[grantNewUserVoucher] error:', err);
+    console.error('[grantNewUserVoucher] lỗi:', err);
   }
 };
 
@@ -215,7 +215,7 @@ exports.getAllVouchers = async (req, res) => {
       vouchers
     });
   } catch (error) {
-    console.error('[getAllVouchers] error:', error);
+    console.error('[getAllVouchers] lỗi:', error);
     res.status(500).json({ message: 'Lỗi server', error: error.message });
   }
 };
@@ -228,7 +228,7 @@ exports.getVoucherById = async (req, res) => {
     }
     res.status(200).json({ message: 'Lấy voucher thành công', voucher });
   } catch (error) {
-    console.error('[getVoucherById] error:', error);
+    console.error('[getVoucherById] lỗi:', error);
     res.status(500).json({ message: 'Lỗi server', error: error.message });
   }
 };
@@ -242,7 +242,7 @@ exports.updateVoucher = async (req, res) => {
     }
     res.status(200).json({ message: 'Cập nhật voucher thành công', voucher });
   } catch (error) {
-    console.error('[updateVoucher] error:', error);
+    console.error('[updateVoucher] lỗi:', error);
     res.status(500).json({ message: 'Lỗi server', error: error.message });
   }
 };
