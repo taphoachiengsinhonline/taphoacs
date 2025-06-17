@@ -6,7 +6,7 @@ const crypto = require('crypto');
 // Lấy danh sách voucher có thể thu thập
 exports.getAvailableVouchers = async (req, res) => {
   try {
-    const userId = req.user?.id; // Lấy từ middleware xác thực
+    const userId = req.user?.id;
     const vouchers = await Voucher.find({
       type: { $in: ['fixed', 'percentage'] },
       isActive: true,
@@ -15,7 +15,6 @@ exports.getAvailableVouchers = async (req, res) => {
       $expr: { $lt: ['$currentCollects', '$maxCollects'] }
     });
 
-    // Lọc voucher chưa được người dùng thu thập
     if (userId) {
       const collectedVouchers = await UserVoucher.find({ user: userId }).select('voucher');
       const collectedIds = collectedVouchers.map(uv => uv.voucher.toString());
@@ -170,7 +169,7 @@ exports.applyVoucher = async (req, res) => {
     } else if (voucher.type === 'percentage') {
       discount = (voucher.value / 100) * shippingFee;
     }
-    discount = Math.min(discount, shippingFee); // Không cho phí ship âm
+    discount = Math.min(discount, shippingFee);
 
     res.json({ message: 'Áp dụng voucher thành công', discount });
   } catch (err) {
