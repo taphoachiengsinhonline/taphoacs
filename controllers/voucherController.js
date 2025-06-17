@@ -38,10 +38,12 @@ exports.getAvailableVouchers = async (req, res) => {
       expiryDate: { $gt: new Date() },
       $expr: { $lt: ['$currentCollects', '$maxCollects'] }
     });
+    console.log(`[getAvailableVouchers] Tìm thấy ${vouchers.length} voucher khả dụng`); // Log debug
     if (userId) {
       const collectedVouchers = await UserVoucher.find({ user: userId }).select('voucher');
       const collectedIds = collectedVouchers.map(uv => uv.voucher.toString());
       const filteredVouchers = vouchers.filter(v => !collectedIds.includes(v._id.toString()));
+      console.log(`[getAvailableVouchers] Sau lọc user ${userId}: ${filteredVouchers.length} voucher`); // Log debug
       return res.json(filteredVouchers);
     }
     res.json(vouchers);
