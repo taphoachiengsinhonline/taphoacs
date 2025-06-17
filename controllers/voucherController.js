@@ -11,7 +11,7 @@ exports.getAvailableVouchers = async (req, res) => {
       isActive: true,
       isFeatured: true,
       expiryDate: { $gt: new Date() },
-      currentCollects: { $lt: '$maxCollects' }
+      $expr: { $lt: ['$currentCollects', '$maxCollects'] }
     });
 
     // Lọc voucher chưa được người dùng thu thập
