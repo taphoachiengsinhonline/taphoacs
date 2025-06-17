@@ -1,17 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const voucherController = require('../controllers/voucherController');
-const authMiddleware = require('../middlewares/authMiddleware.js');
+const { verifyToken, isAdmin } = require('../middlewares/authMiddleware');
 
 // API cho người dùng
 router.get('/available', voucherController.getAvailableVouchers); // Lấy voucher có thể thu thập
-router.post('/:id/collect', authMiddleware.verifyToken, voucherController.collectVoucher); // Thu thập voucher
-router.get('/my', authMiddleware.verifyToken, voucherController.getMyVouchers); // Lấy voucher của tôi
-router.post('/apply', authMiddleware.verifyToken, voucherController.applyVoucher); // Áp dụng voucher
+router.post('/:id/collect', verifyToken, voucherController.collectVoucher); // Thu thập voucher
+router.get('/my', verifyToken, voucherController.getMyVouchers); // Lấy voucher của tôi
+router.post('/apply', verifyToken, voucherController.applyVoucher); // Áp dụng voucher
 
 // API cho admin
-router.post('/', authMiddleware.verifyAdmin, voucherController.createVoucher); // Tạo voucher
-router.delete('/:id', authMiddleware.verifyAdmin, voucherController.deleteVoucher); // Xóa voucher
-router.put('/new-user-settings', authMiddleware.verifyAdmin, voucherController.updateNewUserVoucherSettings); // Cài đặt voucher khách mới
+router.post('/', verifyToken, isAdmin, voucherController.createVoucher); // Tạo voucher
+router.delete('/:id', verifyToken, isAdmin, voucherController.deleteVoucher); // Xóa voucher
+router.put('/new-user-settings', verifyToken, isAdmin, voucherController.updateNewUserVoucherSettings); // Cài đặt voucher khách mới
 
 module.exports = router;
