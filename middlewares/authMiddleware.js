@@ -89,16 +89,16 @@ router.post('/register', async (req, res) => {
     // Tạo token
     const { accessToken, refreshToken } = generateTokens(user._id);
 
-    res.status(201).json({
+    res.status(200).json({
       status: 'success',
       data: {
         user: {
           _id: user._id,
           name: user.name,
-          email: user.email,
-          address: user.address,
-          phone: user.phone,
-          role: user.role,
+          email,
+          address,
+          phone,
+          role,
           isAdmin: user.role === 'admin'
         },
         token: accessToken,
@@ -115,12 +115,10 @@ router.post('/register', async (req, res) => {
 // Đăng nhập
 router.post('/login', async (req, res) => {
   try {
-    const { email, password, client_type } = req.body;
-    console.log('[DEBUG] Login request:', { email, client_type });
-
+    const { email, password } = req.body;
     // Kiểm tra email và password
-    if (!email || !password) {
-      return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
+    if (!email || !password.trim()) {
+      return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và password' });
     }
 
     // Tìm user
@@ -137,15 +135,6 @@ router.post('/login', async (req, res) => {
 
     if (!isMatch) {
       return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
-    }
-
-    // Kiểm tra client_type và role
-    if (client_type === 'shipper' && user.role !== 'shipper') {
-      console.log('[DEBUG] Role không hợp lệ:', user.role);
-      return res.status(403).json({
-        status: 'error',
-        message: 'Tài khoản không có quyền shipper'
-      });
     }
 
     // Tạo token và response
