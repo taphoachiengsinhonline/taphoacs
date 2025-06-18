@@ -23,13 +23,14 @@ exports.createBulkVouchers = async (req, res) => {
       vouchers: createdVouchers
     });
   } catch (error) {
-    console.error('Lỗi tạo bulk vouchers:', error);
+    console.error('[createBulkVouchers] Lỗi:', error);
     res.status(500).json({ message: 'Lỗi server', error: error.message });
   }
 };
 
 exports.getAvailableVouchers = async (req, res) => {
   try {
+    console.log('[getAvailableVouchers] User ID:', req.user?.id); // Log debug
     const userId = req.user?.id;
     const vouchers = await Voucher.find({
       type: { $in: ['fixed', 'percentage'] },
@@ -44,12 +45,12 @@ exports.getAvailableVouchers = async (req, res) => {
       const collectedIds = collectedVouchers.map(uv => uv.voucher.toString());
       const filteredVouchers = vouchers.filter(v => !collectedIds.includes(v._id.toString()));
       console.log(`[getAvailableVouchers] Sau lọc user ${userId}: ${filteredVouchers.length} voucher`); // Log debug
-      return res.json(filteredVouchers);
+      return res.status(200).json(filteredVouchers);
     }
-    res.json(vouchers);
+    res.status(200).json(vouchers);
   } catch (err) {
-    console.error('[getAvailableVouchers] lỗi:', err);
-    res.status(500).json({ message: 'Lỗi server' });
+    console.error('[getAvailableVouchers] Lỗi:', err);
+    res.status(500).json({ message: 'Lỗi server', error: err.message });
   }
 };
 
@@ -62,10 +63,10 @@ exports.getMyVouchers = async (req, res) => {
     const vouchers = userVouchers
       .map(uv => uv.voucher)
       .filter(v => v && v.isActive && v.expiryDate > new Date());
-    res.json(vouchers);
+    res.status(200).json(vouchers);
   } catch (err) {
-    console.error('[getMyVouchers] lỗi:', err);
-    res.status(500).json({ message: 'Lỗi server' });
+    console.error('[getMyVouchers] Lỗi:', err);
+    res.status(500).json({ message: 'Lỗi server', error: err.message });
   }
 };
 
@@ -94,7 +95,7 @@ exports.createVoucher = async (req, res) => {
     await voucher.save();
     res.status(201).json({ message: 'Tạo voucher thành công', voucher });
   } catch (err) {
-    console.error('[createVoucher] lỗi:', err);
+    console.error('[createVoucher] Lỗi:', err);
     res.status(err.code === 11000 ? 400 : 500).json({
       message: err.code === 11000 ? 'Mã voucher đã tồn tại' : 'Lỗi server'
     });
@@ -118,8 +119,8 @@ exports.collectVoucher = async (req, res) => {
     await voucher.save();
     res.status(200).json({ message: 'Thu thập voucher thành công' });
   } catch (err) {
-    console.error('[collectVoucher] lỗi:', err);
-    res.status(500).json({ message: 'Lỗi server' });
+    console.error('[collectVoucher] Lỗi:', err);
+    res.status(500).json({ message: 'Lỗi server', error: err.message });
   }
 };
 
@@ -142,10 +143,10 @@ exports.applyVoucher = async (req, res) => {
       discount = (voucher.value / 100) * shippingFee;
     }
     discount = Math.min(discount, shippingFee);
-    res.json({ message: 'Áp dụng voucher thành công', discount });
+    res.status(200).json({ message: 'Áp dụng voucher thành công', discount });
   } catch (err) {
-    console.error('[applyVoucher] lỗi:', err);
-    res.status(500).json({ message: 'Lỗi server' });
+    console.error('[applyVoucher] Lỗi:', err);
+    res.status(500).json({ message: 'Lỗi server', error: err.message });
   }
 };
 
@@ -155,10 +156,10 @@ exports.deleteVoucher = async (req, res) => {
     if (!voucher) {
       return res.status(404).json({ message: 'Voucher không tồn tại' });
     }
-    res.json({ message: 'Xóa voucher thành công' });
+    res.status(200).json({ message: 'Xóa voucher thành công' });
   } catch (err) {
-    console.error('[deleteVoucher] lỗi:', err);
-    res.status(500).json({ message: 'Lỗi server' });
+    console.error('[deleteVoucher] Lỗi:', err);
+    res.status(500).json({ message: 'Lỗi server', error: err.message });
   }
 };
 
@@ -181,10 +182,10 @@ exports.updateNewUserVoucherSettings = async (req, res) => {
     settings.newUserVoucherId = newUserVoucherEnabled ? newUserVoucherId : null;
     settings.newUserVoucherEnabled = newUserVoucherEnabled;
     await settings.save();
-    res.json({ message: 'Cập nhật cài đặt thành công', settings });
+    res.status(200).json({ message: 'Cập nhật cài đặt thành công', settings });
   } catch (err) {
-    console.error('[updateNewUserVoucherSettings] lỗi:', err);
-    res.status(500).json({ message: 'Lỗi server' });
+    console.error('[updateNewUserVoucherSettings] Lỗi:', err);
+    res.status(500).json({ message: 'Lỗi server', error: err.message });
   }
 };
 
@@ -206,7 +207,7 @@ exports.grantNewUserVoucher = async (userId) => {
     voucher.currentCollects += 1;
     await voucher.save();
   } catch (err) {
-    console.error('[grantNewUserVoucher] lỗi:', err);
+    console.error('[grantNewUserVoucher] Lỗi:', err);
   }
 };
 
@@ -222,7 +223,7 @@ exports.getAllVouchers = async (req, res) => {
       vouchers
     });
   } catch (error) {
-    console.error('[getAllVouchers] lỗi:', error);
+    console.error('[getAllVouchers] Lỗi:', error);
     res.status(500).json({ message: 'Lỗi server', error: error.message });
   }
 };
@@ -239,7 +240,7 @@ exports.getVoucherById = async (req, res) => {
     }
     res.status(200).json({ message: 'Lấy voucher thành công', voucher });
   } catch (error) {
-    console.error('[getVoucherById] lỗi:', error);
+    console.error('[getVoucherById] Lỗi:', error);
     res.status(500).json({ message: 'Lỗi server', error: error.message });
   }
 };
@@ -257,7 +258,7 @@ exports.updateVoucher = async (req, res) => {
     }
     res.status(200).json({ message: 'Cập nhật voucher thành công', voucher });
   } catch (error) {
-    console.error('[updateVoucher] lỗi:', error);
+    console.error('[updateVoucher] Lỗi:', error);
     res.status(500).json({ message: 'Lỗi server', error: error.message });
   }
 };
