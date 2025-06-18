@@ -6,6 +6,37 @@ const sendPushNotification = require('../utils/sendPushNotification');
 const assignOrderToNearestShipper = require('../utils/assignOrderToNearestShipper');
 const { safeNotify } = require('../utils/notificationMiddleware');
 
+
+
+exports.countByStatus = async (req, res) => {
+  try {
+    console.log('[countByStatus] Bắt đầu query'); // Log debug
+    const counts = await Order.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]).exec(); // Đảm bảo query hoàn tất
+    console.log('[countByStatus] Kết quả:', counts); // Log debug
+    const result = counts.reduce((acc, item) => {
+      acc[item._id] = item.count;
+      return acc;
+    }, {});
+    res.status(200).json({
+      message: 'Lấy số lượng đơn hàng theo trạng thái thành công',
+      counts: result
+    });
+  } catch (error) {
+    console.error('[countByStatus] Lỗi:', error);
+    res.status(500).json({ message: 'Lỗi server', error: error.message });
+  }
+};
+
+
+
+
 const validateSaleTime = (product, nowMin) => {
   const toMin = str => {
     const [h, m] = str.split(':').map(Number);
