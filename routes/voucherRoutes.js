@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const voucherController = require('../controllers/voucherController');
-const { protect, restrictTo } = require('../middleware/authMiddleware');
+const { protect, restrictTo } = require('../middlewares/authMiddleware');
 
 router.use(protect);
 
