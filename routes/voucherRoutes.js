@@ -1,52 +1,24 @@
 const express = require('express');
 const router = express.Router();
 const voucherController = require('../controllers/voucherController');
-const { verifyToken, restrictTo } = require('../middlewares/authMiddleware');
+const { protect, restrictTo } = require('../middleware/authMiddleware');
 
-router.use(verifyToken);
-router.get('/my', (req, res, next) => {
-  console.log('Hit GET /vouchers/my');
-  next();
-}, voucherController.getMyVouchers);
+router.use(protect);
 
-router.post('/collect/:id', (req, res, next) => {
-  console.log('Hit POST /vouchers/collect/:id');
-  next();
-}, voucherController.collectVoucher);
+// Route cụ thể phải đặt trước route động (:id)
+router.get('/available', voucherController.getAvailableVouchers);
+router.get('/my-vouchers', voucherController.getMyVouchers);
+router.post('/collect/:id', voucherController.collectVoucher);
+router.post('/apply', voucherController.applyVoucher);
 
-router.get('/', restrictTo('admin'), (req, res, next) => {
-  console.log('Hit GET /vouchers');
-  next();
-}, voucherController.getAllVouchers);
+// Route admin
+router.get('/', restrictTo('admin'), voucherController.getAllVouchers);
+router.post('/', restrictTo('admin'), voucherController.createVoucher);
+router.post('/bulk', restrictTo('admin'), voucherController.createBulkVouchers);
 
-router.post('/', restrictTo('admin'), (req, res, next) => {
-  console.log('Hit POST /vouchers');
-  next();
-}, voucherController.createVoucher);
-
-router.get('/:id', restrictTo('admin'), (req, res, next) => {
-  console.log('Hit GET /vouchers/:id');
-  next();
-}, voucherController.getVoucherById);
-
-router.patch('/:id', restrictTo('admin'), (req, res, next) => {
-  console.log('Hit PATCH /vouchers/:id');
-  next();
-}, voucherController.updateVoucher);
-
-router.delete('/:id', restrictTo('admin'), (req, res, next) => {
-  console.log('Hit DELETE /vouchers/:id');
-  next();
-}, voucherController.deleteVoucher);
-
-router.post('/apply', (req, res, next) => {
-  console.log('Hit POST /vouchers/apply');
-  next();
-}, voucherController.applyVoucher);
-
-router.post('/bulk', restrictTo('admin'), (req, res, next) => {
-  console.log('Hit POST /vouchers/bulk');
-  next();
-}, voucherController.createBulkVouchers);
+// Route động (:id) đặt cuối
+router.get('/:id', voucherController.getVoucherById);
+router.delete('/:id', restrictTo('admin'), voucherController.deleteVoucher);
+router.patch('/:id', restrictTo('admin'), voucherController.updateVoucher);
 
 module.exports = router;
