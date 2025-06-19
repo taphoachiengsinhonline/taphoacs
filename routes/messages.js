@@ -2,35 +2,24 @@ const express = require('express');
 const router = express.Router();
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-
-// Middleware auth
-const auth = async (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ error: 'No token provided' });
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret');
-    req.user = await User.findById(decoded.id);
-    if (!req.user) return res.status(401).json({ error: 'User not found' });
-    next();
-  } catch (err) {
-    console.error('Auth error:', err);
-    res.status(401).json({ error: 'Invalid token' });
-  }
-};
+const auth = require('../middleware/auth');
 
 // Lấy tin nhắn
 router.get('/:conversationId', auth, async (req, res) => {
   try {
     const { conversationId } = req.params;
+    console.log('[Messages] Fetching for conversationId:', conversationId);
     const conversation = await Conversation.findById(conversationId);
-    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    if (!conversation) {
+      console.log('[Messages] Conversation not found:', conversationId);
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
     const messages = await Message.find({ conversationId })
       .populate('senderId', 'username');
+    console.log('[Messages] Found:', messages.length);
     res.json(messages);
   } catch (err) {
-    console.error('Get messages error:', err);
+    console.error('[Messages] Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -39,11 +28,15 @@ router.get('/:conversationId', auth, async (req, res) => {
 router.post('/', auth, async (req, res) => {
   try {
     const { conversationId, content } = req.body;
+    console.log('[Messages] Sending:', { conversationId, content });
     if (!conversationId || !content) {
       return res.status(400).json({ error: 'conversationId and content required' });
     }
     const conversation = await Conversation.findById(conversationId);
-    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    if (!conversation) {
+      console.log('[Messages] Conversation not found:', conversationId);
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
     const message = new Message({
       conversationId,
       senderId: req.user._id,
@@ -52,12 +45,12 @@ router.post('/', auth, async (req, res) => {
     await message.save();
     const populated = await Message.findById(message._id)
       .populate('senderId', 'username');
-    // Cập nhật updatedAt của conversation
     conversation.updatedAt = new Date();
     await conversation.save();
+    console.log('[Messages] Sent:', message._id);
     res.json(populated);
   } catch (err) {
-    console.error('Send message error:', err);
+    console.error('[Messages] Send error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
