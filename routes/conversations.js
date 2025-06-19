@@ -1,29 +1,33 @@
 // routes/conversations.js
-router.get('/conversations', async (req, res) => {
-  const { customerId, adminId } = req.query;
-  const query = {};
-  if (customerId) query.customerId = customerId;
-  if (adminId) query.adminId = adminId;
-  const conversations = await Conversation.find(query).populate('productId').sort({ updatedAt: -1 });
-  res.json(conversations);
+const express = require('express');
+const router = express.Router();
+const Conversation = require('../models/Conversation');
+
+
+// Lấy danh sách hội thoại của khách
+router.get('/', async (req, res) => {
+  try {
+    const { customerId } = req.query;
+    const conversations = await Conversation.find({ customerId })
+      .populate('productId')
+      .populate('customerId')
+      .populate('adminId');
+    res.json(conversations);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post('/conversations', async (req, res) => {
-  const { productId, customerId, adminId } = req.body;
-  const conversation = new Conversation({ productId, customerId, adminId, createdAt: new Date(), updatedAt: new Date() });
-  await conversation.save();
-  res.json({ _id: conversation._id });
+// Tạo hội thoại mới
+router.post('/', async (req, res) => {
+  try {
+    const { productId, customerId, adminId } = req.body;
+    const conversation = new Conversation({ productId, customerId, adminId });
+    await conversation.save();
+    res.json(conversation);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.get('/messages/:conversationId', async (req, res) => {
-  const messages = await Message.find({ conversationId: req.params.conversationId }).sort({ createdAt: 1 });
-  res.json(messages);
-});
-
-router.post('/messages', async (req, res) => {
-  const { conversationId, senderId, content } = req.body;
-  const message = new Message({ conversationId, senderId, content, createdAt: new Date() });
-  await message.save();
-  await Conversation.updateOne({ _id: conversationId }, { updatedAt: new Date() });
-  res.json({ _id: message._id, content, createdAt: message.createdAt });
-});
+module.exports = router;
