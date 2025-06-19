@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
-const auth = require('../middlewares/authMiddleware.js');
+const auth = require('../middlewares/authMiddleware');
 
 // Lấy tin nhắn
 router.get('/:conversationId', auth, async (req, res) => {
