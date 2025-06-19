@@ -1,26 +1,63 @@
 const express = require('express');
 const router = express.Router();
 const Message = require('../models/Message');
+const Conversation = require('../models/Conversation');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
-// Lấy tin nhắn trong hội thoại
-router.get('/:conversationId', async (req, res) => {
+// Middleware auth
+const auth = async (req, res, next) => {
   try {
-    const messages = await Message.find({ conversationId: req.params.conversationId })
-      .populate('senderId');
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ error: 'No token provided' });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret');
+    req.user = await User.findById(decoded.id);
+    if (!req.user) return res.status(401).json({ error: 'User not found' });
+    next();
+  } catch (err) {
+    console.error('Auth error:', err);
+    res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+// Lấy tin nhắn
+router.get('/:conversationId', auth, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    const messages = await Message.find({ conversationId })
+      .populate('senderId', 'username');
     res.json(messages);
   } catch (err) {
+    console.error('Get messages error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Gửi tin nhắn mới
-router.post('/', async (req, res) => {
+// Gửi tin nhắn
+router.post('/', auth, async (req, res) => {
   try {
-    const { conversationId, senderId, content } = req.body;
-    const message = new Message({ conversationId, senderId, content });
+    const { conversationId, content } = req.body;
+    if (!conversationId || !content) {
+      return res.status(400).json({ error: 'conversationId and content required' });
+    }
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    const message = new Message({
+      conversationId,
+      senderId: req.user._id,
+      content
+    });
     await message.save();
-    res.json(message);
+    const populated = await Message.findById(message._id)
+      .populate('senderId', 'username');
+    // Cập nhật updatedAt của conversation
+    conversation.updatedAt = new Date();
+    await conversation.save();
+    res.json(populated);
   } catch (err) {
+    console.error('Send message error:', err);
     res.status(500).json({ error: err.message });
   }
 });
