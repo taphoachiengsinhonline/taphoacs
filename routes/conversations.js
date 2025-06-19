@@ -3,10 +3,9 @@ const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
-const auth = require('../middleware/auth');
+const { verifyToken } = require('../middlewares/authMiddleware');
 
-// Lấy hội thoại
-router.get('/', auth, async (req, res) => {
+router.get('/', verifyToken, async (req, res) => {
   try {
     const { customerId } = req.query;
     console.log('[Conversations] Fetching for customerId:', customerId);
@@ -29,8 +28,7 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// Tạo hội thoại
-router.post('/', auth, async (req, res) => {
+router.post('/', verifyToken, async (req, res) => {
   try {
     const { productId, customerId } = req.body;
     console.log('[Conversations] Creating:', { productId, customerId });
@@ -40,7 +38,7 @@ router.post('/', auth, async (req, res) => {
     if (customerId !== req.user._id.toString()) {
       return res.status(403).json({ error: 'Unauthorized access' });
     }
-    const admin = await User.findOne({ isAdmin: true });
+    const admin = await User.findOne({ role: 'admin' });
     if (!admin) {
       console.log('[Conversations] No admin found');
       return res.status(500).json({ error: 'No admin available' });
