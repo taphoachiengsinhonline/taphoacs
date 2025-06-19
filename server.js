@@ -11,6 +11,8 @@ const adminRoutes = require('./routes/admin');
 const userRoutes = require('./routes/userRoutes');
 const shippingRoutes = require('./routes/shippingRoutes'); // Thêm
 const voucherRoutes = require('./routes/voucherRoutes'); // Thêm
+const conversationRoutes = require('./routes/conversations');
+const messageRoutes = require('./routes/messages');
 require('dotenv').config();
 const {initShippingFees} = require('./utils/initData');
 const app = express();
@@ -67,6 +69,8 @@ app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/shipping', shippingRoutes); // Thêm
 app.use('/api/v1/vouchers', voucherRoutes); // Thêm
+app.use('/api/v1/conversations', conversationRoutes);
+app.use('/api/v1/messages', messageRoutes);
 
 // 404 Handler
 app.use((req, res, next) => {
