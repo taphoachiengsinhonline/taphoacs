@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
-const { verifyToken } = require('../middlewares/authMiddleware');
+const { verifyToken } = require('../middlewares/authMiddleware'); // Sửa: Dùng verifyToken
 
 router.get('/', verifyToken, async (req, res) => {
   try {
@@ -18,8 +18,8 @@ router.get('/', verifyToken, async (req, res) => {
     }
     const conversations = await Conversation.find({ customerId })
       .populate('productId', 'name images price')
-      .populate('customerId', 'username')
-      .populate('adminId', 'username');
+      .populate('customerId', 'name') // Sửa: Dùng 'name'
+      .populate('adminId', 'name');  // Sửa: Dùng 'name'
     console.log('[Conversations] Found:', conversations.length);
     res.json(conversations);
   } catch (err) {
@@ -51,8 +51,8 @@ router.post('/', verifyToken, async (req, res) => {
     await conversation.save();
     const populated = await Conversation.findById(conversation._id)
       .populate('productId', 'name images price')
-      .populate('customerId', 'username')
-      .populate('adminId', 'username');
+      .populate('customerId', 'name') // Sửa: Dùng 'name'
+      .populate('adminId', 'name');  // Sửa: Dùng 'name'
     console.log('[Conversations] Created:', populated._id);
     res.json(populated);
   } catch (err) {
