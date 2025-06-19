@@ -3,35 +3,28 @@ const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
-const jwt = require('jsonwebtoken');
-
-// Middleware auth
-const auth = async (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) return res.status(401).json({ error: 'No token provided' });
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret');
-    req.user = await User.findById(decoded.id);
-    if (!req.user) return res.status(401).json({ error: 'User not found' });
-    next();
-  } catch (err) {
-    console.error('Auth error:', err);
-    res.status(401).json({ error: 'Invalid token' });
-  }
-};
+const auth = require('../middleware/auth');
 
 // Lấy hội thoại
 router.get('/', auth, async (req, res) => {
   try {
     const { customerId } = req.query;
-    if (!customerId) return res.status(400).json({ error: 'customerId required' });
+    console.log('[Conversations] Fetching for customerId:', customerId);
+    if (!customerId) {
+      return res.status(400).json({ error: 'customerId required' });
+    }
+    if (customerId !== req.user._id.toString()) {
+      console.log('[Conversations] customerId mismatch:', { customerId, userId: req.user._id });
+      return res.status(403).json({ error: 'Unauthorized access' });
+    }
     const conversations = await Conversation.find({ customerId })
       .populate('productId', 'name images price')
       .populate('customerId', 'username')
       .populate('adminId', 'username');
+    console.log('[Conversations] Found:', conversations.length);
     res.json(conversations);
   } catch (err) {
-    console.error('Get conversations error:', err);
+    console.error('[Conversations] Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -40,12 +33,18 @@ router.get('/', auth, async (req, res) => {
 router.post('/', auth, async (req, res) => {
   try {
     const { productId, customerId } = req.body;
+    console.log('[Conversations] Creating:', { productId, customerId });
     if (!productId || !customerId) {
       return res.status(400).json({ error: 'productId and customerId required' });
     }
-    // Tìm admin bất kỳ
+    if (customerId !== req.user._id.toString()) {
+      return res.status(403).json({ error: 'Unauthorized access' });
+    }
     const admin = await User.findOne({ isAdmin: true });
-    if (!admin) return res.status(500).json({ error: 'No admin available' });
+    if (!admin) {
+      console.log('[Conversations] No admin found');
+      return res.status(500).json({ error: 'No admin available' });
+    }
     const conversation = new Conversation({
       productId,
       customerId,
@@ -56,9 +55,10 @@ router.post('/', auth, async (req, res) => {
       .populate('productId', 'name images price')
       .populate('customerId', 'username')
       .populate('adminId', 'username');
+    console.log('[Conversations] Created:', populated._id);
     res.json(populated);
   } catch (err) {
-    console.error('Create conversation error:', err);
+    console.error('[Conversations] Create error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
