@@ -6,7 +6,7 @@ const Category = require('../models/Category');
 const User = require('../models/User');
 
 // Middleware kiểm tra quyền admin
-const { verifyToken, isAdmin ,isAdminMiddleware } = require('../middlewares/authMiddleware');
+const { verifyToken, isAdmin, isAdminMiddleware } = require('../middlewares/authMiddleware');
 
 // Hàm đệ quy lấy danh sách category con
 const getAllChildCategoryIds = async (parentId) => {
@@ -20,23 +20,6 @@ const getAllChildCategoryIds = async (parentId) => {
 };
 
 // GET /api/products?category=ID
-//router.get('/', async (req, res) => {
-//  try {
-//    const { category } = req.query;
-//    let filter = {};
-//    if (category && category !== 'Tất cả') {
-//      const ids = [category, ...(await getAllChildCategoryIds(category))];
-//      filter.category = { $in: ids };
-//    }
-//    const products = await Product.find(filter).populate('category');
-//    res.json(products);
-//  } catch (err) {
-//   console.error('❌ Lỗi khi lấy sản phẩm:', err);
-//    res.status(500).json({ error: err.message });
-// }
-//});
-
-
 router.get('/', async (req, res) => {
   try {
     const { category, limit } = req.query;
@@ -47,7 +30,7 @@ router.get('/', async (req, res) => {
     }
     let query = Product.find(filter).populate('category');
     if (limit) {
-      query = query.limit(parseInt(limit));  // Giới hạn số lượng sản phẩm
+      query = query.limit(parseInt(limit)); // Giới hạn số lượng sản phẩm
     }
     const products = await query;
     res.json(products);
@@ -56,13 +39,6 @@ router.get('/', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-
-
-
-
-
-
 
 router.get('/:id', async (req, res) => {
   try {
@@ -76,8 +52,6 @@ router.get('/:id', async (req, res) => {
     res.status(500).json({ message: 'Lỗi server' });
   }
 });
-
-
 
 // POST /api/products - Thêm sản phẩm mới (chỉ admin)
 router.post('/', verifyToken, isAdmin, async (req, res) => {
@@ -97,7 +71,7 @@ router.post('/', verifyToken, isAdmin, async (req, res) => {
       images,
       saleStartTime,
       saleEndTime,
-      createdBy: req.user._id
+      createdBy: req.user._id // Gán admin làm seller tạm thời
     });
     const saved = await newProduct.save();
     res.status(201).json(saved);
@@ -110,10 +84,14 @@ router.post('/', verifyToken, isAdmin, async (req, res) => {
 // PUT /api/products/:id - Cập nhật sản phẩm (chỉ admin)
 router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
   try {
-    const updateFields = ['name','price','stock','category','description','attributes','images','saleStartTime','saleEndTime'];
+    const updateFields = ['name', 'price', 'stock', 'category', 'description', 'attributes', 'images', 'saleStartTime', 'saleEndTime', 'createdBy'];
     const updateData = {};
     for (const f of updateFields) {
       if (req.body[f] !== undefined) updateData[f] = req.body[f];
+    }
+    // Nếu createdBy không có, giữ nguyên giá trị cũ hoặc gán mặc định
+    if (!updateData.createdBy && req.user) {
+      updateData.createdBy = req.user._id;
     }
     const updated = await Product.findByIdAndUpdate(
       req.params.id,
@@ -135,13 +113,11 @@ router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
 });
 
 // DELETE /api/products/:id - Xoá sản phẩm (chỉ admin)
- router.delete('/:id', verifyToken, isAdmin, async (req, res) => {
+router.delete('/:id', verifyToken, isAdmin, async (req, res) => {
   try {
     console.log('Deleting product with id:', req.params.id);
     const product = await Product.findByIdAndDelete(req.params.id);
-
     if (!product) return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
-    
     console.log('Deleted by admin:', req.user.email); // Thêm log kiểm tra
     res.json({ message: 'Đã xoá sản phẩm thành công' });
   } catch (err) {
