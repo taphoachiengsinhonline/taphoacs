@@ -8,12 +8,15 @@ const { sendPushNotification } = require('../utils/pushNotification');
 
 const notifySeller = async (sellerId, conversationId, message) => {
   try {
-    const seller = await User.findById(sellerId).select('expoPushToken');
-    if (seller && seller.expoPushToken) {
-      await sendPushNotification(seller.expoPushToken, {
+    const seller = await User.findById(sellerId).select('fcmToken');
+    if (seller && seller.fcmToken) {
+      await sendPushNotification(seller.fcmToken, {
         title: 'Tin nhắn mới',
         body: message.content,
-        data: { conversationId }
+        data: { 
+          type: 'new_message',
+          conversationId 
+        }
       });
       console.log(`[Notification] Sent to seller ${sellerId}`);
     }
