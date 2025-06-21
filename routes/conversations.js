@@ -6,14 +6,6 @@ const Product = require('../models/Product');
 const { verifyToken } = require('../middlewares/authMiddleware');
 const DEFAULT_SELLER_ID = '67f6ab0b9c31a3c6943aed6e';
 
-const express = require('express');
-const router = express.Router();
-const Conversation = require('../models/Conversation');
-const Product = require('../models/Product');
-const User = require('../models/User');
-const { verifyToken } = require('../middlewares/authMiddleware');
-const DEFAULT_SELLER_ID = '67f6ab0b9c31a3c6943aed6e';
-
 router.get('/', verifyToken, async (req, res) => {
   try {
     const { customerId, sellerId } = req.query;
