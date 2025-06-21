@@ -17,10 +17,12 @@ router.get('/', verifyToken, async (req, res) => {
         console.log('[Conversations] customerId mismatch:', { customerId, userId: req.user._id });
         return res.status(403).json({ error: 'Unauthorized access' });
       }
-    } else if (req.user.isAdmin) { // Admin lấy conversations nơi mình là seller
+    } 
+    if (sellerId) {
+      query.sellerId = sellerId;
+    } else if (req.user.isAdmin) {
       query.sellerId = req.user._id;
     }
-    if (sellerId) query.sellerId = sellerId;
     const conversations = await Conversation.find(query)
       .populate('productId', 'name images price')
       .populate('customerId', 'name')
