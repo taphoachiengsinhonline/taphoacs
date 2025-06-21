@@ -5,10 +5,10 @@ const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const { verifyToken } = require('../middlewares/authMiddleware');
 
-// Placeholder cho WebSocket/FCM (cần tích hợp thực tế)
+// Placeholder cho WebSocket/FCM
 const notifySeller = (sellerId, conversationId) => {
   console.log(`[WebSocket/FCM] Sending notification to seller ${sellerId} for conversation ${conversationId}`);
-  // TODO: Thêm logic WebSocket hoặc FCM để đẩy tin nhắn đến seller
+  // TODO: Thêm logic WebSocket hoặc FCM để đẩy tin nhắn
 };
 
 router.get('/:conversationId', verifyToken, async (req, res) => {
@@ -54,15 +54,13 @@ router.post('/', verifyToken, async (req, res) => {
     await conversation.save();
     console.log('[Messages] Sent:', message._id);
 
-    // Notify seller (bao gồm khi sender là seller)
+    // Notify seller bất kể sender là ai
     const sellerId = conversation.sellerId;
-    if (sellerId && sellerId.toString() !== req.user._id.toString()) { // Không notify nếu sender là seller
+    if (sellerId) {
       console.log(`[Messages] Notify seller ${sellerId} of new message in ${conversationId}`);
       notifySeller(sellerId, conversationId);
-    } else if (!sellerId) {
-      console.log('[Messages] No sellerId found for notification');
     } else {
-      console.log('[Messages] Sender is seller, no notification needed');
+      console.log('[Messages] No sellerId found for notification');
     }
 
     res.json(populated);
