@@ -12,19 +12,15 @@ router.get('/', verifyToken, async (req, res) => {
     console.log('[Conversations] Fetching for customerId:', customerId, 'sellerId:', sellerId);
     let query = {};
     
-    // Lấy danh sách seller mà customer đã chat
     if (customerId) {
       query.customerId = customerId;
       if (customerId !== req.user._id.toString() && !req.user.isAdmin) {
         return res.status(403).json({ error: 'Unauthorized access' });
       }
     } 
-    // Lấy danh sách conversation cho seller
-    else if (sellerId) {
+    if (sellerId) {
       query.sellerId = sellerId;
-    } 
-    // Admin lấy conversations của mình
-    else if (req.user.isAdmin) {
+    } else if (req.user.isAdmin) {
       query.sellerId = req.user._id;
     }
     
@@ -58,8 +54,11 @@ router.get('/', verifyToken, async (req, res) => {
       avatar: sellerData.seller.avatar,
       lastMessage: sellerData.lastMessage,
       unreadCount: sellerData.unreadCount,
-      // Lấy sản phẩm đầu tiên làm preview
-      previewProduct: sellerData.conversations[0]?.productId
+      // Thêm conversationId vào previewProduct
+      previewProduct: sellerData.conversations[0] ? {
+        ...sellerData.conversations[0].productId.toObject(),
+        conversationId: sellerData.conversations[0]._id
+      } : null
     }));
 
     console.log('[Conversations] Found sellers:', sellers.length);
