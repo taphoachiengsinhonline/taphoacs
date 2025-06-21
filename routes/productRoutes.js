@@ -126,4 +126,28 @@ router.delete('/:id', verifyToken, isAdmin, async (req, res) => {
   }
 });
 
+
+// Thêm endpoint mới
+router.get('/', async (req, res) => {
+  try {
+    const { sellerId } = req.query;
+    let query = {};
+    
+    if (sellerId) {
+      query.createdBy = sellerId;
+    }
+    
+    const products = await Product.find(query)
+      .sort({ createdAt: -1 })
+      .limit(20);
+    
+    res.json(products);
+  } catch (err) {
+    console.error('[Products] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
 module.exports = router;
