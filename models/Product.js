@@ -40,8 +40,11 @@ const productSchema = new mongoose.Schema({
     type: String,
     default: 'general'
   },
-
-  
+  createdBy: { // Thêm field liên kết với seller (hiện là admin)
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  }
 }, {
   timestamps: true
 });
