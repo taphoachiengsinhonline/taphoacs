@@ -29,9 +29,6 @@ router.get('/', verifyToken, async (req, res) => {
 });
 
 
-// Mặc định sellerId là admin (tạm thời)
-const DEFAULT_SELLER_ID = '67f6ab0b9c31a3c6943aed6e'; // Thay bằng ID admin thực tế
-
 router.post('/', async (req, res) => {
   const { productId, customerId } = req.body;
   console.log('[conversations] Creating conversation:', { productId, customerId });
