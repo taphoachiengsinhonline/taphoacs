@@ -5,10 +5,9 @@ const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const { verifyToken } = require('../middlewares/authMiddleware');
 
-// Placeholder cho WebSocket/FCM
 const notifySeller = (sellerId, conversationId) => {
   console.log(`[WebSocket/FCM] Sending notification to seller ${sellerId} for conversation ${conversationId}`);
-  // TODO: Thêm logic WebSocket hoặc FCM để đẩy tin nhắn
+  // TODO: Thêm logic WebSocket hoặc FCM
 };
 
 router.get('/:conversationId', verifyToken, async (req, res) => {
@@ -54,7 +53,6 @@ router.post('/', verifyToken, async (req, res) => {
     await conversation.save();
     console.log('[Messages] Sent:', message._id);
 
-    // Notify seller bất kể sender là ai
     const sellerId = conversation.sellerId;
     if (sellerId) {
       console.log(`[Messages] Notify seller ${sellerId} of new message in ${conversationId}`);
