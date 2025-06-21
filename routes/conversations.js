@@ -2,9 +2,9 @@
 const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
-const Product = require('../models/Product'); // Thêm để dùng findById
-const { verifyToken } = require('../middlewares/authMiddleware'); // Sửa: Dùng verifyToken
-const DEFAULT_SELLER_ID = '67f6ab0b9c31a3c6943aed6e'; // Thay bằng ID admin thực tế
+const Product = require('../models/Product');
+const { verifyToken } = require('../middlewares/authMiddleware');
+const DEFAULT_SELLER_ID = '67f6ab0b9c31a3c6943aed6e';
 
 router.get('/', verifyToken, async (req, res) => {
   try {
@@ -19,8 +19,8 @@ router.get('/', verifyToken, async (req, res) => {
     }
     const conversations = await Conversation.find({ customerId })
       .populate('productId', 'name images price')
-      .populate('customerId', 'name') // Sửa: Dùng 'name'
-      .populate('sellerId', 'name'); // Thay adminId bằng sellerId
+      .populate('customerId', 'name')
+      .populate('sellerId', 'name');
     console.log('[Conversations] Found:', conversations.length);
     res.json(conversations);
   } catch (err) {
@@ -40,7 +40,8 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Product not found' });
     }
 
-    const sellerId = product.createdBy || DEFAULT_SELLER_ID; // Gán sellerId mặc định nếu createdBy thiếu
+    // Gán sellerId từ createdBy hoặc mặc định
+    const sellerId = product.createdBy || DEFAULT_SELLER_ID;
     console.log('[conversations] Assigned sellerId:', sellerId);
 
     const conversation = new Conversation({
@@ -52,7 +53,7 @@ router.post('/', async (req, res) => {
     await conversation.save();
     console.log('[conversations] Conversation created:', conversation._id);
 
-    // Log thông báo tới seller (admin nếu là mặc định)
+    // Log thông báo tới seller
     console.log(`[conversations] Notify seller ${sellerId} of new message in ${conversation._id}`);
 
     res.json({ status: 'success', data: conversation });
