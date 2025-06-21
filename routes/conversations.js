@@ -128,8 +128,7 @@ router.get('/:id', verifyToken, async (req, res) => {
   try {
     const conversation = await Conversation.findById(req.params.id)
       .populate('productId', 'name images price')
-      .populate('customerId', 'name')
-      .populate('sellerId', 'name avatar');
+      .populate('sellerId', 'name');
     
     if (!conversation) {
       return res.status(404).json({ error: 'Conversation not found' });
