@@ -2,9 +2,10 @@
 const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
-const User = require('../models/User');
+const Product = require('../models/Product'); // Thêm để dùng findById
 const { verifyToken } = require('../middlewares/authMiddleware'); // Sửa: Dùng verifyToken
 const DEFAULT_SELLER_ID = '67f6ab0b9c31a3c6943aed6e'; // Thay bằng ID admin thực tế
+
 router.get('/', verifyToken, async (req, res) => {
   try {
     const { customerId } = req.query;
@@ -19,7 +20,7 @@ router.get('/', verifyToken, async (req, res) => {
     const conversations = await Conversation.find({ customerId })
       .populate('productId', 'name images price')
       .populate('customerId', 'name') // Sửa: Dùng 'name'
-      .populate('adminId', 'name');  // Sửa: Dùng 'name'
+      .populate('sellerId', 'name'); // Thay adminId bằng sellerId
     console.log('[Conversations] Found:', conversations.length);
     res.json(conversations);
   } catch (err) {
@@ -27,7 +28,6 @@ router.get('/', verifyToken, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 router.post('/', async (req, res) => {
   const { productId, customerId } = req.body;
