@@ -3,9 +3,14 @@ const express = require('express');
 const router = express.Router();
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
-const { verifyToken } = require('../middlewares/authMiddleware'); // Sửa: Dùng verifyToken
+const { verifyToken } = require('../middlewares/authMiddleware');
 
-// Lấy tin nhắn
+// Placeholder cho WebSocket/FCM (cần tích hợp thực tế)
+const notifySeller = (sellerId, conversationId) => {
+  console.log(`[WebSocket/FCM] Sending notification to seller ${sellerId} for conversation ${conversationId}`);
+  // TODO: Thêm logic WebSocket hoặc FCM để đẩy tin nhắn đến seller
+};
+
 router.get('/:conversationId', verifyToken, async (req, res) => {
   try {
     const { conversationId } = req.params;
@@ -16,7 +21,7 @@ router.get('/:conversationId', verifyToken, async (req, res) => {
       return res.status(404).json({ error: 'Conversation not found' });
     }
     const messages = await Message.find({ conversationId })
-      .populate('senderId', 'name'); // Sửa: Dùng 'name' thay vì 'username' để khớp schema User
+      .populate('senderId', 'name');
     console.log('[Messages] Found:', messages.length);
     res.json(messages);
   } catch (err) {
@@ -25,7 +30,6 @@ router.get('/:conversationId', verifyToken, async (req, res) => {
   }
 });
 
-// Gửi tin nhắn
 router.post('/', verifyToken, async (req, res) => {
   try {
     const { conversationId, content } = req.body;
@@ -45,16 +49,20 @@ router.post('/', verifyToken, async (req, res) => {
     });
     await message.save();
     const populated = await Message.findById(message._id)
-      .populate('senderId', 'name'); // Sửa: Dùng 'name'
+      .populate('senderId', 'name');
     conversation.updatedAt = new Date();
     await conversation.save();
     console.log('[Messages] Sent:', message._id);
 
-    // Log thông báo tới seller
-    if (conversation.sellerId) {
-      console.log(`[Messages] Notify seller ${conversation.sellerId} of new message in ${conversationId}`);
-    } else {
+    // Notify seller (bao gồm khi sender là seller)
+    const sellerId = conversation.sellerId;
+    if (sellerId && sellerId.toString() !== req.user._id.toString()) { // Không notify nếu sender là seller
+      console.log(`[Messages] Notify seller ${sellerId} of new message in ${conversationId}`);
+      notifySeller(sellerId, conversationId);
+    } else if (!sellerId) {
       console.log('[Messages] No sellerId found for notification');
+    } else {
+      console.log('[Messages] Sender is seller, no notification needed');
     }
 
     res.json(populated);
