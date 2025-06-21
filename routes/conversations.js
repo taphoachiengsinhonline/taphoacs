@@ -10,13 +10,10 @@ router.get('/', verifyToken, async (req, res) => {
   try {
     const { customerId, sellerId } = req.query;
     console.log('[Conversations] Fetching for customerId:', customerId, 'sellerId:', sellerId);
-    if (!customerId && !req.user.isAdmin) { // Admin không cần customerId, lấy theo sellerId
-      return res.status(400).json({ error: 'customerId or admin access required' });
-    }
     let query = {};
-    if (customerId && !req.user.isAdmin) {
+    if (customerId) {
       query.customerId = customerId;
-      if (customerId !== req.user._id.toString()) {
+      if (customerId !== req.user._id.toString() && !req.user.isAdmin) {
         console.log('[Conversations] customerId mismatch:', { customerId, userId: req.user._id });
         return res.status(403).json({ error: 'Unauthorized access' });
       }
