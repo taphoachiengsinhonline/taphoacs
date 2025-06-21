@@ -10,14 +10,19 @@ router.get('/', verifyToken, async (req, res) => {
   try {
     const { customerId, sellerId } = req.query;
     console.log('[Conversations] Fetching for customerId:', customerId, 'sellerId:', sellerId);
-    if (!customerId) {
-      return res.status(400).json({ error: 'customerId required' });
+    if (!customerId && !req.user.isAdmin) { // Admin không cần customerId, lấy theo sellerId
+      return res.status(400).json({ error: 'customerId or admin access required' });
     }
-    if (customerId !== req.user._id.toString()) {
-      console.log('[Conversations] customerId mismatch:', { customerId, userId: req.user._id });
-      return res.status(403).json({ error: 'Unauthorized access' });
+    let query = {};
+    if (customerId && !req.user.isAdmin) {
+      query.customerId = customerId;
+      if (customerId !== req.user._id.toString()) {
+        console.log('[Conversations] customerId mismatch:', { customerId, userId: req.user._id });
+        return res.status(403).json({ error: 'Unauthorized access' });
+      }
+    } else if (req.user.isAdmin) { // Admin lấy conversations nơi mình là seller
+      query.sellerId = req.user._id;
     }
-    let query = { customerId };
     if (sellerId) query.sellerId = sellerId;
     const conversations = await Conversation.find(query)
       .populate('productId', 'name images price')
@@ -53,9 +58,6 @@ router.post('/', async (req, res) => {
 
     await conversation.save();
     console.log('[conversations] Conversation created:', conversation._id);
-
-    // Notify seller
-    console.log(`[conversations] Notify seller ${sellerId} of new conversation ${conversation._id}`);
 
     res.json({ status: 'success', data: conversation });
   } catch (err) {
