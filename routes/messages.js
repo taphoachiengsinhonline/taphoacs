@@ -4,7 +4,7 @@ const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const { verifyToken } = require('../middlewares/authMiddleware');
 const User = require('../models/User');
-const { sendPushNotification } = require('../utils/pushNotification');
+const sendPushNotification = require('../utils/pushNotification'); // Sửa thành require trực tiếp
 
 const notifySeller = async (sellerId, conversationId, message) => {
   try {
