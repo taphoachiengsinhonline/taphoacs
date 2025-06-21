@@ -4,10 +4,23 @@ const router = express.Router();
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const { verifyToken } = require('../middlewares/authMiddleware');
+const User = require('../models/User');
+const { sendPushNotification } = require('../utils/pushNotification');
 
-const notifySeller = (sellerId, conversationId) => {
-  console.log(`[WebSocket/FCM] Sending notification to seller ${sellerId} for conversation ${conversationId}`);
-  // TODO: Thêm logic WebSocket hoặc FCM
+const notifySeller = async (sellerId, conversationId, message) => {
+  try {
+    const seller = await User.findById(sellerId).select('expoPushToken');
+    if (seller && seller.expoPushToken) {
+      await sendPushNotification(seller.expoPushToken, {
+        title: 'Tin nhắn mới',
+        body: message.content,
+        data: { conversationId }
+      });
+      console.log(`[Notification] Sent to seller ${sellerId}`);
+    }
+  } catch (err) {
+    console.error('Lỗi gửi thông báo:', err.message);
+  }
 };
 
 router.get('/:conversationId', verifyToken, async (req, res) => {
@@ -56,7 +69,7 @@ router.post('/', verifyToken, async (req, res) => {
     const sellerId = conversation.sellerId;
     if (sellerId) {
       console.log(`[Messages] Notify seller ${sellerId} of new message in ${conversationId}`);
-      notifySeller(sellerId, conversationId);
+      notifySeller(sellerId, conversationId, message);
     } else {
       console.log('[Messages] No sellerId found for notification');
     }
