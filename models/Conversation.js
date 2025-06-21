@@ -1,5 +1,4 @@
 // models/Conversation.js
-// models/Conversation.js
 const mongoose = require('mongoose');
 
 const ConversationSchema = new mongoose.Schema({
