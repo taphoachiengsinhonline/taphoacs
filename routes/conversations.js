@@ -101,4 +101,30 @@ router.post('/', async (req, res) => {
   }
 });
 
+
+// Thêm endpoint mới
+router.get('/customer-seller', verifyToken, async (req, res) => {
+  try {
+    const { customerId, sellerId } = req.query;
+    if (!customerId || !sellerId) {
+      return res.status(400).json({ error: 'Missing customerId or sellerId' });
+    }
+
+    const conversations = await Conversation.find({ 
+      customerId, 
+      sellerId 
+    })
+      .populate('productId', 'name images price')
+      .sort({ updatedAt: -1 });
+
+    res.json(conversations);
+  } catch (err) {
+    console.error('[Conversations] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
+
 module.exports = router;
