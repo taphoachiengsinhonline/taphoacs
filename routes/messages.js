@@ -1,3 +1,4 @@
+// routes/messages.js
 const express = require('express');
 const router = express.Router();
 const Message = require('../models/Message');
@@ -48,6 +49,14 @@ router.post('/', verifyToken, async (req, res) => {
     conversation.updatedAt = new Date();
     await conversation.save();
     console.log('[Messages] Sent:', message._id);
+
+    // Log thông báo tới seller
+    if (conversation.sellerId) {
+      console.log(`[Messages] Notify seller ${conversation.sellerId} of new message in ${conversationId}`);
+    } else {
+      console.log('[Messages] No sellerId found for notification');
+    }
+
     res.json(populated);
   } catch (err) {
     console.error('[Messages] Send error:', err.message);
