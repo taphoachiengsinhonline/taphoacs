@@ -4,7 +4,7 @@ const router = express.Router();
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
 const { verifyToken } = require('../middlewares/authMiddleware'); // Sửa: Dùng verifyToken
-
+const DEFAULT_SELLER_ID = '67f6ab0b9c31a3c6943aed6e'; // Thay bằng ID admin thực tế
 router.get('/', verifyToken, async (req, res) => {
   try {
     const { customerId } = req.query;
@@ -28,36 +28,40 @@ router.get('/', verifyToken, async (req, res) => {
   }
 });
 
-router.post('/', verifyToken, async (req, res) => {
+
+// Mặc định sellerId là admin (tạm thời)
+const DEFAULT_SELLER_ID = '67f6ab0b9c31a3c6943aed6e'; // Thay bằng ID admin thực tế
+
+router.post('/', async (req, res) => {
+  const { productId, customerId } = req.body;
+  console.log('[conversations] Creating conversation:', { productId, customerId });
+
   try {
-    const { productId, customerId } = req.body;
-    console.log('[Conversations] Creating:', { productId, customerId });
-    if (!productId || !customerId) {
-      return res.status(400).json({ error: 'productId and customerId required' });
+    const product = await Product.findById(productId).select('createdBy');
+    if (!product) {
+      console.log('[conversations] Product not found:', productId);
+      return res.status(400).json({ status: 'error', message: 'Product not found' });
     }
-    if (customerId !== req.user._id.toString()) {
-      return res.status(403).json({ error: 'Unauthorized access' });
-    }
-    const admin = await User.findOne({ role: 'admin' });
-    if (!admin) {
-      console.log('[Conversations] No admin found');
-      return res.status(500).json({ error: 'No admin available' });
-    }
+
+    const sellerId = product.createdBy || DEFAULT_SELLER_ID; // Gán sellerId mặc định nếu createdBy thiếu
+    console.log('[conversations] Assigned sellerId:', sellerId);
+
     const conversation = new Conversation({
       productId,
       customerId,
-      adminId: admin._id
+      sellerId,
     });
+
     await conversation.save();
-    const populated = await Conversation.findById(conversation._id)
-      .populate('productId', 'name images price')
-      .populate('customerId', 'name') // Sửa: Dùng 'name'
-      .populate('adminId', 'name');  // Sửa: Dùng 'name'
-    console.log('[Conversations] Created:', populated._id);
-    res.json(populated);
+    console.log('[conversations] Conversation created:', conversation._id);
+
+    // Log thông báo tới seller (admin nếu là mặc định)
+    console.log(`[conversations] Notify seller ${sellerId} of new message in ${conversation._id}`);
+
+    res.json({ status: 'success', data: conversation });
   } catch (err) {
-    console.error('[Conversations] Create error:', err.message);
-    res.status(500).json({ error: err.message });
+    console.error('[conversations] Error:', err.message);
+    res.status(500).json({ status: 'error', message: 'Server error' });
   }
 });
 
