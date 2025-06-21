@@ -40,7 +40,8 @@ const userSchema = new mongoose.Schema({
     enum: ['customer', 'admin', 'shipper'],
     default: 'customer'
   },
-  fcmToken: String, // ← thêm field này
+  fcmToken: String,
+  expoPushToken: { type: String },
   location: {
     type: {
       type: String,
