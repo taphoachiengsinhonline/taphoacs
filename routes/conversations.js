@@ -8,8 +8,8 @@ const DEFAULT_SELLER_ID = '67f6ab0b9c31a3c6943aed6e';
 
 router.get('/', verifyToken, async (req, res) => {
   try {
-    const { customerId } = req.query;
-    console.log('[Conversations] Fetching for customerId:', customerId);
+    const { customerId, sellerId } = req.query;
+    console.log('[Conversations] Fetching for customerId:', customerId, 'sellerId:', sellerId);
     if (!customerId) {
       return res.status(400).json({ error: 'customerId required' });
     }
@@ -17,7 +17,9 @@ router.get('/', verifyToken, async (req, res) => {
       console.log('[Conversations] customerId mismatch:', { customerId, userId: req.user._id });
       return res.status(403).json({ error: 'Unauthorized access' });
     }
-    const conversations = await Conversation.find({ customerId })
+    let query = { customerId };
+    if (sellerId) query.sellerId = sellerId;
+    const conversations = await Conversation.find(query)
       .populate('productId', 'name images price')
       .populate('customerId', 'name')
       .populate('sellerId', 'name');
@@ -40,7 +42,6 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Product not found' });
     }
 
-    // Gán sellerId từ createdBy hoặc mặc định
     const sellerId = product.createdBy || DEFAULT_SELLER_ID;
     console.log('[conversations] Assigned sellerId:', sellerId);
 
@@ -53,8 +54,8 @@ router.post('/', async (req, res) => {
     await conversation.save();
     console.log('[conversations] Conversation created:', conversation._id);
 
-    // Log thông báo tới seller
-    console.log(`[conversations] Notify seller ${sellerId} of new message in ${conversation._id}`);
+    // Notify seller
+    console.log(`[conversations] Notify seller ${sellerId} of new conversation ${conversation._id}`);
 
     res.json({ status: 'success', data: conversation });
   } catch (err) {
