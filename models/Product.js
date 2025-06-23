@@ -44,7 +44,22 @@ const productSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null
-  }
+  },
+
+seller: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+},
+approvalStatus: {
+    type: String,
+    enum: ['pending_approval', 'approved', 'rejected'],
+    default: 'pending_approval'
+},
+rejectionReason: { // Lý do từ chối (nếu có)
+    type: String
+}
+  
 }, {
   timestamps: true
 });
