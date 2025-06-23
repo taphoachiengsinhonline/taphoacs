@@ -53,26 +53,22 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST /api/products - Thêm sản phẩm mới (chỉ admin)
-router.post('/', verifyToken, isAdmin, async (req, res) => {
+router.post('/', verifyToken, async (req, res) => { // Bỏ isAdmin đi
   try {
     const { name, price, stock, category, description, attributes, images, saleStartTime, saleEndTime } = req.body;
     console.log('📦 Thông tin sản phẩm nhận được:', req.body);
     if (!name || price == null || !category || stock == null || !images?.length) {
       return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin sản phẩm' });
     }
+
+    // Tự động gán người đăng là seller
     const newProduct = new Product({
-      name,
-      price,
-      stock,
-      category,
-      description,
-      attributes,
-      images,
-      saleStartTime,
-      saleEndTime,
-      createdBy: req.user._id // Gán admin làm seller tạm thời
+      name, price, stock, category, description, attributes, images,
+      saleStartTime, saleEndTime,
+      seller: req.user._id, // QUAN TRỌNG: Gán người đăng nhập làm seller
+      approvalStatus: 'pending_approval' // QUAN TRỌNG: Mặc định là chờ duyệt
     });
+
     const saved = await newProduct.save();
     res.status(201).json(saved);
   } catch (err) {
@@ -81,24 +77,33 @@ router.post('/', verifyToken, isAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/products/:id - Cập nhật sản phẩm (chỉ admin)
-router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
+router.put('/:id', verifyToken, async (req, res) => { // Bỏ isAdminMiddleware
   try {
-    const updateFields = ['name', 'price', 'stock', 'category', 'description', 'attributes', 'images', 'saleStartTime', 'saleEndTime', 'createdBy'];
+    const product = await Product.findById(req.params.id);
+    if (!product) return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+
+    // Chỉ admin hoặc chủ sản phẩm mới được sửa
+    if (req.user.role !== 'admin' && product.seller.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ message: 'Bạn không có quyền sửa sản phẩm này.' });
+    }
+
+    const updateFields = ['name', 'price', 'stock', 'category', 'description', 'attributes', 'images', 'saleStartTime', 'saleEndTime'];
     const updateData = {};
     for (const f of updateFields) {
       if (req.body[f] !== undefined) updateData[f] = req.body[f];
     }
-    // Nếu createdBy không có, giữ nguyên giá trị cũ hoặc gán mặc định
-    if (!updateData.createdBy && req.user) {
-      updateData.createdBy = req.user._id;
+
+    // Nếu người sửa không phải admin, reset trạng thái duyệt
+    if (req.user.role !== 'admin') {
+        updateData.approvalStatus = 'pending_approval';
     }
+    
     const updated = await Product.findByIdAndUpdate(
       req.params.id,
       updateData,
       { new: true, runValidators: true }
     );
-    if (!updated) return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+    
     res.json(updated);
   } catch (err) {
     console.error('❌ Lỗi khi cập nhật sản phẩm:', err);
@@ -113,14 +118,19 @@ router.put('/:id', verifyToken, isAdminMiddleware, async (req, res) => {
 });
 
 // DELETE /api/products/:id - Xoá sản phẩm (chỉ admin)
-router.delete('/:id', verifyToken, isAdmin, async (req, res) => {
-  try {
-    console.log('Deleting product with id:', req.params.id);
-    const product = await Product.findByIdAndDelete(req.params.id);
-    if (!product) return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
-    console.log('Deleted by admin:', req.user.email); // Thêm log kiểm tra
-    res.json({ message: 'Đã xoá sản phẩm thành công' });
-  } catch (err) {
+router.delete('/:id', verifyToken, async (req, res) => { // Bỏ isAdmin
+    try {
+        const product = await Product.findById(req.params.id);
+        if (!product) return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+
+        // Chỉ admin hoặc chủ sản phẩm mới được xóa
+        if (req.user.role !== 'admin' && product.seller.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Bạn không có quyền xóa sản phẩm này.' });
+        }
+
+        await Product.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Đã xoá sản phẩm thành công' });
+    } catch (err) {
     console.error('❌ Lỗi khi xoá sản phẩm:', err);
     res.status(500).json({ message: 'Lỗi server khi xoá sản phẩm' });
   }
