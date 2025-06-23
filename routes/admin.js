@@ -277,4 +277,69 @@ router.post('/shippers/:id/fake-order', verifyToken, isAdmin, async (req, res) =
   }
 });
 
+// Lấy danh sách Sellers
+router.get('/sellers', verifyToken, isAdmin, async (req, res) => {
+    try {
+        const sellers = await User.find({ role: 'seller' }).select('name email commissionRate');
+        res.json(sellers);
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+});
+
+// Cập nhật chiết khấu cho Seller
+router.patch('/sellers/:sellerId/commission', verifyToken, isAdmin, async (req, res) => {
+    try {
+        const { commissionRate } = req.body;
+        if (commissionRate === undefined || commissionRate < 0 || commissionRate > 100) {
+            return res.status(400).json({ message: 'Chiết khấu không hợp lệ' });
+        }
+        const seller = await User.findByIdAndUpdate(
+            req.params.sellerId,
+            { commissionRate },
+            { new: true }
+        );
+        if (!seller) return res.status(404).json({ message: 'Không tìm thấy seller' });
+        res.json({ message: 'Cập nhật thành công', seller });
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+});
+
+// Lấy sản phẩm chờ duyệt
+router.get('/products/pending', verifyToken, isAdmin, async (req, res) => {
+    try {
+        const pendingProducts = await Product.find({ approvalStatus: 'pending_approval' }).populate('seller', 'name');
+        res.json(pendingProducts);
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+});
+
+// Phê duyệt sản phẩm
+router.post('/products/:productId/approve', verifyToken, isAdmin, async (req, res) => {
+    try {
+        const product = await Product.findByIdAndUpdate(req.params.productId, { approvalStatus: 'approved' }, { new: true });
+        if (!product) return res.status(404).json({ message: 'Sản phẩm không tồn tại' });
+        // (Tùy chọn) Gửi thông báo cho seller
+        res.json({ message: 'Đã phê duyệt sản phẩm', product });
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+});
+
+// Từ chối sản phẩm
+router.post('/products/:productId/reject', verifyToken, isAdmin, async (req, res) => {
+    try {
+        const { reason } = req.body;
+        if (!reason) return res.status(400).json({ message: 'Cần có lý do từ chối' });
+        const product = await Product.findByIdAndUpdate(req.params.productId, { approvalStatus: 'rejected', rejectionReason: reason }, { new: true });
+        if (!product) return res.status(404).json({ message: 'Sản phẩm không tồn tại' });
+        // (Tùy chọn) Gửi thông báo cho seller
+        res.json({ message: 'Đã từ chối sản phẩm', product });
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+});
+
 module.exports = router;
