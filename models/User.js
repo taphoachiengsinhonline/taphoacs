@@ -72,6 +72,13 @@ const userSchema = new mongoose.Schema({
       return this.role === 'shipper'; 
     }
   },
+
+    commissionRate: {
+    type: Number,
+    default: 0, // Chiết khấu mặc định là 0%
+    min: 0,
+    max: 100
+},
     
     rating: {
       type: Number,
