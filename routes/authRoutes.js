@@ -134,14 +134,23 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
     }
 
-    // Kiểm tra client_type và role
-    if (client_type === 'shipper' && user.role !== 'shipper') {
-      console.log('[DEBUG] Role không hợp lệ:', user.role);
-      return res.status(403).json({
+   const allowedRoles = {
+    customer: ['customer', 'admin'], // App khách hàng cho phép user và admin
+    shipper: ['shipper'],             // App shipper chỉ cho shipper
+    seller: ['seller']                // App seller chỉ cho seller
+};
+
+// client_type được gửi từ frontend, ví dụ: 'customer', 'shipper', 'seller'
+const requestClientType = client_type || 'customer'; 
+
+if (!allowedRoles[requestClientType] || !allowedRoles[requestClientType].includes(user.role)) {
+    console.log(`[DEBUG] Role không hợp lệ. client_type: ${requestClientType}, user.role: ${user.role}`);
+    return res.status(403).json({
         status: 'error',
-        message: 'Tài khoản không có quyền shipper'
-      });
-    }
+        message: 'Tài khoản của bạn không có quyền truy cập vào ứng dụng này.'
+    });
+}
+// ===== KẾT THÚC LOGIC KIỂM TRA =====
 
     // Tạo token và response
     const { accessToken, refreshToken } = generateTokens(user._id);
