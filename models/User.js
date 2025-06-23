@@ -35,11 +35,20 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Vui lòng nhập mật khẩu'],
     select: false
   },
+  
   role: {
-    type: String,
-    enum: ['customer', 'admin', 'shipper'],
-    default: 'customer'
-  },
+  type: String,
+  // SỬA DÒNG NÀY
+  enum: ['customer', 'admin', 'shipper', 'seller'], 
+  default: 'customer'
+},
+commissionRate: { // <-- THÊM MỚI Ở ĐÂY
+    type: Number,
+    default: 0, 
+    min: 0,
+    max: 100
+},
+  
   fcmToken: String,
   expoPushToken: { type: String },
   location: {
@@ -73,14 +82,7 @@ const userSchema = new mongoose.Schema({
     }
   },
 
-    commissionRate: {
-    type: Number,
-    default: 0, // Chiết khấu mặc định là 0%
-    min: 0,
-    max: 100
-},
-    
-    rating: {
+ rating: {
       type: Number,
       default: 5.0,
       min: 1,
