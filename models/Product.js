@@ -40,6 +40,28 @@ const productSchema = new mongoose.Schema({
     type: String,
     default: 'general'
   },
+
+  weight: { // <-- THÊM MỚI
+    type: Number, // In grams
+    default: 0
+  },
+   barcode: { // <-- THÊM MỚI
+    type: String,
+    trim: true,
+    default: ''
+  },
+  // THÊM MỚI TOÀN BỘ PHẦN PHÂN LOẠI
+  variantGroups: [{
+    name: String, // VD: "Màu sắc"
+    options: [String] // VD: ["Đỏ", "Xanh"]
+  }],
+  variantTable: [{
+    combination: String, // VD: "Đỏ-S"
+    price: Number,
+    stock: Number,
+    sku: String
+  }],
+    
   createdBy: { // Thêm field liên kết với seller (hiện là admin)
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
