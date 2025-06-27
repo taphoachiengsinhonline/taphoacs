@@ -22,7 +22,19 @@ const orderItemSchema = new mongoose.Schema({
     required: true,
     min: 0,
     set: v => Math.round(v * 100) / 100
+  },
+
+  sellerId: { // <-- Thêm trường này để dễ truy vấn
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+  },
+  commissionRate: { // <-- Lưu lại chiết khấu tại thời điểm mua
+    type: Number,
+    required: true,
+    default: 0,
   }
+  
 });
 
 const orderSchema = new mongoose.Schema({
