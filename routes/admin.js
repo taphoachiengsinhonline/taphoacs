@@ -5,7 +5,7 @@ const User = require('../models/User');
 const { verifyToken, isAdmin } = require('../middlewares/authMiddleware');
 const bcrypt = require('bcrypt');
 const sendPushNotification = require('../utils/sendPushNotification');
-
+const Product = require('../models/Product');
 
 // Tạo tài khoản shipper mới (chỉ admin)
 router.post('/shippers', verifyToken, isAdmin, async (req, res) => {
@@ -306,6 +306,22 @@ router.patch('/sellers/:sellerId/commission', verifyToken, isAdmin, async (req, 
     }
 });
 
+
+
+router.get('/products/pending/count', verifyToken, isAdmin, async (req, res) => {
+    try {
+        const count = await Product.countDocuments({ approvalStatus: 'pending_approval' });
+        res.json({ count });
+    } catch (error) {
+        console.error('Lỗi đếm sản phẩm chờ duyệt:', error);
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+});
+
+
+
+
+
 // Lấy sản phẩm chờ duyệt
 router.get('/products/pending', verifyToken, isAdmin, async (req, res) => {
     try {
@@ -341,5 +357,9 @@ router.post('/products/:productId/reject', verifyToken, isAdmin, async (req, res
         res.status(500).json({ message: 'Lỗi server' });
     }
 });
+
+
+
+
 
 module.exports = router;
