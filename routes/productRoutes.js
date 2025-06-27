@@ -19,19 +19,38 @@ const getAllChildCategoryIds = async (parentId) => {
   return allIds;
 };
 
+// SỬA LẠI TOÀN BỘ HÀM NÀY
 // GET /api/products?category=ID
 router.get('/', async (req, res) => {
   try {
-    const { category, limit } = req.query;
-    let filter = {};
-    if (category && category !== 'Tất cả') {
+    const { category, limit, sellerId } = req.query;
+    
+    // Bắt đầu với filter cơ bản: chỉ lấy sản phẩm đã được duyệt
+    let filter = { approvalStatus: 'approved' }; 
+
+    // Nếu có sellerId, đây là request từ trang của một người bán cụ thể
+    // Ta sẽ bỏ qua điều kiện duyệt và chỉ lấy sản phẩm của seller đó
+    if (sellerId) {
+        filter = { seller: sellerId }; // Ghi đè filter, không cần check approvalStatus
+    }
+
+    // Nếu có category (và không phải từ trang seller), thêm điều kiện lọc category
+    if (category && category !== 'Tất cả' && !sellerId) {
       const ids = [category, ...(await getAllChildCategoryIds(category))];
       filter.category = { $in: ids };
     }
-    let query = Product.find(filter).populate('category');
-    if (limit) {
-      query = query.limit(parseInt(limit)); // Giới hạn số lượng sản phẩm
+
+    // Nếu không có sellerId, thì đây là trang chủ chung, nên không hiển thị sản phẩm trong kho = 0
+    if (!sellerId) {
+        filter.stock = { $gt: 0 }; // Chỉ hiển thị sản phẩm còn hàng
     }
+    
+    let query = Product.find(filter).populate('category').sort({ createdAt: -1 });
+
+    if (limit) {
+      query = query.limit(parseInt(limit));
+    }
+
     const products = await query;
     res.json(products);
   } catch (err) {
