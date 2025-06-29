@@ -15,10 +15,23 @@ const productSchema = new mongoose.Schema({
     type: [String],
     default: []
   },
-  price: {
+   price: {
     type: Number,
-    required: true,
+    // Chỉ bắt buộc khi không có phân loại
+    required: function() {
+      // `this` ở đây là document đang được validate
+      return !this.variantTable || this.variantTable.length === 0;
+    },
     min: 0
+  },
+  stock: {
+    type: Number,
+    // Chỉ bắt buộc khi không có phân loại
+    required: function() {
+      return !this.variantTable || this.variantTable.length === 0;
+    },
+    min: 0,
+    default: 0
   },
   // Khung giờ bán lặp lại mỗi ngày, định dạng "HH:mm"
   saleStartTime: {
@@ -29,12 +42,7 @@ const productSchema = new mongoose.Schema({
     type: String,
     default: null
   },
-  // Ví dụ thêm trường tồn kho
-  stock: {
-    type: Number,
-    default: 0,
-    min: 0
-  },
+ 
   // Ví dụ phân loại
   category: {
     type: String,
