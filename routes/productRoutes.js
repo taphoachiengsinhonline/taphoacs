@@ -72,26 +72,57 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.post('/', verifyToken, async (req, res) => { // Bỏ isAdmin đi
+router.post('/', verifyToken, async (req, res) => { // Bỏ isAdmin đi để seller có thể đăng
   try {
-    const { name, price, stock, category, description, attributes, images, saleStartTime, saleEndTime } = req.body;
-    console.log('📦 Thông tin sản phẩm nhận được:', req.body);
-    if (!name || price == null || !category || stock == null || !images?.length) {
-      return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin sản phẩm' });
+    const { 
+        name, price, stock, category, description, images, 
+        saleStartTime, saleEndTime, barcode, weight, 
+        variantGroups, variantTable 
+    } = req.body;
+    
+    console.log('📦 Backend nhận được sản phẩm:', req.body);
+
+    // --- VALIDATION PHÍA BACKEND ---
+    if (!name || !category || !images?.length || !weight) {
+      return res.status(400).json({ message: 'Thiếu thông tin cơ bản: Tên, danh mục, ảnh, trọng lượng.' });
     }
 
-    // Tự động gán người đăng là seller
+    if (variantTable && variantTable.length > 0) {
+        // Nếu có phân loại, không cần price và stock ở cấp gốc
+        // Backend có thể thêm validation cho từng variant ở đây nếu muốn
+    } else {
+        // Nếu không có phân loại, price và stock là bắt buộc
+        if (price == null || stock == null) {
+            return res.status(400).json({ message: 'Sản phẩm không có phân loại phải có giá và kho.' });
+        }
+    }
+    
     const newProduct = new Product({
-      name, price, stock, category, description, attributes, images,
-      saleStartTime, saleEndTime,
-      seller: req.user._id, // QUAN TRỌNG: Gán người đăng nhập làm seller
-      approvalStatus: 'pending_approval' // QUAN TRỌNG: Mặc định là chờ duyệt
+      name,
+      price, // Sẽ là null nếu có phân loại
+      stock, // Sẽ là null nếu có phân loại
+      category,
+      description,
+      images,
+      saleStartTime,
+      saleEndTime,
+      barcode,
+      weight,
+      variantGroups,
+      variantTable,
+      seller: req.user._id, // Lấy từ token, không phải từ body
+      approvalStatus: 'pending_approval' // Luôn là chờ duyệt khi tạo mới
     });
-
+    
     const saved = await newProduct.save();
     res.status(201).json(saved);
+
   } catch (err) {
     console.error('❌ Lỗi khi thêm sản phẩm:', err);
+    // Cung cấp thông báo lỗi chi tiết hơn nếu có lỗi từ Mongoose
+    if (err.name === 'ValidationError') {
+        return res.status(400).json({ message: err.message });
+    }
     res.status(500).json({ message: 'Lỗi server khi thêm sản phẩm' });
   }
 });
