@@ -127,7 +127,7 @@ router.post('/', verifyToken, async (req, res) => { // Bỏ isAdmin đi để se
   }
 });
 
-router.put('/:id', verifyToken, async (req, res) => { // Bỏ isAdminMiddleware
+router.put('/:id', verifyToken, async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
     if (!product) return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
@@ -137,31 +137,54 @@ router.put('/:id', verifyToken, async (req, res) => { // Bỏ isAdminMiddleware
         return res.status(403).json({ message: 'Bạn không có quyền sửa sản phẩm này.' });
     }
 
-    const updateFields = ['name', 'price', 'stock', 'category', 'description', 'attributes', 'images', 'saleStartTime', 'saleEndTime'];
-    const updateData = {};
-    for (const f of updateFields) {
-      if (req.body[f] !== undefined) updateData[f] = req.body[f];
+    const { 
+        name, price, stock, category, description, images, 
+        saleStartTime, saleEndTime, barcode, weight, 
+        variantGroups, variantTable 
+    } = req.body;
+
+    // --- VALIDATION PHÍA BACKEND KHI CẬP NHẬT ---
+    if (!name || !category || !images?.length || !weight) {
+      return res.status(400).json({ message: 'Thiếu thông tin cơ bản: Tên, danh mục, ảnh, trọng lượng.' });
+    }
+    
+    // Tạo đối tượng chứa dữ liệu cập nhật
+    const updateData = { 
+        name, description, images, saleStartTime, saleEndTime, 
+        barcode, weight, category, variantGroups, variantTable 
+    };
+
+    if (variantTable && variantTable.length > 0) {
+        // Nếu có phân loại, price và stock cấp gốc là null
+        updateData.price = null;
+        updateData.stock = null;
+    } else {
+        // Nếu không có phân loại, price và stock là bắt buộc
+        if (price == null || stock == null) {
+            return res.status(400).json({ message: 'Sản phẩm không có phân loại phải có giá và kho.' });
+        }
+        updateData.price = price;
+        updateData.stock = stock;
     }
 
-    // Nếu người sửa không phải admin, reset trạng thái duyệt
-    if (req.user.role !== 'admin') {
+    // Nếu người sửa là seller, reset trạng thái duyệt
+    if (req.user.role === 'seller') {
         updateData.approvalStatus = 'pending_approval';
+        updateData.rejectionReason = ''; // Xóa lý do từ chối cũ nếu có
     }
     
     const updated = await Product.findByIdAndUpdate(
       req.params.id,
       updateData,
-      { new: true, runValidators: true }
+      { new: true, runValidators: true } // runValidators để kích hoạt required conditional trong schema
     );
     
     res.json(updated);
+
   } catch (err) {
     console.error('❌ Lỗi khi cập nhật sản phẩm:', err);
     if (err.name === 'ValidationError') {
       return res.status(400).json({ message: err.message });
-    }
-    if (err.name === 'CastError') {
-      return res.status(400).json({ message: 'ID sản phẩm không hợp lệ' });
     }
     res.status(500).json({ message: 'Lỗi server khi cập nhật sản phẩm' });
   }
