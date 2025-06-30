@@ -83,19 +83,13 @@ commissionRate: { // <-- THÊM MỚI Ở ĐÂY
   },
 
 
-   shippingFeeDiscountRate: { // % chiết khấu trên phí ship
+   shippingFeeShareRate: { // % chiết khấu trên phí ship
         type: Number,
         default: 70, // Ví dụ: Mặc định shipper nhận 70% phí ship
         min: 0,
         max: 100
     },
-    profitShareRate: { // % chiết khấu trên lợi nhuận của admin (nếu có)
-        type: Number,
-        default: 0, // Mặc định không có
-        min: 0,
-        max: 100
-    },
-  
+      
 
  rating: {
       type: Number,
