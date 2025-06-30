@@ -102,6 +102,14 @@ const orderSchema = new mongoose.Schema({
     min: 0,
     default: 0
   },
+
+  extraSurcharge: {
+    type: Number,
+    min: 0,
+    default: 0
+  },
+  
+    
   voucherDiscount: {
     type: Number,
     min: 0,
