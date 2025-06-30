@@ -148,26 +148,44 @@ exports.countByStatus = async (req, res) => {
 
 exports.acceptOrder = async (req, res) => {
   try {
+    // ... (các bước kiểm tra order và shipper giữ nguyên)
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
     if (order.status !== 'Chờ xác nhận') return res.status(400).json({ message: 'Đơn không khả dụng' });
 
     const shipper = await User.findById(req.user._id);
-    if (!shipper || shipper.role !== 'shipper') return res.status(403).json({ message: 'Tài khoản không phải là shipper.' });
+    if (!shipper || shipper.role !== 'shipper') {
+        return res.status(403).json({ message: 'Tài khoản không phải là shipper.' });
+    }
 
     order.status = 'Đang xử lý';
     order.shipper = shipper._id;
     order.timestamps.acceptedAt = new Date();
 
-    const shareRate = (shipper.shipperProfile.shippingFeeShareRate || 0) / 100;
+    // <<< LOGIC TÍNH TOÁN THU NHẬP ĐẦY ĐỦ >>>
+    // 1. Tính thu nhập từ phí ship
+    const shippingFeeShareRate = (shipper.shipperProfile.shippingFeeShareRate || 0) / 100;
     const totalShippingFee = (order.shippingFee || 0) + (order.extraSurcharge || 0);
-    order.shipperIncome = totalShippingFee * shareRate;
+    const shipperShippingIncome = totalShippingFee * shippingFeeShareRate;
     
+    // 2. Tính tổng phí sàn (lợi nhuận của admin từ đơn hàng này)
+    const totalCommission = order.items.reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
+    
+    // 3. Tính phần chia sẻ lợi nhuận cho shipper
+    const profitShareRate = (shipper.shipperProfile.profitShareRate || 0) / 100;
+    const shipperProfitShare = totalCommission * profitShareRate;
+
+    // 4. Tổng thu nhập của shipper
+    order.shipperIncome = shipperShippingIncome + shipperProfitShare;
+    
+    // 5. Lưu lại chi tiết tài chính tại thời điểm đó
     order.financialDetails = {
         shippingFee: order.shippingFee,
         extraSurcharge: order.extraSurcharge,
         shippingFeeShareRate: shipper.shipperProfile.shippingFeeShareRate,
+        profitShareRate: shipper.shipperProfile.profitShareRate // Thêm trường này
     };
+    // <<< KẾT THÚC LOGIC MỚI >>>
     
     const updated = await order.save();
     if (updated.user) {
