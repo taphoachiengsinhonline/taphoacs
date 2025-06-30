@@ -132,22 +132,45 @@ router.put('/shippers/:id', verifyToken, isAdmin, async (req, res) => {
   try {
     const shipperId = req.params.id;
     const { name, email, phone, address, shipperProfile } = req.body;
-    
-    // <<< SỬA ĐỔI: Thêm profitShareRate >>>
-    const { vehicleType, licensePlate, shippingFeeShareRate, profitShareRate } = shipperProfile || {};
-    
-    const updateData = {
-      name, email, phone, address,
-      'shipperProfile.vehicleType': vehicleType,
-      'shipperProfile.licensePlate': licensePlate,
-      'shipperProfile.shippingFeeShareRate': shippingFeeShareRate,
-      'shipperProfile.profitShareRate': profitShareRate // Thêm vào đây
-    };
-    
-    const updated = await User.findByIdAndUpdate(shipperId, { $set: updateData }, { new: true, runValidators: true });
 
-    if (!updated) return res.status(404).json({ message: 'Không tìm thấy shipper' });
-    res.json({ status: 'success', data: updated });
+    // Kiểm tra xem shipperProfile có tồn tại trong body không
+    if (!shipperProfile) {
+        return res.status(400).json({ message: 'Thiếu thông tin shipperProfile.' });
+    }
+
+    // <<< LOGIC SỬA ĐỔI QUAN TRỌNG >>>
+    // Tạo một object update để chỉ cập nhật các trường có giá trị
+    const updateData = {
+        name,
+        email,
+        phone,
+        address,
+        // Sử dụng toán tử $set để cập nhật các trường lồng trong shipperProfile
+        // Điều này đảm bảo các trường khác trong shipperProfile (như rating) không bị ghi đè
+        $set: {
+            'shipperProfile.vehicleType': shipperProfile.vehicleType,
+            'shipperProfile.licensePlate': shipperProfile.licensePlate,
+            'shipperProfile.shippingFeeShareRate': shipperProfile.shippingFeeShareRate,
+            'shipperProfile.profitShareRate': shipperProfile.profitShareRate,
+        }
+    };
+    // <<< KẾT THÚC SỬA ĐỔI >>>
+
+    const updated = await User.findByIdAndUpdate(
+      shipperId,
+      updateData,
+      { new: true, runValidators: true } // new: true để trả về document đã được cập nhật
+    );
+
+    if (!updated) {
+      return res.status(404).json({ message: 'Không tìm thấy shipper' });
+    }
+
+    // Trả về dữ liệu đã được cập nhật để frontend có thể xác nhận
+    res.json({
+      status: 'success',
+      data: updated
+    });
   } catch (error) {
     console.error('Lỗi cập nhật shipper:', error);
     res.status(500).json({ message: 'Lỗi server: ' + error.message });
