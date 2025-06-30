@@ -129,24 +129,33 @@ router.post('/', verifyToken, async (req, res) => { // Bỏ isAdmin đi để se
 
 router.put('/:id', verifyToken, async (req, res) => {
   try {
-    // BƯỚC 1: FETCH DOCUMENT
+    // BƯỚC 1: LẤY SẢN PHẨM HIỆN TẠI TỪ DB
     const product = await Product.findById(req.params.id);
     if (!product) {
-        return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+      return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
     }
 
-    // Kiểm tra quyền sở hữu
+    // BƯỚC 2: KIỂM TRA QUYỀN SỞ HỮU
     if (req.user.role !== 'admin' && product.seller.toString() !== req.user._id.toString()) {
-        return res.status(403).json({ message: 'Bạn không có quyền sửa sản phẩm này.' });
+      return res.status(403).json({ message: 'Bạn không có quyền sửa sản phẩm này.' });
     }
 
+    // BƯỚC 3: LƯU LẠI CÁC TRƯỜNG QUAN TRỌNG ĐỂ SO SÁNH
+    const oldValues = {
+      name: product.name,
+      description: product.description,
+      category: product.category,
+      images: JSON.stringify(product.images.sort()), // Sắp xếp để so sánh mảng
+    };
+
+    // BƯỚC 4: NHẬN DỮ LIỆU MỚI TỪ REQUEST
     const { 
         name, price, stock, category, description, images, 
         saleStartTime, saleEndTime, barcode, weight, 
         variantGroups, variantTable 
     } = req.body;
-    
-    // BƯỚC 2: MODIFY DOCUMENT TRONG JAVASCRIPT
+
+    // BƯỚC 5: CẬP NHẬT DỮ LIỆU VÀO DOCUMENT
     product.name = name;
     product.description = description;
     product.images = images;
@@ -158,22 +167,35 @@ router.put('/:id', verifyToken, async (req, res) => {
     product.variantGroups = variantGroups;
     product.variantTable = variantTable;
     
-    // Áp dụng logic giá và kho
+    // Áp dụng logic giá và kho tùy theo có phân loại hay không
     if (variantTable && variantTable.length > 0) {
-        product.price = undefined; // Dùng undefined để Mongoose bỏ qua khi không có trong schema
-        product.stock = undefined;
+      product.price = undefined; // Để Mongoose không cập nhật trường này
+      product.stock = undefined; // Để Mongoose không cập nhật trường này
     } else {
-        product.price = price;
-        product.stock = stock;
+      product.price = price;
+      product.stock = stock;
     }
 
-    // Nếu người sửa là seller, reset trạng thái duyệt
+    // BƯỚC 6: LOGIC PHÊ DUYỆT LẠI THÔNG MINH
     if (req.user.role === 'seller') {
+      // So sánh các trường quan trọng
+      const hasSignificantChange = 
+        product.name !== oldValues.name ||
+        product.description !== oldValues.description ||
+        product.category !== oldValues.category ||
+        JSON.stringify(product.images.sort()) !== oldValues.images;
+
+      // Nếu có thay đổi quan trọng, chuyển về trạng thái chờ duyệt
+      if (hasSignificantChange) {
         product.approvalStatus = 'pending_approval';
-        product.rejectionReason = '';
+        product.rejectionReason = ''; // Xóa lý do từ chối cũ (nếu có)
+        console.log(`[Product Update] Seller ${req.user._id} đã thay đổi thông tin quan trọng của sản phẩm ${product._id}. Chuyển về chờ duyệt.`);
+      } else {
+        console.log(`[Product Update] Seller ${req.user._id} chỉ thay đổi giá/kho của sản phẩm ${product._id}. Không cần duyệt lại.`);
+      }
     }
 
-    // BƯỚC 3: SAVE DOCUMENT -> VALIDATOR SẼ CHẠY CHÍNH XÁC
+    // BƯỚC 7: LƯU DOCUMENT VÀO DB
     const updatedProduct = await product.save();
     
     res.json(updatedProduct);
@@ -181,7 +203,6 @@ router.put('/:id', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('❌ Lỗi khi cập nhật sản phẩm:', err);
     if (err.name === 'ValidationError') {
-      // Bây giờ lỗi validation sẽ đúng hơn
       return res.status(400).json({ message: err.message });
     }
     res.status(500).json({ message: 'Lỗi server khi cập nhật sản phẩm' });
