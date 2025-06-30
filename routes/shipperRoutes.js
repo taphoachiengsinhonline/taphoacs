@@ -395,4 +395,41 @@ router.get('/revenue/monthly', verifyToken, async (req, res) => {
 
 router.get('/order-counts', verifyToken, shipperController.getOrderCounts);
 
+router.post('/orders/:id/add-surcharge', verifyToken, async (req, res) => {
+    try {
+        const { amount } = req.body;
+        const orderId = req.params.id;
+
+        if (typeof amount !== 'number' || amount < 0) {
+            return res.status(400).json({ message: 'Số tiền phụ phí không hợp lệ.' });
+        }
+
+        const order = await Order.findOne({ _id: orderId, shipper: req.user._id });
+
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng hoặc bạn không phải shipper của đơn này.' });
+        }
+        
+        if (order.status !== 'Đang giao') {
+            return res.status(400).json({ message: 'Chỉ có thể thêm phụ phí cho đơn hàng đang giao.' });
+        }
+
+        // Cập nhật phụ phí và tổng tiền
+        order.extraSurcharge = (order.extraSurcharge || 0) + amount;
+        order.total = order.total + amount;
+
+        const updatedOrder = await order.save();
+
+        res.status(200).json({
+            message: 'Thêm phụ phí thành công!',
+            order: { ...updatedOrder.toObject(), timestamps: updatedOrder.timestamps }
+        });
+
+    } catch (error) {
+        console.error('Lỗi thêm phụ phí:', error);
+        res.status(500).json({ message: 'Lỗi server: ' + error.message });
+    }
+});
+
+
 module.exports = router;
