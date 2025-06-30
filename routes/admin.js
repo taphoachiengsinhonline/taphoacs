@@ -69,19 +69,16 @@ router.post('/shippers', verifyToken, isAdmin, async (req, res) => {
 
 router.get('/shippers', async (req, res) => {
   try {
-    const now = Date.now();
-    const sevenHours = 7 * 60 * 60 * 1000; // 7h tính bằng ms
-    const nowVN = Date.now() + sevenHours;
-    
-    // FIX: Sử dụng Mongoose để lấy dữ liệu đầy đủ
+    // <<< SỬA ĐỔI: Lấy toàn bộ trường shipperProfile >>>
     const shippers = await User.find({ role: 'shipper' })
-  .select(
-    'name email address phone location locationUpdatedAt isAvailable ' +
-    'shipperProfile.vehicleType shipperProfile.licensePlate'
-  )
-  .lean({ virtuals: true });
+      .select(
+        'name email address phone location locationUpdatedAt isAvailable shipperProfile' // Chỉ cần lấy cả object shipperProfile
+      )
+      .lean({ virtuals: true });
+    // <<< KẾT THÚC SỬA ĐỔI >>>
 
-    // FIX: Tính toán trạng thái online
+    const nowVN = Date.now() + (7 * 60 * 60 * 1000);
+    
     const processedShippers = shippers.map(shipper => {
       const updatedAt = shipper.locationUpdatedAt?.getTime() || 0;
       const diff = nowVN - updatedAt;
@@ -95,22 +92,6 @@ router.get('/shippers', async (req, res) => {
     });
     
     const onlineCount = processedShippers.filter(s => s.isOnline).length;
-
-    // FIX: Log debug đơn giản nhưng hiệu quả
-    console.log('==== SHIPPER STATUS ====');
-    console.log(`Tổng shipper: ${processedShippers.length}`);
-    console.log(`Online: ${onlineCount}`);
-    console.log('Chi tiết:');
-    
-    processedShippers.forEach(s => {
-      const status = s.isOnline ? '🟢 ONLINE' : '🔴 OFFLINE';
-      const lastUpdate = s.locationUpdatedAt 
-        ? new Date(s.locationUpdatedAt).toISOString() 
-        : 'Chưa cập nhật';
-      console.log(`- ${s.name}: ${status}, Cập nhật: ${lastUpdate}`);
-    });
-    
-    console.log('=======================');
 
     res.json({
       status: 'success',
