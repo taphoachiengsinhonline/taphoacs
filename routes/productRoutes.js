@@ -25,24 +25,19 @@ router.get('/', async (req, res) => {
   try {
     const { category, limit, sellerId } = req.query;
     
-    // Bắt đầu với filter cơ bản: chỉ lấy sản phẩm đã được duyệt
     let filter = { approvalStatus: 'approved' }; 
 
-    // Nếu có sellerId, đây là request từ trang của một người bán cụ thể
-    // Ta sẽ bỏ qua điều kiện duyệt và chỉ lấy sản phẩm của seller đó
     if (sellerId) {
-        filter = { seller: sellerId }; // Ghi đè filter, không cần check approvalStatus
+        filter = { seller: sellerId };
     }
 
-    // Nếu có category (và không phải từ trang seller), thêm điều kiện lọc category
     if (category && category !== 'Tất cả' && !sellerId) {
       const ids = [category, ...(await getAllChildCategoryIds(category))];
       filter.category = { $in: ids };
     }
-
-    // Nếu không có sellerId, thì đây là trang chủ chung, nên không hiển thị sản phẩm trong kho = 0
+    
     if (!sellerId) {
-        filter.stock = { $gt: 0 }; // Chỉ hiển thị sản phẩm còn hàng
+        filter.stock = { $gt: 0 };
     }
     
     let query = Product.find(filter).populate('category').sort({ createdAt: -1 });
