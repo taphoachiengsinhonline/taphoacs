@@ -4,6 +4,7 @@ const { verifyToken } = require('../middlewares/authMiddleware');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
+const financeController = require('../controllers/financeController');
 
 const restrictToSeller = (req, res, next) => {
     if (req.user.role !== 'seller') {
@@ -102,5 +103,7 @@ router.post('/update-fcm-token', verifyToken, async (req, res) => {
     }
 });
 
+router.get('/balance', verifyToken, financeController.getSellerBalance);
+router.get('/ledger', verifyToken, financeController.getSellerLedger);
 
 module.exports = router;
