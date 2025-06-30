@@ -103,4 +103,20 @@ productSchema.path('saleEndTime').validate(function(v) {
   return v === null || /^\d{2}:\d{2}$/.test(v);
 }, 'saleEndTime phải có định dạng "HH:mm"');
 
+
+
+productSchema.virtual('totalStock').get(function() {
+  // `this` ở đây là document sản phẩm
+  if (this.variantTable && this.variantTable.length > 0) {
+    // Nếu có phân loại, tính tổng stock từ các biến thể
+    return this.variantTable.reduce((sum, variant) => sum + (variant.stock || 0), 0);
+  }
+  // Nếu không, trả về stock ở cấp gốc
+  return this.stock || 0;
+});
+
+// Đảm bảo trường ảo được bao gồm khi chuyển đổi sang JSON/Object
+productSchema.set('toJSON', { virtuals: true });
+productSchema.set('toObject', { virtuals: true });
+
 module.exports = mongoose.model('Product', productSchema);
