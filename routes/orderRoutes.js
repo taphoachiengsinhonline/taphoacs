@@ -14,6 +14,10 @@ router.get('/:id',        verifyToken,           orderController.getOrderById);
 router.get('/',           verifyToken, isAdminMiddleware, orderController.getAllOrders);
 router.put('/:id',        verifyToken, isAdminMiddleware, orderController.updateOrderStatus);
 
+
+// <<< THÊM ROUTE MỚI NÀY VÀO PHẦN ADMIN >>>
+router.get('/admin-count-by-status', verifyToken, isAdminMiddleware, orderController.adminCountByStatus);
+
 // Hủy đơn (user hoặc admin)
 router.put('/:id/cancel', verifyToken,           orderController.cancelOrder);
 
