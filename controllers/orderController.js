@@ -303,3 +303,38 @@ exports.cancelOrder = async (req, res) => {
     res.status(err.name === 'CastError' ? 400 : 500).json({ message: err.message || 'Lỗi server' });
   }
 };
+
+exports.adminCountByStatus = async (req, res) => {
+  try {
+    const counts = await Order.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const result = {
+        'pending': 0,
+        'confirmed': 0,
+        'shipped': 0,
+        'delivered': 0,
+        'canceled': 0
+    };
+
+    counts.forEach(item => {
+        // Ánh xạ từ tên trạng thái trong DB sang key mà frontend mong đợi
+        if (item._id === 'Chờ xác nhận') result.pending = item.count;
+        if (item._id === 'Đang xử lý') result.confirmed = item.count;
+        if (item._id === 'Đang giao') result.shipped = item.count;
+        if (item._id === 'Đã giao') result.delivered = item.count;
+        if (item._id === 'Đã huỷ') result.canceled = item.count;
+    });
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('[adminCountByStatus] Lỗi:', error);
+    res.status(500).json({ message: 'Lỗi server khi đếm đơn hàng' });
+  }
+};
