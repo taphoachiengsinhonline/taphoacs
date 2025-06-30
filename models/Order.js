@@ -29,7 +29,7 @@ const orderItemSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
-  commissionRate: { // <-- Lưu lại chiết khấu tại thời điểm mua
+  commissionAmount: { // <-- Lưu lại chiết khấu tại thời điểm mua
     type: Number,
     required: true,
     default: 0,
