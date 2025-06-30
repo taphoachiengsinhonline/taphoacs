@@ -131,45 +131,23 @@ router.get('/shippers', async (req, res) => {
 router.put('/shippers/:id', verifyToken, isAdmin, async (req, res) => {
   try {
     const shipperId = req.params.id;
-    const {
-      name,
-      email,
-      phone,
-      address,
-      shipperProfile: { vehicleType, licensePlate } = {}
-    } = req.body;
+    const { name, email, phone, address, shipperProfile } = req.body;
+    
+    // <<< SỬA ĐỔI: Thêm profitShareRate >>>
+    const { vehicleType, licensePlate, shippingFeeShareRate, profitShareRate } = shipperProfile || {};
+    
+    const updateData = {
+      name, email, phone, address,
+      'shipperProfile.vehicleType': vehicleType,
+      'shipperProfile.licensePlate': licensePlate,
+      'shipperProfile.shippingFeeShareRate': shippingFeeShareRate,
+      'shipperProfile.profitShareRate': profitShareRate // Thêm vào đây
+    };
+    
+    const updated = await User.findByIdAndUpdate(shipperId, { $set: updateData }, { new: true, runValidators: true });
 
-    // Tìm shipper theo _id và cập nhật các trường cần thiết
-    const updated = await User.findByIdAndUpdate(
-      shipperId,
-      {
-        $set: {
-          name,
-          email,
-          phone,
-          address,
-          'shipperProfile.vehicleType': vehicleType,
-          'shipperProfile.licensePlate': licensePlate
-        }
-      },
-      { new: true, runValidators: true }
-    );
-
-    if (!updated) {
-      return res.status(404).json({ message: 'Không tìm thấy shipper' });
-    }
-
-    res.json({
-      status: 'success',
-      data: {
-        _id: updated._id,
-        name: updated.name,
-        email: updated.email,
-        phone: updated.phone,
-        address: updated.address,
-        shipperProfile: updated.shipperProfile
-      }
-    });
+    if (!updated) return res.status(404).json({ message: 'Không tìm thấy shipper' });
+    res.json({ status: 'success', data: updated });
   } catch (error) {
     console.error('Lỗi cập nhật shipper:', error);
     res.status(500).json({ message: 'Lỗi server: ' + error.message });
