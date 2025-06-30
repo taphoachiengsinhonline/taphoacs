@@ -253,12 +253,38 @@ exports.getMyOrders = async (req, res) => {
 
 exports.countOrdersByStatus = async (req, res) => {
   try {
-    if (!req.user || !req.user._id) return res.status(401).json({ message: 'Phiên đăng nhập không hợp lệ' });
-    const all = await Order.find({ user: req.user._id });
-    const counts = all.reduce((acc, o) => { acc[o.status] = (acc[o.status] || 0) + 1; return acc; }, { 'Chờ xác nhận': 0, 'Đang xử lý': 0, 'Đang giao': 0, 'Đã giao': 0, 'Đã huỷ': 0 });
-    return res.status(200).json(counts);
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: 'Phiên đăng nhập không hợp lệ' });
+    }
+
+    // Sử dụng aggregate để tối ưu và chính xác hơn
+    const counts = await Order.aggregate([
+      { $match: { user: req.user._id } }, // Chỉ tìm đơn của user đang đăng nhập
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
+
+    // Chuyển đổi kết quả về đúng định dạng mà frontend mong đợi
+    const result = {
+        pending: 0,
+        confirmed: 0,
+        shipped: 0,
+        delivered: 0,
+        canceled: 0
+    };
+
+    counts.forEach(item => {
+        if (item._id === 'Chờ xác nhận') result.pending = item.count;
+        if (item._id === 'Đang xử lý') result.confirmed = item.count;
+        if (item._id === 'Đang giao') result.shipped = item.count;
+        if (item._id === 'Đã giao') result.delivered = item.count;
+        if (item._id === 'Đã huỷ') result.canceled = item.count;
+    });
+
+    res.status(200).json(result);
+
   } catch (err) {
-    return res.status(500).json({ message: 'Lỗi server khi đếm đơn hàng theo trạng thái' });
+    console.error('[countOrdersByStatus] Lỗi:', err);
+    return res.status(500).json({ message: 'Lỗi server khi đếm đơn hàng' });
   }
 };
 
