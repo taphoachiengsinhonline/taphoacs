@@ -159,7 +159,7 @@ router.put('/orders/:id/status', verifyToken, async (req, res) => {
 });
 
 // routes/shippers.js (hoặc tên file tương ứng)
-router.get('/stats', verifyToken, async (req, res) => {
+router.get('/stats', verifyToken, shipperController.getShipperStats) => {
   try {
     const totalOrders = await Order.countDocuments({ shipper: req.user._id });
     const completedOrdersList = await Order.find({
