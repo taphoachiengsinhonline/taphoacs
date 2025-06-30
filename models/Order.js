@@ -138,12 +138,13 @@ const orderSchema = new mongoose.Schema({
 // Validate tổng tiền
 orderSchema.pre('validate', function(next) {
   if (this.items.length) {
-    const calced = this.items
-      .reduce((acc, i) => acc + i.price * i.quantity, 0)
-      .toFixed(2);
-    const totalWithShipping = (parseFloat(calced) + this.shippingFee - (this.voucherDiscount || 0)).toFixed(2);
-    if (this.total.toFixed(2) !== totalWithShipping) {
-      this.invalidate('total', `Tổng tiền không khớp (${this.total} ≠ ${totalWithShipping})`);
+    const itemsTotal = this.items.reduce((acc, i) => acc + i.price * i.quantity, 0);
+    // Cộng tất cả các khoản phí vào
+    const calculatedTotal = itemsTotal + this.shippingFee + (this.extraSurcharge || 0) - (this.voucherDiscount || 0);
+
+    // So sánh với sai số nhỏ để tránh lỗi dấu phẩy động
+    if (Math.abs(this.total - calculatedTotal) > 0.01) {
+       this.invalidate('total', `Tổng tiền không khớp (${this.total} so với ${calculatedTotal})`);
     }
   }
   next();
