@@ -263,10 +263,26 @@ exports.getOrderById = async (req, res) => {
 exports.getAllOrders = async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
-    const result = await Order.paginate({ ...(status && { status }) }, { page, limit, sort: { createdAt: -1 }, populate: 'user' });
-    res.json({ docs: result.docs.map(doc => ({ ...doc.toObject(), timestamps: doc.timestamps })), totalPages: result.totalPages, page: result.page });
+    const query = status ? { status } : {};
+
+    // <<< SỬA ĐỔI: Thêm `sort` để sắp xếp đơn hàng mới nhất lên đầu >>>
+    const options = {
+      page: parseInt(page, 10),
+      limit: parseInt(limit, 10),
+      sort: { createdAt: -1 }, // Sắp xếp theo trường createdAt giảm dần
+      populate: 'user',
+    };
+
+    const result = await Order.paginate(query, options);
+    
+    res.json({
+      docs: result.docs.map(doc => ({ ...doc.toObject(), timestamps: doc.timestamps })),
+      totalPages: result.totalPages,
+      page: result.page
+    });
   } catch (err) {
-    res.status(500).json({ message: 'Lỗi server' });
+    console.error('[getAllOrders] error:', err);
+    res.status(500).json({ message: 'Lỗi server khi lấy tất cả đơn hàng' });
   }
 };
 
