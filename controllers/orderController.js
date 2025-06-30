@@ -289,19 +289,58 @@ exports.getAllOrders = async (req, res) => {
 exports.updateOrderStatus = async (req, res) => {
   try {
     const { status } = req.body;
-    if (!status) return res.status(400).json({ message: 'Thiếu trạng thái' });
+    if (!status) {
+      return res.status(400).json({ message: 'Thiếu thông tin trạng thái mới' });
+    }
+
     const order = await Order.findById(req.params.id);
-    if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
-    const now = new Date();
+    if (!order) {
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+    }
+
     order.status = status;
-    if (status === 'Đang xử lý') order.timestamps.acceptedAt = now;
-    if (status === 'Đang giao') order.timestamps.deliveringAt = now;
-    if (status === 'Đã giao') order.timestamps.deliveredAt = now;
-    if (status === 'Đã huỷ') order.timestamps.canceledAt = now;
-    const updated = await order.save();
-    res.json({ message: 'Cập nhật thành công', order: updated });
+    const now = new Date();
+
+    // <<< LOGIC QUAN TRỌNG: Gán thời gian tương ứng với trạng thái mới >>>
+    switch (status) {
+      case 'Đang xử lý':
+        // Chỉ gán nếu chưa có, tránh ghi đè
+        if (!order.timestamps.acceptedAt) {
+          order.timestamps.acceptedAt = now;
+        }
+        break;
+      case 'Đang giao':
+        if (!order.timestamps.deliveringAt) {
+          order.timestamps.deliveringAt = now;
+        }
+        break;
+      case 'Đã giao':
+        if (!order.timestamps.deliveredAt) {
+          order.timestamps.deliveredAt = now;
+        }
+        break;
+      case 'Đã huỷ':
+        if (!order.timestamps.canceledAt) {
+          order.timestamps.canceledAt = now;
+          // Admin có thể không cần lý do, hoặc bạn có thể thêm vào body nếu muốn
+          order.cancelReason = req.body.cancelReason || 'Admin đã hủy đơn';
+        }
+        break;
+      default:
+        break;
+    }
+    // <<< KẾT THÚC LOGIC MỚI >>>
+
+    const updatedOrder = await order.save();
+    
+    res.json({
+      message: 'Cập nhật trạng thái thành công',
+      order: updatedOrder
+    });
+
   } catch (err) {
-    res.status(err.name === 'ValidationError' ? 400 : 500).json({ message: err.message || 'Lỗi server' });
+    console.error('[updateOrderStatus by Admin] error:', err);
+    res.status(500).json({ message: err.message || 'Lỗi server khi cập nhật trạng thái' });
   }
 };
 
