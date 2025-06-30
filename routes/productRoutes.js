@@ -25,19 +25,20 @@ router.get('/', async (req, res) => {
   try {
     const { category, limit, sellerId } = req.query;
     
-    let filter = { approvalStatus: 'approved' }; 
+    let filter = {}; 
 
     if (sellerId) {
+        // Trang của seller: lấy tất cả sản phẩm của họ
         filter = { seller: sellerId };
+    } else {
+        // Trang chủ App Bán hàng: chỉ lấy sản phẩm đã duyệt
+        filter = { approvalStatus: 'approved' };
     }
 
+    // Lọc theo danh mục (chỉ áp dụng cho app khách hàng)
     if (category && category !== 'Tất cả' && !sellerId) {
       const ids = [category, ...(await getAllChildCategoryIds(category))];
       filter.category = { $in: ids };
-    }
-    
-    if (!sellerId) {
-        filter.stock = { $gt: 0 };
     }
     
     let query = Product.find(filter).populate('category').sort({ createdAt: -1 });
@@ -46,7 +47,14 @@ router.get('/', async (req, res) => {
       query = query.limit(parseInt(limit));
     }
 
-    const products = await query;
+    let products = await query;
+
+    // LỌC TỒN KHO SAU KHI LẤY DỮ LIỆU (Sử dụng trường ảo `totalStock`)
+    // Áp dụng chỉ cho app khách hàng
+    if (!sellerId) {
+        products = products.filter(p => p.totalStock > 0);
+    }
+    
     res.json(products);
   } catch (err) {
     console.error('❌ Lỗi khi lấy sản phẩm:', err);
