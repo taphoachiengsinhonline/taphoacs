@@ -89,7 +89,12 @@ commissionRate: { // <-- THÊM MỚI Ở ĐÂY
         min: 0,
         max: 100
     },
-      
+   profitShareRate: { // % shipper được hưởng trên lợi nhuận của admin
+        type: Number,
+        default: 0, 
+        min: 0,
+        max: 100
+    },
 
  rating: {
       type: Number,
