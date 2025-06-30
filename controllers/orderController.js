@@ -5,6 +5,7 @@ const Product = require('../models/Product');
 const User = require('../models/User');
 const { safeNotify } = require('../utils/notificationMiddleware');
 const assignOrderToNearestShipper = require('../utils/assignOrderToNearestShipper');
+const { processOrderCompletionForFinance } = require('./financeController');
 
 // Hàm kiểm tra giờ bán
 const validateSaleTime = (product, nowMin) => {
@@ -223,6 +224,7 @@ exports.updateOrderStatusByShipper = async (req, res) => {
     const now = new Date();
     if (status === 'Đang giao') order.timestamps.deliveringAt = now;
     if (status === 'Đã giao') order.timestamps.deliveredAt = now;
+      await processOrderCompletionForFinance(order._id);
     if (status === 'Đã huỷ') { order.timestamps.canceledAt = now; order.cancelReason = cancelReason || 'Không có lý do'; }
     const updated = await order.save();
     res.json({ message: 'Cập nhật trạng thái thành công', order: updated });
@@ -356,6 +358,7 @@ exports.updateOrderStatus = async (req, res) => {
       case 'Đã giao':
         if (!order.timestamps.deliveredAt) {
           order.timestamps.deliveredAt = now;
+             await processOrderCompletionForFinance(order._id);
         }
         break;
       case 'Đã huỷ':
