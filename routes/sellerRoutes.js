@@ -3,6 +3,7 @@ const router = express.Router();
 const { verifyToken } = require('../middlewares/authMiddleware');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const User = require('../models/User');
 
 const restrictToSeller = (req, res, next) => {
     if (req.user.role !== 'seller') {
@@ -82,5 +83,24 @@ router.get('/orders', async (req, res) => {
         res.status(500).json({ message: 'Lỗi server' });
     }
 });
+
+router.post('/update-fcm-token', verifyToken, async (req, res) => {
+    try {
+        const { fcmToken } = req.body;
+        if (!fcmToken) {
+            return res.status(400).json({ message: "Thiếu fcmToken" });
+        }
+        
+        // Cập nhật token cho user seller đang đăng nhập
+        await User.findByIdAndUpdate(req.user._id, { fcmToken });
+        
+        res.status(200).json({ message: "Cập nhật FCM token cho seller thành công" });
+
+    } catch (error) {
+        console.error("Lỗi cập nhật FCM token cho seller:", error);
+        res.status(500).json({ message: "Lỗi server" });
+    }
+});
+
 
 module.exports = router;
