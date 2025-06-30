@@ -103,6 +103,13 @@ const orderSchema = new mongoose.Schema({
     default: 0
   },
 
+ shipperIncome: { type: Number, default: 0 },
+ financialDetails: {
+    shippingFee: Number,
+    extraSurcharge: Number,
+    shippingFeeShareRate: Number, // % shipper hưởng phí ship
+  },
+  
   extraSurcharge: {
     type: Number,
     min: 0,
