@@ -148,54 +148,67 @@ exports.countByStatus = async (req, res) => {
 
 exports.acceptOrder = async (req, res) => {
   try {
-    // ... (các bước kiểm tra order và shipper giữ nguyên)
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
     if (order.status !== 'Chờ xác nhận') return res.status(400).json({ message: 'Đơn không khả dụng' });
 
     const shipper = await User.findById(req.user._id);
     if (!shipper || shipper.role !== 'shipper') {
-        return res.status(403).json({ message: 'Tài khoản không phải là shipper.' });
+      return res.status(403).json({ message: 'Tài khoản không phải là shipper.' });
     }
 
+    // Gán shipper và cập nhật trạng thái
     order.status = 'Đang xử lý';
     order.shipper = shipper._id;
     order.timestamps.acceptedAt = new Date();
 
-    // <<< LOGIC TÍNH TOÁN THU NHẬP ĐẦY ĐỦ >>>
-    // 1. Tính thu nhập từ phí ship
-    const shippingFeeShareRate = (shipper.shipperProfile.shippingFeeShareRate || 0) / 100;
+    // Tính toán và lưu thu nhập cho shipper (giữ nguyên logic đã sửa)
+    const shareRate = (shipper.shipperProfile.shippingFeeShareRate || 0) / 100;
     const totalShippingFee = (order.shippingFee || 0) + (order.extraSurcharge || 0);
-    const shipperShippingIncome = totalShippingFee * shippingFeeShareRate;
-    
-    // 2. Tính tổng phí sàn (lợi nhuận của admin từ đơn hàng này)
     const totalCommission = order.items.reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
-    
-    // 3. Tính phần chia sẻ lợi nhuận cho shipper
     const profitShareRate = (shipper.shipperProfile.profitShareRate || 0) / 100;
-    const shipperProfitShare = totalCommission * profitShareRate;
-
-    // 4. Tổng thu nhập của shipper
-    order.shipperIncome = shipperShippingIncome + shipperProfitShare;
-    
-    // 5. Lưu lại chi tiết tài chính tại thời điểm đó
+    order.shipperIncome = (totalShippingFee * shareRate) + (totalCommission * profitShareRate);
     order.financialDetails = {
         shippingFee: order.shippingFee,
         extraSurcharge: order.extraSurcharge,
         shippingFeeShareRate: shipper.shipperProfile.shippingFeeShareRate,
-        profitShareRate: shipper.shipperProfile.profitShareRate // Thêm trường này
+        profitShareRate: shipper.shipperProfile.profitShareRate
     };
+    
+    const updatedOrder = await order.save();
+
+    // <<< LOGIC MỚI: GỬI THÔNG BÁO CHO SELLER VÀ CUSTOMER >>>
+
+    // 1. Gửi thông báo cho khách hàng (Customer)
+    const customer = await User.findById(order.user);
+    if (customer?.fcmToken) {
+        await safeNotify(customer.fcmToken, {
+            title: 'Shipper đã nhận đơn của bạn!',
+            body: `Đơn hàng #${order._id.toString().slice(-6)} đang được chuẩn bị.`,
+            data: { orderId: order._id.toString(), type: 'order_update' }
+        });
+    }
+
+    // 2. Tìm tất cả các seller có sản phẩm trong đơn hàng
+    const sellerIds = [...new Set(order.items.map(item => item.sellerId.toString()))];
+    const sellers = await User.find({
+        _id: { $in: sellerIds },
+        fcmToken: { $exists: true, $ne: null }
+    }).select('fcmToken');
+
+    // 3. Gửi thông báo cho từng seller
+    for (const seller of sellers) {
+        await safeNotify(seller.fcmToken, {
+            title: 'Shipper đã nhận đơn hàng!',
+            body: `Đơn hàng #${order._id.toString().slice(-6)} đã có shipper nhận. Vui lòng chuẩn bị hàng.`,
+            data: { orderId: order._id.toString(), type: 'order_accepted_by_shipper' }
+        });
+    }
     // <<< KẾT THÚC LOGIC MỚI >>>
     
-    const updated = await order.save();
-    if (updated.user) {
-      const customer = await User.findById(updated.user);
-      if (customer?.fcmToken) await safeNotify(customer.fcmToken, { title: 'Shipper đã nhận đơn', body: `Đơn hàng #${order._id.toString().slice(-6)} đã được shipper nhận.`, data: { orderId: order._id.toString(), shipperView: "false" } });
-    }
-    
-    res.json({ message: 'Nhận đơn thành công', order: updated });
+    res.json({ message: 'Nhận đơn thành công', order: updatedOrder });
   } catch (error) {
-    console.error('Lỗi nhận đơn:', error);
+    console.error('Lỗi khi chấp nhận đơn hàng:', error);
     res.status(500).json({ message: 'Lỗi server' });
   }
 };
