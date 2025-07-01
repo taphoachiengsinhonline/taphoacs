@@ -218,38 +218,49 @@ exports.updateOrderStatusByShipper = async (req, res) => {
   try {
     const { status, cancelReason } = req.body;
     const order = await Order.findById(req.params.id);
-    if (!order) return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
-    if (!order.shipper || order.shipper.toString() !== req.user._id.toString()) return res.status(403).json({ message: 'Không có quyền thao tác' });
+
+    if (!order) {
+      return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
+    }
+    if (!order.shipper || order.shipper.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Bạn không phải là shipper của đơn hàng này.' });
+    }
 
     const validTransitions = {
       'Đang xử lý': ['Đang giao', 'Đã huỷ'],
       'Đang giao': ['Đã giao', 'Đã huỷ']
     };
+
     if (!validTransitions[order.status]?.includes(status)) {
-      return res.status(400).json({ message: `Không thể chuyển từ "${order.status}" sang "${status}"` });
+      return res.status(400).json({ message: `Không thể chuyển từ trạng thái "${order.status}" sang "${status}".` });
     }
 
+    // Cập nhật trạng thái và thời gian
     order.status = status;
     const now = new Date();
 
     if (status === 'Đang giao') {
-        order.timestamps.deliveringAt = now;
-    }
-    
-    // <<< LOGIC ĐÚNG: CHỈ GỌI KHI TRẠNG THÁI LÀ "ĐÃ GIAO" >>>
-    if (status === 'Đã giao') {
-        order.timestamps.deliveredAt = now;
-        // Gọi hàm xử lý tài chính ngay sau khi xác nhận đã giao
-        await processOrderCompletionForFinance(order._id);
-    }
-    
-    if (status === 'Đã huỷ') {
-        order.timestamps.canceledAt = now;
-        order.cancelReason = cancelReason || 'Shipper đã hủy đơn';
+      order.timestamps.deliveringAt = now;
+    } else if (status === 'Đã giao') {
+      order.timestamps.deliveredAt = now;
+    } else if (status === 'Đã huỷ') {
+      order.timestamps.canceledAt = now;
+      order.cancelReason = cancelReason || 'Shipper đã hủy đơn';
     }
 
-    const updated = await order.save();
-    res.json({ message: 'Cập nhật trạng thái thành công', order: updated });
+    // Lưu các thay đổi về trạng thái và thời gian vào DB
+    const updatedOrder = await order.save();
+    
+    // <<< LOGIC ĐÚNG: CHỈ XỬ LÝ TÀI CHÍNH SAU KHI ĐƠN HÀNG ĐÃ THỰC SỰ LÀ "ĐÃ GIAO" >>>
+    if (status === 'Đã giao') {
+        // Gọi hàm xử lý tài chính một cách an toàn
+        // Dùng `await` để đảm bảo nó chạy xong trước khi gửi response
+        await processOrderCompletionForFinance(updatedOrder._id);
+    }
+
+    // Gửi thông báo cho khách hàng (nếu có)
+
+    res.json({ message: 'Cập nhật trạng thái thành công', order: updatedOrder });
   } catch (error) {
     console.error(`Lỗi khi shipper cập nhật trạng thái:`, error);
     res.status(500).json({ message: 'Lỗi server' });
