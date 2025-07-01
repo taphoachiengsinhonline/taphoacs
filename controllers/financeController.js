@@ -95,20 +95,38 @@ exports.getSellerFinanceOverview = async (req, res) => {
         const sellerId = req.user._id;
         console.log(`[API /finance-overview] Lấy overview cho Seller ID: ${sellerId}`);
 
-        // Lấy bút toán cuối cùng để xác định số dư có thể rút
-        const lastEntry = await LedgerEntry.findOne({ seller: sellerId }).sort({ createdAt: -1 });
-        const availableBalance = lastEntry ? lastEntry.balanceAfter : 0;
-        console.log(`[API /finance-overview] Số dư có thể rút (từ bút toán cuối): ${availableBalance}`);
-
-        // Tính tổng doanh thu bằng cách cộng tất cả các khoản "credit"
-        const totalRevenueResult = await LedgerEntry.aggregate([
+        // <<< LOGIC MỚI: TÍNH TOÁN DỰA TRÊN TỔNG CÁC BÚT TOÁN >>>
+        
+        // 1. Tính tổng tất cả các khoản cộng tiền (doanh thu từ đơn hàng)
+        const creditResult = await LedgerEntry.aggregate([
             { $match: { seller: sellerId, type: 'credit' } },
             { $group: { _id: null, total: { $sum: '$amount' } } }
         ]);
-        const totalRevenue = totalRevenueResult[0]?.total || 0;
-        console.log(`[API /finance-overview] Tổng doanh thu (từ tất cả credit): ${totalRevenue}`);
+        const totalCredit = creditResult[0]?.total || 0;
+        console.log(`[API /finance-overview] Tổng credit: ${totalCredit}`);
 
-        const responseData = { totalRevenue, availableBalance };
+        // 2. Tính tổng tất cả các khoản trừ tiền (hoàn trả, rút tiền)
+        const debitResult = await LedgerEntry.aggregate([
+            { $match: { seller: sellerId, type: 'debit' } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const totalDebit = debitResult[0]?.total || 0;
+        console.log(`[API /finance-overview] Tổng debit: ${totalDebit}`);
+        
+        // 3. Tính toán các chỉ số
+        // Tổng doanh thu thực tế = Tổng được cộng - Tổng bị trừ do hoàn trả/hủy đơn
+        const totalNetRevenue = totalCredit - totalDebit;
+
+        // Số dư có thể rút = cũng chính là tổng doanh thu thực tế
+        // (Trong tương lai nếu có lệnh rút tiền, công thức vẫn đúng)
+        const availableBalance = totalNetRevenue;
+
+        const responseData = {
+            totalRevenue: totalNetRevenue,     // Tổng doanh thu thực tế
+            availableBalance: availableBalance,  // Số dư có thể rút
+        };
+
+        console.log(`[API /finance-overview] Dữ liệu trả về:`, responseData);
         res.status(200).json(responseData);
 
     } catch (error) {
