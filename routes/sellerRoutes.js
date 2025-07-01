@@ -103,7 +103,8 @@ router.post('/update-fcm-token', verifyToken, async (req, res) => {
     }
 });
 
-router.get('/balance', verifyToken, financeController.getSellerBalance);
+router.get('/finance-overview', verifyToken, financeController.getSellerFinanceOverview);
 router.get('/ledger', verifyToken, financeController.getSellerLedger);
+router.post('/payout-request', verifyToken, financeController.createPayoutRequest);
 
 module.exports = router;
