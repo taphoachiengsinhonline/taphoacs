@@ -16,6 +16,7 @@ const messageRoutes = require('./routes/messages');
 require('dotenv').config();
 const {initShippingFees} = require('./utils/initData');
 const sellerRoutes = require('./routes/sellerRoutes');
+const payoutRoutes = require('./routes/payoutRoutes');
 const app = express();
 
 app.use(cors({
@@ -73,6 +74,7 @@ app.use('/api/v1/vouchers', voucherRoutes); // Thêm
 app.use('/api/v1/conversations', conversationRoutes);
 app.use('/api/v1/messages', messageRoutes);
 app.use('/api/v1/sellers', sellerRoutes);
+app.use('/api/v1/payouts', payoutRoutes); 
 
 // 404 Handler
 app.use((req, res, next) => {
