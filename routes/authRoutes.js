@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const voucherController = require('../controllers/voucherController');
+const { verifyToken } = require('../middlewares/authMiddleware');
 
 // Hàm tạo Access + Refresh token
 const generateTokens = (userId) => {
