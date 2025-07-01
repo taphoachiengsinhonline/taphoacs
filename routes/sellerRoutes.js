@@ -32,7 +32,7 @@ router.get('/orders', sellerController.getSellerOrders);
 router.post('/update-fcm-token', sellerController.updateFcmToken);
 
 // API cho Finance Screen
-router.get('/finance-overview', financeController.getSellerFinanceOverview);
+router.get('/finance', financeController.getSellerFinanceOverview);
 router.get('/ledger', financeController.getSellerLedger);
 router.post('/payout-request', financeController.createPayoutRequest);
 
