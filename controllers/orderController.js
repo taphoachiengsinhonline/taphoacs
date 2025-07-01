@@ -360,8 +360,11 @@ exports.getAllOrders = async (req, res) => {
     const options = {
       page: parseInt(page, 10),
       limit: parseInt(limit, 10),
-      sort: { createdAt: -1 }, // Sắp xếp theo trường createdAt giảm dần
-      populate: 'user',
+      sort: { 'timestamps.createdAt': -1 }, 
+      populate: {
+        path: 'user',
+        select: 'name' // Chỉ lấy tên user cho gọn
+      },
     };
 
     const result = await Order.paginate(query, options);
