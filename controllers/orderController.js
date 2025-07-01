@@ -5,7 +5,7 @@ const Product = require('../models/Product');
 const User = require('../models/User');
 const { safeNotify } = require('../utils/notificationMiddleware');
 const assignOrderToNearestShipper = require('../utils/assignOrderToNearestShipper');
-const { processOrderCompletionForFinance } = require('./financeController');
+const { processOrderCompletionForFinance, reverseFinancialEntryForOrder } = require('./financeController');
 
 // Hàm kiểm tra giờ bán
 const validateSaleTime = (product, nowMin) => {
@@ -416,7 +416,7 @@ exports.getAllOrders = async (req, res) => {
 
 exports.updateOrderStatus = async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, cancelReason } = req.body; // Thêm cancelReason
     if (!status) {
       return res.status(400).json({ message: 'Thiếu thông tin trạng thái mới' });
     }
@@ -426,6 +426,7 @@ exports.updateOrderStatus = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
     }
 
+    const oldStatus = order.status; // Lưu lại trạng thái cũ để so sánh
     order.status = status;
     const now = new Date();
 
@@ -439,14 +440,20 @@ exports.updateOrderStatus = async (req, res) => {
       case 'Đã giao':
         if (!order.timestamps.deliveredAt) {
           order.timestamps.deliveredAt = now;
-          // <<< GỌI HÀM XỬ LÝ TÀI CHÍNH TẠI ĐÂY >>>
           await processOrderCompletionForFinance(order._id);
         }
         break;
       case 'Đã huỷ':
         if (!order.timestamps.canceledAt) {
           order.timestamps.canceledAt = now;
-          order.cancelReason = req.body.cancelReason || 'Admin đã hủy đơn';
+          const reason = cancelReason || 'Admin đã hủy đơn';
+          order.cancelReason = reason;
+
+          // <<< LOGIC MỚI: KIỂM TRA VÀ ĐẢO NGƯỢC GIAO DỊCH >>>
+          // Chỉ đảo ngược nếu trạng thái cũ là "Đã giao"
+          if (oldStatus === 'Đã giao') {
+            await reverseFinancialEntryForOrder(order._id, reason);
+          }
         }
         break;
     }
