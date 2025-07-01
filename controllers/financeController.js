@@ -8,28 +8,32 @@ const PayoutRequest = require('../models/PayoutRequest');
 // Hàm này được gọi khi một đơn hàng được chuyển sang trạng thái "Đã giao"
 exports.processOrderCompletionForFinance = async (orderId) => {
     try {
-        console.log(`[FINANCE_PROCESS] Bắt đầu xử lý tài chính cho đơn hàng: ${orderId}`);
-        const order = await Order.findById(orderId); // <<< BỎ POPULATE Ở ĐÂY
+        console.log(`[FINANCE_PROCESS_START] Bắt đầu xử lý tài chính cho Order ID: ${orderId}`);
+        const order = await Order.findById(orderId);
 
-        if (!order || order.status !== 'Đã giao') {
-            console.log(`[FINANCE_PROCESS] Bỏ qua: Đơn ${orderId} không ở trạng thái "Đã giao" hoặc không tồn tại.`);
+        if (!order) {
+            console.error(`[FINANCE_PROCESS_FAIL] Không tìm thấy đơn hàng với ID: ${orderId}`);
+            return;
+        }
+        if (order.status !== 'Đã giao') {
+            console.log(`[FINANCE_PROCESS_SKIP] Bỏ qua: Đơn ${orderId} có trạng thái là "${order.status}", không phải "Đã giao".`);
             return;
         }
 
-        // Nhóm các item và tính toán doanh thu/phí sàn cho mỗi seller
+        // Kiểm tra xem đã xử lý tài chính cho đơn này chưa
+        const existingLedger = await LedgerEntry.findOne({ order: orderId });
+        if (existingLedger) {
+            console.log(`[FINANCE_PROCESS_SKIP] Bỏ qua: Đơn ${orderId} đã được xử lý tài chính trước đó.`);
+            return;
+        }
+
+        console.log(`[FINANCE_PROCESS_DATA] Dữ liệu items trong đơn hàng:`, JSON.stringify(order.items, null, 2));
+
         const sellerFinanceData = {};
 
-        // Dùng vòng lặp for...of để xử lý bất đồng bộ (nếu cần sau này)
         for (const item of order.items) {
-            // <<< SỬA LỖI: Lấy sellerId trực tiếp từ item >>>
-            const sellerId = item.sellerId.toString(); 
-
-            // Lấy thông tin chiết khấu của seller từ DB
-            const seller = await User.findById(sellerId).select('commissionRate');
-            if (!seller) {
-                console.warn(`[FINANCE_PROCESS] Bỏ qua item vì không tìm thấy seller với ID: ${sellerId}`);
-                continue;
-            }
+            const sellerId = item.sellerId.toString();
+            console.log(`[FINANCE_PROCESS_ITEM] Đang xử lý item của Seller: ${sellerId}`);
 
             if (!sellerFinanceData[sellerId]) {
                 sellerFinanceData[sellerId] = {
@@ -37,31 +41,35 @@ exports.processOrderCompletionForFinance = async (orderId) => {
                     totalCommission: 0,
                 };
             }
-
             const itemValue = item.price * item.quantity;
-            const commissionRate = seller.commissionRate || 0;
-            const commissionAmount = itemValue * (commissionRate / 100);
+            const commission = item.commissionAmount || 0;
 
+            console.log(`[FINANCE_PROCESS_ITEM]   - Giá trị item: ${itemValue}`);
+            console.log(`[FINANCE_PROCESS_ITEM]   - Phí sàn: ${commission}`);
+            
             sellerFinanceData[sellerId].totalValue += itemValue;
-            sellerFinanceData[sellerId].totalCommission += commissionAmount;
+            sellerFinanceData[sellerId].totalCommission += commission;
         }
         
-        console.log(`[FINANCE_PROCESS] Dữ liệu tài chính đã xử lý cho các seller:`, sellerFinanceData);
+        console.log(`[FINANCE_PROCESS_AGGREGATE] Dữ liệu tài chính tổng hợp cho các seller:`, sellerFinanceData);
 
-        // Tạo các bút toán (LedgerEntry) cho từng seller
         for (const sellerId in sellerFinanceData) {
             const { totalValue, totalCommission } = sellerFinanceData[sellerId];
             const netIncome = totalValue - totalCommission;
 
             if (netIncome <= 0) {
-                 console.log(`[FINANCE_PROCESS] Bỏ qua seller ${sellerId} vì thu nhập ròng là 0.`);
+                 console.log(`[FINANCE_PROCESS_LEDGER_SKIP] Bỏ qua seller ${sellerId} vì thu nhập ròng là ${netIncome}.`);
                  continue;
             }
             
             const lastEntry = await LedgerEntry.findOne({ seller: sellerId }).sort({ createdAt: -1 });
             const currentBalance = lastEntry ? lastEntry.balanceAfter : 0;
             const newBalance = currentBalance + netIncome;
-            console.log(`[FINANCE_PROCESS] Seller ${sellerId}: Số dư cũ ${currentBalance}, Thu nhập mới ${netIncome}, Số dư mới ${newBalance}`);
+
+            console.log(`[FINANCE_PROCESS_LEDGER_CREATE] Chuẩn bị tạo bút toán cho Seller ${sellerId}:`);
+            console.log(`  - Số dư cũ: ${currentBalance}`);
+            console.log(`  - Thu nhập mới: ${netIncome}`);
+            console.log(`  - Số dư mới: ${newBalance}`);
 
             await LedgerEntry.create({
                 seller: sellerId,
@@ -71,11 +79,12 @@ exports.processOrderCompletionForFinance = async (orderId) => {
                 description: `Thanh toán cho đơn hàng #${order._id.toString().slice(-6)}`,
                 balanceAfter: newBalance,
             });
-            console.log(`[FINANCE_PROCESS] Đã tạo bút toán 'credit' cho seller ${sellerId}.`);
+            console.log(`[FINANCE_PROCESS_LEDGER_SUCCESS] ĐÃ TẠO BÚT TOÁN 'credit' thành công cho seller ${sellerId}.`);
         }
+        console.log(`[FINANCE_PROCESS_END] Hoàn tất xử lý tài chính cho Order ID: ${orderId}`);
 
     } catch (error) {
-        console.error(`[FINANCE_PROCESS] Lỗi khi xử lý tài chính cho đơn hàng ${orderId}:`, error);
+        console.error(`[FINANCE_PROCESS_ERROR] Lỗi nghiêm trọng khi xử lý tài chính cho đơn hàng ${orderId}:`, error);
     }
 };
 
