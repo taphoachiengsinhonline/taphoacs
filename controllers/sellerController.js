@@ -74,7 +74,7 @@ exports.getSellerOrders = async (req, res) => {
         const sellerId = req.user._id;
         const orders = await Order.find({ 'items.sellerId': sellerId })
             .populate('user', 'name')
-            .sort({ updatedAt: -1 }); 
+            .sort({ 'timestamps.createdAt': -1 });
         res.json(orders);
     } catch (error) {
         res.status(500).json({ message: 'Lỗi server' });
