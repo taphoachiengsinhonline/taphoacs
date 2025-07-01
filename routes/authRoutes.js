@@ -217,4 +217,20 @@ router.post('/refresh-token', async (req, res) => {
   }
 });
 
+router.get('/me', verifyToken, async (req, res) => {
+    try {
+        // req.user đã được gán bởi middleware verifyToken
+        // Trả về thông tin user (không bao gồm password)
+        res.status(200).json({
+            status: 'success',
+            data: {
+                user: req.user 
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ status: 'error', message: 'Lỗi server' });
+    }
+});
+
+
 module.exports = router;
