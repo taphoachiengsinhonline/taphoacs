@@ -168,9 +168,17 @@ exports.createPayoutRequest = async (req, res) => {
 exports.getPayoutHistory = async (req, res) => {
     try {
         const sellerId = req.user._id;
-        const history = await PayoutRequest.find({ seller: sellerId }).sort({ createdAt: -1 });
+        console.log(`[API /payout-history] Bắt đầu lấy lịch sử rút tiền cho Seller ID: ${sellerId}`);
+
+        const history = await PayoutRequest.find({ seller: sellerId })
+            .sort({ createdAt: -1 }) // Sắp xếp yêu cầu mới nhất lên đầu
+            .limit(100); // Giới hạn 100 yêu cầu gần nhất để tối ưu
+
+        console.log(`[API /payout-history] Tìm thấy ${history.length} yêu cầu.`);
         res.status(200).json(history);
+
     } catch (error) {
+        console.error(`[API /payout-history] Lỗi nghiêm trọng:`, error);
         res.status(500).json({ message: 'Lỗi server khi lấy lịch sử rút tiền.' });
     }
 };
