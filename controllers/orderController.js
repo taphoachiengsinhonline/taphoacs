@@ -220,15 +220,36 @@ exports.updateOrderStatusByShipper = async (req, res) => {
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
     if (order.shipper.toString() !== req.user._id.toString()) return res.status(403).json({ message: 'Không có quyền thao tác' });
+
+    // Chỉ cho phép cập nhật nếu trạng thái hợp lệ
+    const validTransitions = {
+      'Đang xử lý': ['Đang giao', 'Đã huỷ'],
+      'Đang giao': ['Đã giao', 'Đã huỷ']
+    };
+    if (!validTransitions[order.status]?.includes(status)) {
+      return res.status(400).json({ message: `Không thể chuyển từ "${order.status}" sang "${status}"` });
+    }
+
     order.status = status;
     const now = new Date();
-    if (status === 'Đang giao') order.timestamps.deliveringAt = now;
-    if (status === 'Đã giao') order.timestamps.deliveredAt = now;
-      await processOrderCompletionForFinance(order._id);
-    if (status === 'Đã huỷ') { order.timestamps.canceledAt = now; order.cancelReason = cancelReason || 'Không có lý do'; }
+
+    if (status === 'Đang giao') {
+        order.timestamps.deliveringAt = now;
+    }
+    if (status === 'Đã giao') {
+        order.timestamps.deliveredAt = now;
+        // <<< GỌI HÀM XỬ LÝ TÀI CHÍNH TẠI ĐÂY >>>
+        await processOrderCompletionForFinance(order._id);
+    }
+    if (status === 'Đã huỷ') {
+        order.timestamps.canceledAt = now;
+        order.cancelReason = cancelReason || 'Shipper đã hủy đơn';
+    }
+
     const updated = await order.save();
     res.json({ message: 'Cập nhật trạng thái thành công', order: updated });
   } catch (error) {
+    console.error(`Lỗi khi shipper cập nhật trạng thái:`, error);
     res.status(500).json({ message: 'Lỗi server' });
   }
 };
@@ -395,36 +416,27 @@ exports.updateOrderStatus = async (req, res) => {
     order.status = status;
     const now = new Date();
 
-    // <<< LOGIC QUAN TRỌNG: Gán thời gian tương ứng với trạng thái mới >>>
     switch (status) {
       case 'Đang xử lý':
-        // Chỉ gán nếu chưa có, tránh ghi đè
-        if (!order.timestamps.acceptedAt) {
-          order.timestamps.acceptedAt = now;
-        }
+        if (!order.timestamps.acceptedAt) order.timestamps.acceptedAt = now;
         break;
       case 'Đang giao':
-        if (!order.timestamps.deliveringAt) {
-          order.timestamps.deliveringAt = now;
-        }
+        if (!order.timestamps.deliveringAt) order.timestamps.deliveringAt = now;
         break;
       case 'Đã giao':
         if (!order.timestamps.deliveredAt) {
           order.timestamps.deliveredAt = now;
-             await processOrderCompletionForFinance(order._id);
+          // <<< GỌI HÀM XỬ LÝ TÀI CHÍNH TẠI ĐÂY >>>
+          await processOrderCompletionForFinance(order._id);
         }
         break;
       case 'Đã huỷ':
         if (!order.timestamps.canceledAt) {
           order.timestamps.canceledAt = now;
-          // Admin có thể không cần lý do, hoặc bạn có thể thêm vào body nếu muốn
           order.cancelReason = req.body.cancelReason || 'Admin đã hủy đơn';
         }
         break;
-      default:
-        break;
     }
-    // <<< KẾT THÚC LOGIC MỚI >>>
 
     const updatedOrder = await order.save();
     
