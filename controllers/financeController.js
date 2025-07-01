@@ -153,3 +153,57 @@ exports.createPayoutRequest = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server khi tạo yêu cầu rút tiền.' });
     }
 };
+
+exports.reverseFinancialEntryForOrder = async (orderId, cancelReason) => {
+    try {
+        console.log(`[FINANCE_REVERSE] Bắt đầu đảo ngược tài chính cho đơn hàng bị hủy: ${orderId}`);
+
+        // Tìm tất cả các bút toán Ghi có (credit) liên quan đến đơn hàng này
+        const creditEntries = await LedgerEntry.find({ order: orderId, type: 'credit' });
+
+        if (creditEntries.length === 0) {
+            console.log(`[FINANCE_REVERSE] Không tìm thấy bút toán nào để đảo ngược cho đơn hàng ${orderId}.`);
+            return;
+        }
+
+        for (const creditEntry of creditEntries) {
+            // Kiểm tra xem đã có bút toán đảo ngược chưa để tránh chạy 2 lần
+            const existingReversal = await LedgerEntry.findOne({ 
+                order: orderId, 
+                type: 'debit', 
+                description: { $regex: /Hoàn trả/ } 
+            });
+
+            if (existingReversal) {
+                console.log(`[FINANCE_REVERSE] Đơn hàng ${orderId} đã được hoàn trả tài chính trước đó. Bỏ qua.`);
+                continue;
+            }
+
+            const sellerId = creditEntry.seller;
+            const amountToReverse = creditEntry.amount;
+
+            // Lấy số dư hiện tại của seller
+            const lastEntry = await LedgerEntry.findOne({ seller: sellerId }).sort({ createdAt: -1 });
+            const currentBalance = lastEntry ? lastEntry.balanceAfter : 0;
+            const newBalance = currentBalance - amountToReverse;
+
+            console.log(`[FINANCE_REVERSE] Chuẩn bị tạo bút toán Ghi nợ (debit) cho Seller ${sellerId}:`);
+            console.log(`  - Số dư cũ: ${currentBalance}`);
+            console.log(`  - Số tiền hoàn trả: ${amountToReverse}`);
+            console.log(`  - Số dư mới: ${newBalance}`);
+
+            // Tạo bút toán Ghi nợ (debit) để trừ tiền
+            await LedgerEntry.create({
+                seller: sellerId,
+                order: orderId,
+                type: 'debit',
+                amount: amountToReverse,
+                description: `Hoàn trả cho đơn hàng #${orderId.toString().slice(-6)} (Lý do: ${cancelReason})`,
+                balanceAfter: newBalance,
+            });
+            console.log(`[FINANCE_REVERSE_SUCCESS] Đã tạo bút toán hoàn trả thành công cho seller ${sellerId}.`);
+        }
+    } catch (error) {
+        console.error(`[FINANCE_REVERSE_ERROR] Lỗi khi đảo ngược tài chính cho đơn hàng ${orderId}:`, error);
+    }
+};
