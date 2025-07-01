@@ -35,5 +35,6 @@ router.post('/update-fcm-token', sellerController.updateFcmToken);
 router.get('/finance', financeController.getSellerFinanceOverview);
 router.get('/ledger', financeController.getSellerLedger);
 router.post('/payout-request', financeController.createPayoutRequest);
+router.get('/payout-history', verifyToken, financeController.getPayoutHistory);
 
 module.exports = router;
