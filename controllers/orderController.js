@@ -219,9 +219,8 @@ exports.updateOrderStatusByShipper = async (req, res) => {
     const { status, cancelReason } = req.body;
     const order = await Order.findById(req.params.id);
     if (!order) return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
-    if (order.shipper.toString() !== req.user._id.toString()) return res.status(403).json({ message: 'Không có quyền thao tác' });
+    if (!order.shipper || order.shipper.toString() !== req.user._id.toString()) return res.status(403).json({ message: 'Không có quyền thao tác' });
 
-    // Chỉ cho phép cập nhật nếu trạng thái hợp lệ
     const validTransitions = {
       'Đang xử lý': ['Đang giao', 'Đã huỷ'],
       'Đang giao': ['Đã giao', 'Đã huỷ']
@@ -236,11 +235,14 @@ exports.updateOrderStatusByShipper = async (req, res) => {
     if (status === 'Đang giao') {
         order.timestamps.deliveringAt = now;
     }
+    
+    // <<< LOGIC ĐÚNG: CHỈ GỌI KHI TRẠNG THÁI LÀ "ĐÃ GIAO" >>>
     if (status === 'Đã giao') {
         order.timestamps.deliveredAt = now;
-        // <<< GỌI HÀM XỬ LÝ TÀI CHÍNH TẠI ĐÂY >>>
+        // Gọi hàm xử lý tài chính ngay sau khi xác nhận đã giao
         await processOrderCompletionForFinance(order._id);
     }
+    
     if (status === 'Đã huỷ') {
         order.timestamps.canceledAt = now;
         order.cancelReason = cancelReason || 'Shipper đã hủy đơn';
