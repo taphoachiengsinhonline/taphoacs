@@ -75,22 +75,37 @@ exports.getSellerFinanceOverview = async (req, res) => {
         const from = startDate ? moment.tz(startDate, 'Asia/Ho_Chi_Minh').startOf('day') : moment().tz('Asia/Ho_Chi_Minh').startOf('month');
         const to = endDate ? moment.tz(endDate, 'Asia/Ho_Chi_Minh').endOf('day') : moment().tz('Asia/Ho_Chi_Minh').endOf('month');
 
-        const revenueResult = await LedgerEntry.aggregate([
-            { $match: { seller: sellerId, createdAt: { $gte: from.toDate(), $lte: to.toDate() } } },
-            { $group: { _id: '$type', total: { $sum: '$amount' } } }
-        ]);
+        // <<< SỬA LỖI LOGIC TÍNH TOÁN >>>
         
-        const credit = revenueResult.find(r => r._id === 'credit')?.total || 0;
-        const debit = revenueResult.find(r => r._id === 'debit')?.total || 0;
-        const totalRevenueInRange = credit - debit;
+        // 1. TÍNH TỔNG DOANH THU TRONG KHOẢNG THỜI GIAN
+        // Chỉ tính các khoản cộng tiền (credit) trong khoảng thời gian đã chọn
+        const revenueResult = await LedgerEntry.aggregate([
+            { $match: { 
+                seller: sellerId,
+                type: 'credit', // Chỉ cộng các khoản thu vào
+                createdAt: { $gte: from.toDate(), $lte: to.toDate() }
+            }},
+            { $group: {
+                _id: null,
+                total: { $sum: '$amount' }
+            }}
+        ]);
+        const totalRevenueInRange = revenueResult[0]?.total || 0;
 
+        // 2. TÍNH SỐ DƯ CÓ THỂ RÚT
+        // Luôn luôn lấy bút toán cuối cùng, không phụ thuộc vào ngày tháng
         const lastEntry = await LedgerEntry.findOne({ seller: sellerId }).sort({ createdAt: -1 });
         const availableBalance = lastEntry ? lastEntry.balanceAfter : 0;
+        
+        // <<< KẾT THÚC SỬA LỖI >>>
 
         res.status(200).json({
             totalRevenue: totalRevenueInRange,
             availableBalance,
-            period: { start: from.format('YYYY-MM-DD'), end: to.format('YYYY-MM-DD') }
+            period: {
+                start: from.format('YYYY-MM-DD'),
+                end: to.format('YYYY-MM-DD')
+            }
         });
     } catch (error) {
         res.status(500).json({ message: 'Lỗi server khi lấy thông tin tài chính.' });
