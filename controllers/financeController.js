@@ -89,52 +89,48 @@ exports.processOrderCompletionForFinance = async (orderId) => {
 };
 
 
-// API để seller lấy thông tin tài chính tổng quan
+// API để seller lấy thông tin tài chính (đã nâng cấp)
 exports.getSellerFinanceOverview = async (req, res) => {
     try {
         const sellerId = req.user._id;
-        console.log(`[API /finance-overview] Lấy overview cho Seller ID: ${sellerId}`);
-
-        // <<< LOGIC MỚI: TÍNH TOÁN DỰA TRÊN TỔNG CÁC BÚT TOÁN >>>
+        const { startDate, endDate } = req.query;
         
-        // 1. Tính tổng tất cả các khoản cộng tiền (doanh thu từ đơn hàng)
-        const creditResult = await LedgerEntry.aggregate([
-            { $match: { seller: sellerId, type: 'credit' } },
-            { $group: { _id: null, total: { $sum: '$amount' } } }
-        ]);
-        const totalCredit = creditResult[0]?.total || 0;
-        console.log(`[API /finance-overview] Tổng credit: ${totalCredit}`);
+        // Mặc định là tháng hiện tại nếu không có query
+        const from = startDate ? moment.tz(startDate, 'Asia/Ho_Chi_Minh').startOf('day') : moment().tz('Asia/Ho_Chi_Minh').startOf('month');
+        const to = endDate ? moment.tz(endDate, 'Asia/Ho_Chi_Minh').endOf('day') : moment().tz('Asia/Ho_Chi_Minh').endOf('month');
 
-        // 2. Tính tổng tất cả các khoản trừ tiền (hoàn trả, rút tiền)
-        const debitResult = await LedgerEntry.aggregate([
-            { $match: { seller: sellerId, type: 'debit' } },
-            { $group: { _id: null, total: { $sum: '$amount' } } }
+        // 1. Tính tổng doanh thu ròng trong khoảng thời gian đã chọn
+        const revenueResult = await LedgerEntry.aggregate([
+            { $match: { 
+                seller: sellerId,
+                createdAt: { $gte: from.toDate(), $lte: to.toDate() }
+            }},
+            { $group: {
+                _id: '$type',
+                total: { $sum: '$amount' }
+            }}
         ]);
-        const totalDebit = debitResult[0]?.total || 0;
-        console.log(`[API /finance-overview] Tổng debit: ${totalDebit}`);
         
-        // 3. Tính toán các chỉ số
-        // Tổng doanh thu thực tế = Tổng được cộng - Tổng bị trừ do hoàn trả/hủy đơn
-        const totalNetRevenue = totalCredit - totalDebit;
+        const credit = revenueResult.find(r => r._id === 'credit')?.total || 0;
+        const debit = revenueResult.find(r => r._id === 'debit')?.total || 0;
+        const totalRevenueInRange = credit - debit;
 
-        // Số dư có thể rút = cũng chính là tổng doanh thu thực tế
-        // (Trong tương lai nếu có lệnh rút tiền, công thức vẫn đúng)
-        const availableBalance = totalNetRevenue;
+        // 2. Tính số dư có thể rút (luôn là tổng từ trước đến nay)
+        const lastEntry = await LedgerEntry.findOne({ seller: sellerId }).sort({ createdAt: -1 });
+        const availableBalance = lastEntry ? lastEntry.balanceAfter : 0;
 
-        const responseData = {
-            totalRevenue: totalNetRevenue,     // Tổng doanh thu thực tế
-            availableBalance: availableBalance,  // Số dư có thể rút
-        };
-
-        console.log(`[API /finance-overview] Dữ liệu trả về:`, responseData);
-        res.status(200).json(responseData);
-
+        res.status(200).json({
+            totalRevenue: totalRevenueInRange,
+            availableBalance,
+            period: {
+                start: from.format('YYYY-MM-DD'),
+                end: to.format('YYYY-MM-DD')
+            }
+        });
     } catch (error) {
-        console.error(`[API /finance-overview] Lỗi:`, error);
         res.status(500).json({ message: 'Lỗi server khi lấy thông tin tài chính.' });
     }
 };
-
 
 // API để seller lấy lịch sử giao dịch (sổ cái)
 exports.getSellerLedger = async (req, res) => {
@@ -151,24 +147,51 @@ exports.getSellerLedger = async (req, res) => {
 exports.createPayoutRequest = async (req, res) => {
     try {
         const sellerId = req.user._id;
-        const { amount } = req.body;
-
-        if (!amount || amount <= 0) return res.status(400).json({ message: 'Số tiền yêu cầu không hợp lệ.' });
-        
-        const existingPendingRequest = await PayoutRequest.findOne({ seller: sellerId, status: { $in: ['pending', 'processing'] } });
-        if (existingPendingRequest) return res.status(400).json({ message: 'Bạn đã có một yêu cầu rút tiền đang được xử lý.' });
         
         const lastEntry = await LedgerEntry.findOne({ seller: sellerId }).sort({ createdAt: -1 });
         const availableBalance = lastEntry ? lastEntry.balanceAfter : 0;
         
-        if (amount > availableBalance) return res.status(400).json({ message: 'Số tiền yêu cầu vượt quá số dư có thể rút.' });
+        if (availableBalance <= 0) {
+            return res.status(400).json({ message: 'Số dư của bạn không đủ để tạo yêu cầu.' });
+        }
+        
+        const existingPending = await PayoutRequest.findOne({ seller: sellerId, status: { $in: ['pending', 'processing'] } });
+        if (existingPending) {
+            return res.status(400).json({ message: 'Bạn đã có một yêu cầu đang được xử lý.' });
+        }
 
-        const newRequest = new PayoutRequest({ seller: sellerId, amount: amount });
+        // Tạo yêu cầu rút tiền
+        const newRequest = new PayoutRequest({
+            seller: sellerId,
+            amount: availableBalance, // Rút toàn bộ số dư
+        });
         await newRequest.save();
+
+        // Tạo bút toán Ghi nợ (debit) để reset số dư về 0
+        const newBalance = 0;
+        await LedgerEntry.create({
+            seller: sellerId,
+            type: 'debit',
+            amount: availableBalance,
+            description: `Yêu cầu rút tiền #${newRequest._id.toString().slice(-6)}`,
+            balanceAfter: newBalance
+        });
+
         res.status(201).json({ message: 'Yêu cầu rút tiền đã được gửi thành công.', request: newRequest });
 
     } catch (error) {
         res.status(500).json({ message: 'Lỗi server khi tạo yêu cầu rút tiền.' });
+    }
+};
+
+// API để seller xem lịch sử các yêu cầu rút tiền của mình
+exports.getPayoutHistory = async (req, res) => {
+    try {
+        const sellerId = req.user._id;
+        const history = await PayoutRequest.find({ seller: sellerId }).sort({ createdAt: -1 });
+        res.status(200).json(history);
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server khi lấy lịch sử rút tiền.' });
     }
 };
 
