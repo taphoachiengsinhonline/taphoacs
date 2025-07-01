@@ -5,6 +5,8 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const financeController = require('../controllers/financeController');
+const sellerController = require('../controllers/sellerController'); // <<< THÊM CONTROLLER MỚI
+
 
 const restrictToSeller = (req, res, next) => {
     if (req.user.role !== 'seller') {
