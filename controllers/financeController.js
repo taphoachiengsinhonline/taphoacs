@@ -63,35 +63,54 @@ exports.processOrderCompletionForFinance = async (orderId) => {
 exports.getSellerFinanceOverview = async (req, res) => {
     try {
         const sellerId = req.user._id;
+        console.log(`[FINANCE_LOG] Bắt đầu lấy overview cho Seller ID: ${sellerId}`);
 
-        // Tính tổng doanh thu (tất cả các khoản credit)
         const totalRevenueResult = await LedgerEntry.aggregate([
             { $match: { seller: sellerId, type: 'credit' } },
             { $group: { _id: null, total: { $sum: '$amount' } } }
         ]);
         const totalRevenue = totalRevenueResult[0]?.total || 0;
+        console.log(`[FINANCE_LOG] Tổng doanh thu (totalRevenue) tính được: ${totalRevenue}`);
 
-        // Tính tổng số tiền đã rút (tất cả các khoản debit)
         const totalPayoutResult = await LedgerEntry.aggregate([
             { $match: { seller: sellerId, type: 'debit' } },
             { $group: { _id: null, total: { $sum: '$amount' } } }
         ]);
         const totalPayout = totalPayoutResult[0]?.total || 0;
+        console.log(`[FINANCE_LOG] Tổng đã rút (totalPayout) tính được: ${totalPayout}`);
 
-        // Số dư có thể rút = Tổng doanh thu - Tổng đã rút
         const availableBalance = totalRevenue - totalPayout;
+        console.log(`[FINANCE_LOG] Số dư có thể rút (availableBalance) tính được: ${availableBalance}`);
 
-        res.status(200).json({
-            totalRevenue,       // Tổng doanh thu từ trước đến nay
-            availableBalance,   // Số dư có thể rút
-        });
+        const responseData = { totalRevenue, availableBalance };
+        console.log(`[FINANCE_LOG] Dữ liệu trả về cho /sellers/finance-overview:`, JSON.stringify(responseData));
+        res.status(200).json(responseData);
+
     } catch (error) {
+        console.error(`[FINANCE_LOG] Lỗi ở getSellerFinanceOverview:`, error);
         res.status(500).json({ message: 'Lỗi server khi lấy thông tin tài chính.' });
     }
 };
 
 // API để seller lấy lịch sử giao dịch (sổ cái)
-exports.getSellerLedger = async (req, res) => { /* Giữ nguyên không đổi */ };
+exports.getSellerLedger = async (req, res) => {
+    try {
+        const sellerId = req.user._id;
+        console.log(`[FINANCE_LOG] Bắt đầu lấy ledger cho Seller ID: ${sellerId}`);
+        
+        const ledgerEntries = await LedgerEntry.find({ seller: sellerId })
+            .sort({ createdAt: -1 })
+            .limit(50);
+
+        console.log(`[FINANCE_LOG] Tìm thấy ${ledgerEntries.length} bút toán.`);
+        console.log(`[FINANCE_LOG] Dữ liệu trả về cho /sellers/ledger:`, JSON.stringify(ledgerEntries.slice(0, 2))); // Log 2 cái đầu
+        res.status(200).json(ledgerEntries);
+
+    } catch (error) {
+        console.error(`[FINANCE_LOG] Lỗi ở getSellerLedger:`, error);
+        res.status(500).json({ message: 'Lỗi server khi lấy lịch sử giao dịch.' });
+    }
+};
 
 // API để seller tạo yêu cầu rút tiền
 exports.createPayoutRequest = async (req, res) => {
