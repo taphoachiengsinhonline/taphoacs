@@ -1,8 +1,8 @@
 // controllers/financeController.js
-
 const User = require('../models/User');
 const LedgerEntry = require('../models/LedgerEntry');
 const Order = require('../models/Order');
+const PayoutRequest = require('../models/PayoutRequest');
 
 // Hàm tính toán và cập nhật số dư của seller
 // Hàm này sẽ được gọi khi một đơn hàng được chuyển sang trạng thái "Đã giao"
@@ -59,30 +59,73 @@ exports.processOrderCompletionForFinance = async (orderId) => {
     }
 };
 
-// API để seller lấy số dư hiện tại
-exports.getSellerBalance = async (req, res) => {
+// API để seller lấy thông tin tài chính tổng quan
+exports.getSellerFinanceOverview = async (req, res) => {
     try {
         const sellerId = req.user._id;
-        const lastEntry = await LedgerEntry.findOne({ seller: sellerId }).sort({ createdAt: -1 });
-        
-        const balance = lastEntry ? lastEntry.balanceAfter : 0;
-        
-        res.status(200).json({ balance });
+
+        // Tính tổng doanh thu (tất cả các khoản credit)
+        const totalRevenueResult = await LedgerEntry.aggregate([
+            { $match: { seller: sellerId, type: 'credit' } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const totalRevenue = totalRevenueResult[0]?.total || 0;
+
+        // Tính tổng số tiền đã rút (tất cả các khoản debit)
+        const totalPayoutResult = await LedgerEntry.aggregate([
+            { $match: { seller: sellerId, type: 'debit' } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const totalPayout = totalPayoutResult[0]?.total || 0;
+
+        // Số dư có thể rút = Tổng doanh thu - Tổng đã rút
+        const availableBalance = totalRevenue - totalPayout;
+
+        res.status(200).json({
+            totalRevenue,       // Tổng doanh thu từ trước đến nay
+            availableBalance,   // Số dư có thể rút
+        });
     } catch (error) {
-        res.status(500).json({ message: 'Lỗi server khi lấy số dư.' });
+        res.status(500).json({ message: 'Lỗi server khi lấy thông tin tài chính.' });
     }
 };
 
 // API để seller lấy lịch sử giao dịch (sổ cái)
-exports.getSellerLedger = async (req, res) => {
+exports.getSellerLedger = async (req, res) => { /* Giữ nguyên không đổi */ };
+
+// API để seller tạo yêu cầu rút tiền
+exports.createPayoutRequest = async (req, res) => {
     try {
         const sellerId = req.user._id;
-        const ledgerEntries = await LedgerEntry.find({ seller: sellerId })
-            .sort({ createdAt: -1 })
-            .limit(50); // Giới hạn 50 giao dịch gần nhất
+        const { amount } = req.body;
 
-        res.status(200).json(ledgerEntries);
+        if (!amount || amount <= 0) {
+            return res.status(400).json({ message: 'Số tiền yêu cầu không hợp lệ.' });
+        }
+
+        // Kiểm tra xem seller có yêu cầu nào đang chờ xử lý không
+        const existingPendingRequest = await PayoutRequest.findOne({ seller: sellerId, status: { $in: ['pending', 'processing'] } });
+        if (existingPendingRequest) {
+            return res.status(400).json({ message: 'Bạn đã có một yêu cầu rút tiền đang được xử lý.' });
+        }
+        
+        // Lấy số dư hiện tại
+        const lastEntry = await LedgerEntry.findOne({ seller: sellerId }).sort({ createdAt: -1 });
+        const availableBalance = lastEntry ? lastEntry.balanceAfter : 0;
+        
+        if (amount > availableBalance) {
+            return res.status(400).json({ message: 'Số tiền yêu cầu vượt quá số dư có thể rút.' });
+        }
+
+        const newRequest = new PayoutRequest({
+            seller: sellerId,
+            amount: amount,
+        });
+
+        await newRequest.save();
+        res.status(201).json({ message: 'Yêu cầu rút tiền đã được gửi thành công.', request: newRequest });
+
     } catch (error) {
-        res.status(500).json({ message: 'Lỗi server khi lấy lịch sử giao dịch.' });
+        res.status(500).json({ message: 'Lỗi server khi tạo yêu cầu rút tiền.' });
     }
 };
