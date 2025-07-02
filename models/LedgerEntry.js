@@ -11,6 +11,13 @@ const ledgerEntrySchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Order',
   },
+
+   payoutRequest: { // Giao dịch liên quan đến yêu cầu rút tiền nào
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'PayoutRequest',
+    },
+
+  
   type: { // Loại giao dịch: Ghi có (doanh thu), Ghi nợ (rút tiền/thanh toán)
     type: String,
     enum: ['credit', 'debit'],
