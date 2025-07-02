@@ -7,10 +7,20 @@ const LedgerEntry = require('../models/LedgerEntry');
 
 // Admin lấy tất cả các yêu cầu rút tiền
 router.get('/', verifyToken, isAdmin, async (req, res) => {
-    const { status } = req.query;
-    const filter = status ? { status } : {};
-    const requests = await PayoutRequest.find(filter).populate('seller', 'name email').sort('-createdAt');
-    res.json(requests);
+    try {
+        const { status } = req.query;
+        const filter = status ? { status } : {};
+        
+        // <<< SỬA ĐỔI: Thêm .populate() để lấy thông tin seller >>>
+        const requests = await PayoutRequest.find(filter)
+            .populate('seller', 'name email paymentInfo') // Lấy tên, email và thông tin thanh toán của seller
+            .sort('-createdAt');
+            
+        res.json(requests);
+    } catch (error) {
+        console.error("Lỗi khi lấy Payout Requests:", error);
+        res.status(500).json({ message: "Lỗi server" });
+    }
 });
 
 
