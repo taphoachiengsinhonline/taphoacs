@@ -92,3 +92,28 @@ exports.updateFcmToken = async (req, res) => {
         res.status(500).json({ message: "Lỗi server" });
     }
 };
+
+exports.updatePaymentInfo = async (req, res) => {
+    try {
+        const { bankName, accountHolderName, accountNumber } = req.body;
+        if (!bankName || !accountHolderName || !accountNumber) {
+            return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin thanh toán.' });
+        }
+        
+        const updatedUser = await User.findByIdAndUpdate(
+            req.user._id,
+            { 
+                $set: {
+                    'paymentInfo.bankName': bankName,
+                    'paymentInfo.accountHolderName': accountHolderName,
+                    'paymentInfo.accountNumber': accountNumber,
+                }
+            },
+            { new: true, runValidators: true }
+        );
+
+        res.status(200).json({ message: 'Cập nhật thông tin thanh toán thành công!', user: updatedUser });
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server khi cập nhật thông tin.' });
+    }
+};
