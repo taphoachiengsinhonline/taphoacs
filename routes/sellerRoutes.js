@@ -36,6 +36,7 @@ router.get('/finance', financeController.getSellerFinanceOverview);
 router.get('/ledger', financeController.getSellerLedger);
 router.post('/payout-request', financeController.createPayoutRequest);
 router.get('/payout-history', verifyToken, financeController.getPayoutHistory);
-router.put('/payment-info', verifyToken, sellerController.updatePaymentInfo);
+router.post('/payment-info/request-update', verifyToken, sellerController.requestUpdatePaymentInfo);
+router.post('/payment-info/verify-update', verifyToken, sellerController.verifyUpdatePaymentInfo);
 
 module.exports = router;
