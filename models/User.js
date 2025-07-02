@@ -106,7 +106,15 @@ commissionRate: { // <-- THÊM MỚI Ở ĐÂY
   fcmToken: {
     type: String,
     default: null
-  }
+  },
+
+  paymentInfo: {
+    bankName: { type: String, trim: true },
+    accountHolderName: { type: String, trim: true },
+    accountNumber: { type: String, trim: true },
+  },
+
+  
 }, {
   timestamps: true,
   toJSON: {
