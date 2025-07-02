@@ -17,6 +17,7 @@
     "mongoose": "^7.0.4",
     "mongoose-paginate-v2": "^1.8.0",
     "@react-native-community/datetimepicker": "^6.7.0",
-    "moment-timezone": "^0.6.0"
+    "moment-timezone": "^0.6.0",
+    "twilio": "^5.2.2"
   }
 }
