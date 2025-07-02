@@ -13,6 +13,18 @@ router.get('/', verifyToken, isAdmin, async (req, res) => {
     res.json(requests);
 });
 
+
+router.get('/pending/count', verifyToken, isAdmin, async (req, res) => {
+    try {
+        const count = await PayoutRequest.countDocuments({ status: 'pending' });
+        res.json({ count });
+    } catch (error) {
+        console.error("Lỗi đếm yêu cầu rút tiền:", error);
+        res.status(500).json({ message: "Lỗi server" });
+    }
+});
+
+
 // Admin cập nhật trạng thái một yêu cầu
 router.patch('/:id/status', verifyToken, isAdmin, async (req, res) => {
     const { status, rejectionReason } = req.body;
