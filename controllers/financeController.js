@@ -128,6 +128,7 @@ exports.createPayoutRequest = async (req, res) => {
     try {
         const sellerId = req.user._id;
         
+        // <<< SỬA ĐỔI: Không lấy amount từ body nữa, luôn rút hết số dư >>>
         const lastEntry = await LedgerEntry.findOne({ seller: sellerId }).sort({ createdAt: -1 });
         const availableBalance = lastEntry ? lastEntry.balanceAfter : 0;
         
@@ -135,31 +136,26 @@ exports.createPayoutRequest = async (req, res) => {
             return res.status(400).json({ message: 'Số dư của bạn không đủ để tạo yêu cầu.' });
         }
         
-        const existingPending = await PayoutRequest.findOne({ seller: sellerId, status: { $in: ['pending', 'processing'] } });
-        if (existingPending) {
+        const existingPendingRequest = await PayoutRequest.findOne({ seller: sellerId, status: { $in: ['pending', 'processing'] } });
+        if (existingPendingRequest) {
             return res.status(400).json({ message: 'Bạn đã có một yêu cầu đang được xử lý.' });
         }
 
-        // Tạo yêu cầu rút tiền
+        // <<< SỬA ĐỔI: Chỉ tạo PayoutRequest, KHÔNG tạo bút toán debit >>>
         const newRequest = new PayoutRequest({
             seller: sellerId,
-            amount: availableBalance, // Rút toàn bộ số dư
+            amount: availableBalance, // Luôn yêu cầu rút toàn bộ số dư hiện có
         });
-        await newRequest.save();
 
-        // Tạo bút toán Ghi nợ (debit) để reset số dư về 0
-        const newBalance = 0;
-        await LedgerEntry.create({
-            seller: sellerId,
-            type: 'debit',
-            amount: availableBalance,
-            description: `Yêu cầu rút tiền #${newRequest._id.toString().slice(-6)}`,
-            balanceAfter: newBalance
-        });
+        await newRequest.save();
+        
+        // Không còn bút toán debit ở đây nữa
+        console.log(`[FINANCE] Seller ${sellerId} đã tạo yêu cầu rút tiền ${availableBalance}. Chờ admin xử lý.`);
 
         res.status(201).json({ message: 'Yêu cầu rút tiền đã được gửi thành công.', request: newRequest });
 
     } catch (error) {
+        console.error("Lỗi tạo yêu cầu rút tiền:", error);
         res.status(500).json({ message: 'Lỗi server khi tạo yêu cầu rút tiền.' });
     }
 };
