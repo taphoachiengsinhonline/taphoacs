@@ -11,6 +11,13 @@ const payoutRequestSchema = new mongoose.Schema({
         type: Number,
         required: true,
     },
+
+     payoutDetails: { // Lưu lại thông tin thanh toán tại thời điểm yêu cầu
+        bankName: String,
+        accountHolderName: String,
+        accountNumber: String,
+    },
+    
     status: {
         type: String,
         enum: ['pending', 'processing', 'completed', 'rejected'],
