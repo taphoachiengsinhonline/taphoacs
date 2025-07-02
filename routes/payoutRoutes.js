@@ -40,20 +40,32 @@ router.patch('/:id/status', verifyToken, isAdmin, async (req, res) => {
     }
     
     // Nếu admin xác nhận hoàn tất, tạo bút toán Ghi nợ (debit)
-    if (status === 'completed') {
-        request.completedAt = new Date();
-        const lastEntry = await LedgerEntry.findOne({ seller: request.seller }).sort({ createdAt: -1 });
-        const currentBalance = lastEntry ? lastEntry.balanceAfter : 0;
-        const newBalance = currentBalance - request.amount;
+    if (status === 'completed' && request.amount > 0) {
+            request.completedAt = new Date();
+            
+            // Kiểm tra để tránh tạo bút toán debit trùng lặp
+            const existingDebit = await LedgerEntry.findOne({ 
+                payoutRequest: request._id, // Dùng một trường để liên kết
+                type: 'debit'
+            });
 
-        await LedgerEntry.create({
-            seller: request.seller,
-            type: 'debit',
-            amount: request.amount,
-            description: `Rút tiền theo yêu cầu #${request._id.toString().slice(-6)}`,
-            balanceAfter: newBalance
-        });
-    }
+            if (!existingDebit) {
+                const lastEntry = await LedgerEntry.findOne({ seller: request.seller }).sort({ createdAt: -1 });
+                const currentBalance = lastEntry ? lastEntry.balanceAfter : 0;
+                const newBalance = currentBalance - request.amount;
+
+                await LedgerEntry.create({
+                    seller: request.seller,
+                    type: 'debit',
+                    amount: request.amount,
+                    description: `Admin đã thanh toán yêu cầu #${request._id.toString().slice(-6)}`,
+                    balanceAfter: newBalance,
+                    payoutRequest: request._id // Thêm liên kết này
+                });
+                console.log(`[FINANCE] Đã tạo bút toán DEBIT cho Seller ${request.seller} với số tiền ${request.amount}`);
+            }
+            // ...
+        }
 
     await request.save();
     res.json({ message: 'Cập nhật trạng thái thành công', request });
