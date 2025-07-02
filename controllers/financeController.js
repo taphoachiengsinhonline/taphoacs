@@ -127,6 +127,14 @@ exports.getSellerLedger = async (req, res) => {
 exports.createPayoutRequest = async (req, res) => {
     try {
         const sellerId = req.user._id;
+        // <<< NHẬN THÊM DỮ LIỆU TỪ BODY >>>
+        const { amount, paymentDetails } = req.body;
+
+        if (!amount || amount <= 0) return res.status(400).json({ message: 'Số tiền không hợp lệ.' });
+        // <<< KIỂM TRA THÔNG TIN THANH TOÁN >>>
+        if (!paymentDetails || !paymentDetails.bankName || !paymentDetails.accountNumber) {
+            return res.status(400).json({ message: 'Thiếu thông tin thanh toán để tạo yêu cầu.' });
+        }
         
         // <<< SỬA ĐỔI: Không lấy amount từ body nữa, luôn rút hết số dư >>>
         const lastEntry = await LedgerEntry.findOne({ seller: sellerId }).sort({ createdAt: -1 });
@@ -145,6 +153,7 @@ exports.createPayoutRequest = async (req, res) => {
         const newRequest = new PayoutRequest({
             seller: sellerId,
             amount: availableBalance, // Luôn yêu cầu rút toàn bộ số dư hiện có
+            payoutDetails: paymentDetails,
         });
 
         await newRequest.save();
