@@ -93,13 +93,59 @@ exports.updateFcmToken = async (req, res) => {
     }
 };
 
-exports.updatePaymentInfo = async (req, res) => {
+exports.requestUpdatePaymentInfo = async (req, res) => {
     try {
         const { bankName, accountHolderName, accountNumber } = req.body;
         if (!bankName || !accountHolderName || !accountNumber) {
             return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin thanh toán.' });
         }
+
+        // Tạo OTP
+        const otp = crypto.randomInt(100000, 999999).toString();
         
+        // Lưu yêu cầu tạm thời vào DB
+        await PendingUpdate.create({
+            userId: req.user._id,
+            type: 'paymentInfo',
+            otp,
+            payload: { bankName, accountHolderName, accountNumber }
+        });
+
+        // Gửi SMS chứa OTP
+        const smsSent = await sendOtpSms(req.user.phone, otp);
+        if (!smsSent) {
+            // Có thể thêm logic gửi lại hoặc thông báo lỗi nếu cần
+            console.warn(`Không thể gửi SMS OTP cho user ${req.user._id}`);
+        }
+
+        res.status(200).json({ message: 'Mã OTP đã được gửi đến số điện thoại của bạn.' });
+
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server khi yêu cầu cập nhật.' });
+    }
+};
+
+// Thêm hàm mới này
+exports.verifyUpdatePaymentInfo = async (req, res) => {
+    try {
+        const { otp } = req.body;
+        if (!otp) {
+            return res.status(400).json({ message: 'Vui lòng nhập mã OTP.' });
+        }
+
+        const pendingRequest = await PendingUpdate.findOne({
+            userId: req.user._id,
+            otp,
+            type: 'paymentInfo',
+            expiresAt: { $gt: new Date() }
+        });
+
+        if (!pendingRequest) {
+            return res.status(400).json({ message: 'Mã OTP không hợp lệ hoặc đã hết hạn.' });
+        }
+
+        // Nếu OTP đúng, cập nhật thông tin
+        const { bankName, accountHolderName, accountNumber } = pendingRequest.payload;
         const updatedUser = await User.findByIdAndUpdate(
             req.user._id,
             { 
@@ -109,11 +155,15 @@ exports.updatePaymentInfo = async (req, res) => {
                     'paymentInfo.accountNumber': accountNumber,
                 }
             },
-            { new: true, runValidators: true }
+            { new: true }
         );
+        
+        // Xóa yêu cầu tạm
+        await PendingUpdate.findByIdAndDelete(pendingRequest._id);
 
         res.status(200).json({ message: 'Cập nhật thông tin thanh toán thành công!', user: updatedUser });
+
     } catch (error) {
-        res.status(500).json({ message: 'Lỗi server khi cập nhật thông tin.' });
+        res.status(500).json({ message: 'Lỗi server khi xác thực OTP.' });
     }
 };
