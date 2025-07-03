@@ -327,54 +327,28 @@ exports.countOrdersByStatus = async (req, res) => {
 exports.getOrderById = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id)
-      .populate('user', 'name phone')
-      .populate('shipper', 'name phone');
+      .populate('user', 'name phone') // Lấy tên và SĐT của khách hàng
+      .populate('shipper', 'name phone shipperProfile.vehicleType shipperProfile.licensePlate'); // Lấy thông tin của shipper
 
     if (!order) {
       return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
     }
 
-    // <<< LOGIC KIỂM TRA QUYỀN ĐƯỢC NÂNG CẤP >>>
     let canView = false;
     const currentUserId = req.user._id;
     const currentUserRole = req.user.role;
 
-    // 1. Admin có toàn quyền
-    if (currentUserRole === 'admin') {
-        canView = true;
-    }
-    // 2. Khách hàng (người đặt) có quyền xem đơn của mình
-    else if (order.user?._id.equals(currentUserId)) {
-        canView = true;
-    }
-    // 3. Shipper được gán có quyền xem đơn của mình
-    else if (order.shipper?._id.equals(currentUserId)) {
-        canView = true;
-    }
-    // 4. Shipper có thể xem đơn đang chờ (để quyết định nhận)
-    else if (currentUserRole === 'shipper' && order.status === 'Chờ xác nhận' && req.query.shipperView === 'true') {
-        canView = true;
-    }
-    // 5. Seller có quyền xem nếu đơn hàng chứa ít nhất một sản phẩm của họ
-    else if (currentUserRole === 'seller') {
-        const isSellerInOrder = order.items.some(item => item.sellerId.equals(currentUserId));
-        if (isSellerInOrder) {
-            canView = true;
-        }
-    }
-    // <<< KẾT THÚC LOGIC KIỂM TRA QUYỀN >>>
-
+    if (currentUserRole === 'admin') canView = true;
+    else if (order.user?._id.equals(currentUserId)) canView = true;
+    else if (order.shipper?._id.equals(currentUserId)) canView = true;
+    else if (currentUserRole === 'shipper' && order.status === 'Chờ xác nhận') canView = true;
+    else if (currentUserRole === 'seller' && order.items.some(item => item.sellerId.equals(currentUserId))) canView = true;
+    
     if (canView) {
-      // Khi trả về cho Seller, có thể lọc bớt thông tin không cần thiết nếu muốn
-      // Ví dụ: không cho seller thấy thông tin của shipper
       let responseOrder = order.toObject({ virtuals: true });
       responseOrder.timestamps = order.timestamps;
-
-      if (currentUserRole === 'seller' && responseOrder.shipper) {
-          // Xóa thông tin shipper khỏi response cho seller
-          delete responseOrder.shipper;
-      }
       
+      // Không cần xóa thông tin nữa, vì frontend sẽ tự quyết định hiển thị gì
       res.json(responseOrder);
     } else {
       res.status(403).json({ message: 'Bạn không có quyền truy cập đơn hàng này.' });
@@ -382,9 +356,11 @@ exports.getOrderById = async (req, res) => {
 
   } catch (err) {
     console.error('[getOrderById] error:', err);
-    res.status(err.name === 'CastError' ? 400 : 500).json({ message: err.message || 'Lỗi server' });
+    res.status(500).json({ message: err.message || 'Lỗi server' });
   }
 };
+
+
 exports.getAllOrders = async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
