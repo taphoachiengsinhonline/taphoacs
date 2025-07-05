@@ -83,4 +83,34 @@ router.get('/:id', verifyToken, async (req, res) => {
     }
 });
 
+// API đếm tổng số tin nhắn chưa đọc
+router.get('/unread/count', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const userRole = req.user.role;
+        
+        let filter = {};
+        let groupField = '';
+
+        if (userRole === 'seller') {
+            filter = { sellerId: userId };
+            groupField = '$unreadBySeller';
+        } else { // customer
+            filter = { customerId: userId };
+            groupField = '$unreadByCustomer';
+        }
+
+        const result = await Conversation.aggregate([
+            { $match: filter },
+            { $group: { _id: null, totalUnread: { $sum: groupField } } }
+        ]);
+
+        const count = result[0]?.totalUnread || 0;
+        res.json({ count });
+
+    } catch (error) {
+        res.status(500).json({ message: "Lỗi server" });
+    }
+});
+
 module.exports = router;
