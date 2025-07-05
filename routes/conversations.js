@@ -119,23 +119,6 @@ router.get('/', verifyToken, async (req, res) => {
 });
 
 
-// API lấy chi tiết một cuộc trò chuyện
-router.get('/:id', verifyToken, async (req, res) => {
-    try {
-        const conversation = await Conversation.findById(req.params.id)
-            .populate('sellerId', 'name')
-            .populate('productId', 'name images price variantTable'); // Lấy đủ thông tin giá
-            
-        if (!conversation) return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện' });
-        
-        // Logic xác thực quyền ở đây nếu cần
-        
-        res.json(conversation);
-    } catch (err) {
-        console.error('[CONVERSATION GET DETAIL] Lỗi:', err.message);
-        res.status(500).json({ message: 'Lỗi server' });
-    }
-});
 
 // API đếm tổng số tin nhắn chưa đọc
 router.get('/unread/count', verifyToken, async (req, res) => {
@@ -167,5 +150,22 @@ router.get('/unread/count', verifyToken, async (req, res) => {
     }
 });
 
+// API lấy chi tiết một cuộc trò chuyện
+router.get('/:id', verifyToken, async (req, res) => {
+    try {
+        const conversation = await Conversation.findById(req.params.id)
+            .populate('sellerId', 'name')
+            .populate('productId', 'name images price variantTable'); // Lấy đủ thông tin giá
+            
+        if (!conversation) return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện' });
+        
+        // Logic xác thực quyền ở đây nếu cần
+        
+        res.json(conversation);
+    } catch (err) {
+        console.error('[CONVERSATION GET DETAIL] Lỗi:', err.message);
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+});
 
 module.exports = router;
