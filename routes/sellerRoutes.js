@@ -22,6 +22,8 @@ router.use(verifyToken, restrictToSeller);
 // API cho Dashboard Screen
 router.get('/dashboard-stats', sellerController.getDashboardStats);
 
+router.get('/conversations', sellerController.getSellerConversations);
+
 // API cho ProductList Screen
 router.get('/products', sellerController.getSellerProducts);
 
