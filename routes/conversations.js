@@ -4,7 +4,6 @@ const router = express.Router();
 const Conversation = require('../models/Conversation');
 const Product = require('../models/Product');
 const { verifyToken } = require('../middlewares/authMiddleware');
-const DEFAULT_SELLER_ID = '67f6ab0b9c31a3c6943aed6e';
 
 router.get('/', verifyToken, async (req, res) => {
   try {
@@ -70,34 +69,48 @@ router.get('/', verifyToken, async (req, res) => {
 });
 
 
-router.post('/', async (req, res) => {
-  const { productId, customerId } = req.body;
-  console.log('[conversations] Creating conversation:', { productId, customerId });
+// <<< THAY THẾ TOÀN BỘ ROUTE POST NÀY >>>
+router.post('/', verifyToken, async (req, res) => {
+    try {
+        const { productId, sellerId } = req.body;
+        const customerId = req.user._id;
 
-  try {
-    const product = await Product.findById(productId).select('createdBy');
-    if (!product) {
-      console.log('[conversations] Product not found:', productId);
-      return res.status(400).json({ status: 'error', message: 'Product not found' });
+        console.log(`[CONVERSATION] Yêu cầu tạo/tìm chat:`, { productId, sellerId, customerId });
+
+        if (!productId || !sellerId) {
+            return res.status(400).json({ message: 'Thiếu thông tin sản phẩm hoặc người bán.' });
+        }
+
+        // Tìm một cuộc trò chuyện đã tồn tại với bộ 3: customer, seller, product
+        let conversation = await Conversation.findOne({
+            productId,
+            customerId,
+            sellerId
+        });
+
+        if (conversation) {
+            console.log(`[CONVERSATION] Đã tìm thấy cuộc trò chuyện cũ: ${conversation._id}`);
+            // Nếu đã có, trả về luôn
+            return res.status(200).json(conversation);
+        }
+
+        // Nếu chưa có, tạo mới
+        console.log(`[CONVERSATION] Không tìm thấy, tạo cuộc trò chuyện mới...`);
+        conversation = new Conversation({
+            productId,
+            customerId,
+            sellerId,
+        });
+
+        await conversation.save();
+        console.log(`[CONVERSATION] Đã tạo thành công: ${conversation._id}`);
+
+        res.status(201).json(conversation);
+
+    } catch (err) {
+        console.error('[CONVERSATION] Lỗi khi tạo/tìm cuộc trò chuyện:', err.message);
+        res.status(500).json({ message: 'Lỗi server' });
     }
-
-    const sellerId = product.createdBy || DEFAULT_SELLER_ID;
-    console.log('[conversations] Assigned sellerId:', sellerId);
-
-    const conversation = new Conversation({
-      productId,
-      customerId,
-      sellerId,
-    });
-
-    await conversation.save();
-    console.log('[conversations] Conversation created:', conversation._id);
-
-    res.json({ status: 'success', data: conversation });
-  } catch (err) {
-    console.error('[conversations] Error:', err.message);
-    res.status(500).json({ status: 'error', message: 'Server error' });
-  }
 });
 
 
