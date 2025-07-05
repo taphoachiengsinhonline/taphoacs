@@ -7,6 +7,8 @@ const PendingUpdate = require('../models/PendingUpdate');
 const { sendOtpSms } = require('../utils/sms');
 const crypto = require('crypto');
 const moment = require('moment-timezone'); // Thêm moment-timezone
+const Conversation = require('../models/Conversation'); // <<< THÊM IMPORT
+const Message = require('../models/Message');
 
 // ==============================================================================
 // ===                  API CHO DASHBOARD - ĐÃ NÂNG CẤP                       ===
@@ -110,6 +112,39 @@ exports.getDashboardStats = async (req, res) => {
     }
 };
 
+exports.getSellerConversations = async (req, res) => {
+    try {
+        const sellerId = req.user._id;
+
+        // Tìm tất cả các cuộc trò chuyện mà seller này là người bán
+        const conversations = await Conversation.find({ sellerId: sellerId })
+            .populate('customerId', 'name') // Lấy tên khách hàng
+            .populate('productId', 'name images') // Lấy tên và ảnh sản phẩm
+            .sort({ updatedAt: -1 }); // Sắp xếp theo cập nhật mới nhất
+
+        // Lấy tin nhắn cuối cùng cho mỗi cuộc trò chuyện (để tối ưu)
+        const conversationsWithLastMessage = await Promise.all(
+            conversations.map(async (conv) => {
+                const lastMessage = await Message.findOne({ conversationId: conv._id })
+                    .sort({ createdAt: -1 });
+                
+                // Trả về một object mới bao gồm thông tin conversation và tin nhắn cuối
+                return {
+                    ...conv.toObject(), // Chuyển conversation mongoose doc thành object thường
+                    lastMessage: lastMessage ? lastMessage.toObject() : null
+                };
+            })
+        );
+        
+        res.json(conversationsWithLastMessage);
+
+    } catch (error) {
+        console.error("Lỗi khi lấy danh sách trò chuyện của Seller:", error);
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+};
+
+
 // ==============================================================================
 // ===                      CÁC HÀM KHÁC GIỮ NGUYÊN                             ===
 // ==============================================================================
@@ -121,6 +156,7 @@ exports.getSellerProducts = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
+
 
 exports.getSellerOrders = async (req, res) => {
     try {
