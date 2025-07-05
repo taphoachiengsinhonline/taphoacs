@@ -30,6 +30,60 @@ router.post('/', verifyToken, async (req, res) => {
         res.status(500).json({ message: 'Lỗi server' });
     }
 });
+router.get('/grouped', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const userRole = req.user.role;
+
+        let matchStage, groupStage, otherUserField, unreadField;
+
+        if (userRole === 'seller') {
+            matchStage = { sellerId: new mongoose.Types.ObjectId(userId) };
+            otherUserField = '$customerId';
+            unreadField = '$unreadBySeller';
+        } else { // customer
+            matchStage = { customerId: new mongoose.Types.ObjectId(userId) };
+            otherUserField = '$sellerId';
+            unreadField = '$unreadByCustomer';
+        }
+
+        const pipeline = [
+            { $match: matchStage },
+            { $sort: { updatedAt: -1 } },
+            {
+                $group: {
+                    _id: otherUserField,
+                    totalUnread: { $sum: unreadField },
+                    lastConversation: { $first: '$$ROOT' }
+                }
+            },
+            { $sort: { 'lastConversation.updatedAt': -1 } },
+            { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'otherUser' } },
+            { $unwind: { path: '$otherUser', preserveNullAndEmptyArrays: true } },
+            { $lookup: { from: 'messages', localField: 'lastConversation._id', foreignField: 'conversationId', as: 'messages' } },
+            { $addFields: { lastMessageObject: { $last: '$messages' } } },
+            {
+                $project: {
+                    _id: 1,
+                    totalUnread: 1,
+                    lastMessageContent: { $ifNull: ['$lastMessageObject.content', 'Bắt đầu trò chuyện'] },
+                    lastUpdatedAt: '$lastConversation.updatedAt',
+                    'otherUser._id': 1,
+                    'otherUser.name': 1,
+                    'otherUser.avatar': 1
+                }
+            }
+        ];
+
+        const groupedConversations = await Conversation.aggregate(pipeline);
+        res.json(groupedConversations);
+
+    } catch (err) {
+        console.error('[CONVERSATION GROUPED GET] LỖI CHI TIẾT:', err);
+        res.status(500).json({ message: 'Lỗi server khi gom nhóm trò chuyện.' });
+    }
+});
+
 
 
 // API để lấy danh sách các cuộc trò chuyện (dùng cho cả Khách hàng và Seller)
@@ -113,96 +167,5 @@ router.get('/unread/count', verifyToken, async (req, res) => {
     }
 });
 
-router.get('/grouped', verifyToken, async (req, res) => {
-    try {
-        const userId = req.user._id;
-        const userRole = req.user.role;
-        console.log(`[GROUPED] Bắt đầu cho user: ${userId}, role: ${userRole}`);
-
-        let matchStage, groupStage, otherUserField, unreadField;
-
-        if (userRole === 'seller') {
-            matchStage = { sellerId: userId };
-            otherUserField = '$customerId';
-            unreadField = '$unreadBySeller';
-        } else { // customer
-            matchStage = { customerId: userId };
-            otherUserField = '$sellerId';
-            unreadField = '$unreadByCustomer';
-        }
-
-        const pipeline = [
-            { $match: matchStage },
-            { $sort: { updatedAt: -1 } },
-            {
-                $group: {
-                    _id: otherUserField,
-                    totalUnread: { $sum: unreadField },
-                    lastConversation: { $first: '$$ROOT' }
-                }
-            },
-            { $sort: { 'lastConversation.updatedAt': -1 } },
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: '_id',
-                    foreignField: '_id',
-                    as: 'otherUser'
-                }
-            },
-            { $unwind: { path: '$otherUser', preserveNullAndEmptyArrays: true } }, // Dùng unwind để xử lý dễ hơn
-            {
-                $lookup: {
-                    from: 'products',
-                    localField: 'lastConversation.productId',
-                    foreignField: '_id',
-                    as: 'lastProduct'
-                }
-            },
-            { $unwind: { path: '$lastProduct', preserveNullAndEmptyArrays: true } },
-            {
-                $lookup: {
-                    from: 'messages',
-                    localField: 'lastConversation._id',
-                    foreignField: 'conversationId',
-                    as: 'messages'
-                }
-            },
-            {
-                $addFields: { // Dùng addFields để dễ đọc hơn
-                    lastMessageObject: { $last: '$messages' } // Lấy cả object tin nhắn cuối cùng
-                }
-            },
-            {
-                $project: {
-                    _id: 1,
-                    totalUnread: 1,
-                    lastMessageContent: { $ifNull: ['$lastMessageObject.content', 'Bắt đầu cuộc trò chuyện'] },
-                    lastUpdatedAt: '$lastConversation.updatedAt',
-                    'otherUser._id': 1,
-                    'otherUser.name': 1,
-                    'otherUser.avatar': 1
-                }
-            }
-        ];
-
-        const groupedConversations = await Conversation.aggregate(pipeline);
-
-        // <<< DEBUG: In ra kết quả cuối cùng trước khi gửi đi >>>
-        console.log('[GROUPED] Kết quả aggregate cuối cùng:', JSON.stringify(groupedConversations, null, 2));
-
-        if (!groupedConversations) {
-            console.log('[GROUPED] Aggregate trả về null hoặc undefined');
-            return res.status(404).json({ message: "Không tìm thấy dữ liệu." });
-        }
-
-        res.json(groupedConversations);
-
-    } catch (err) {
-        // <<< DEBUG: In ra lỗi chi tiết trên server >>>
-        console.error('[CONVERSATION GROUPED GET] LỖI CHI TIẾT:', err);
-        res.status(500).json({ message: 'Lỗi server khi gom nhóm trò chuyện.' });
-    }
-});
 
 module.exports = router;
