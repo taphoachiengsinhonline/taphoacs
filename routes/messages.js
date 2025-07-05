@@ -1,95 +1,107 @@
-// routes/messages.js (Backend)
-
 const express = require('express');
 const router = express.Router();
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
-const User = require('../models/User');
+const User = require('../models/User'); // Cần để populate
 const { verifyToken } = require('../middlewares/authMiddleware');
+
+// <<< SỬA: Import đúng hàm safeNotify từ file của bạn >>>
 const { safeNotify } = require('../utils/notificationMiddleware');
 
+// --- Route để lấy tin nhắn ---
 router.get('/:conversationId', verifyToken, async (req, res) => {
-  try {
-    const { conversationId } = req.params;
-    const userId = req.user._id;
+    try {
+        const { conversationId } = req.params;
+        const userId = req.user._id;
 
-    const conversation = await Conversation.findById(conversationId);
-    if (!conversation) return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện.' });
+        const conversation = await Conversation.findById(conversationId);
+        if (!conversation) return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện.' });
 
-    const isParticipant = conversation.customerId.equals(userId) || conversation.sellerId.equals(userId);
-    if (!isParticipant) return res.status(403).json({ message: 'Bạn không có quyền xem.' });
+        const isParticipant = conversation.customerId.equals(userId) || conversation.sellerId.equals(userId);
+        if (!isParticipant) return res.status(403).json({ message: 'Bạn không có quyền xem.' });
 
-    const messages = await Message.find({ conversationId }).sort({ createdAt: -1 }).populate('senderId', 'name role');
+        const messages = await Message.find({ conversationId }).sort({ createdAt: 'desc' }).populate('senderId', 'name role');
 
-    // <<< LOGIC MỚI: ĐÁNH DẤU ĐÃ ĐỌC >>>
-    // Khi user mở cuộc trò chuyện, reset bộ đếm của họ về 0
-    if (conversation.customerId.equals(userId)) {
-        conversation.unreadByCustomer = 0;
-    } else if (conversation.sellerId.equals(userId)) {
-        conversation.unreadBySeller = 0;
+        // Đánh dấu đã đọc
+        if (conversation.customerId.equals(userId)) {
+            conversation.unreadByCustomer = 0;
+        } else if (conversation.sellerId.equals(userId)) {
+            conversation.unreadBySeller = 0;
+        }
+        await conversation.save();
+
+        res.json(messages);
+    } catch (err) {
+        console.error("Lỗi khi lấy tin nhắn:", err.message);
+        res.status(500).json({ message: 'Lỗi server' });
     }
-    await conversation.save();
-    
-    // Đánh dấu tất cả các tin nhắn mà người khác gửi là đã đọc
-    await Message.updateMany(
-        { conversationId: conversationId, senderId: { $ne: userId } },
-        { $set: { isRead: true } }
-    );
-
-    res.json(messages);
-  } catch (err) {
-    res.status(500).json({ message: 'Lỗi server' });
-  }
 });
 
+
+// --- Route để gửi tin nhắn MỚI ---
 router.post('/', verifyToken, async (req, res) => {
-  try {
-    const { conversationId, content } = req.body;
-    const senderId = req.user._id;
+    try {
+        const { conversationId, content } = req.body;
+        const sender = req.user; // sender là object user đầy đủ từ verifyToken
 
-    if (!conversationId || !content) return res.status(400).json({ message: 'Thiếu thông tin.' });
+        if (!conversationId || !content) {
+            return res.status(400).json({ message: 'Thiếu thông tin.' });
+        }
 
-    const conversation = await Conversation.findById(conversationId);
-    if (!conversation) return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện.' });
-    
-    const isParticipant = conversation.customerId.equals(senderId) || conversation.sellerId.equals(senderId);
-    if (!isParticipant) return res.status(403).json({ message: 'Bạn không có quyền gửi tin nhắn vào cuộc trò chuyện này.' });
+        // Populate để lấy được FcmToken của cả 2 bên
+        const conversation = await Conversation.findById(conversationId)
+            .populate('customerId', 'name fcmToken')
+            .populate('sellerId', 'name fcmToken');
+            
+        if (!conversation) {
+            return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện.' });
+        }
 
-    const message = new Message({ conversationId, senderId, content });
-    await message.save();
+        const isParticipant = conversation.customerId._id.equals(sender._id) || conversation.sellerId._id.equals(sender._id);
+        if (!isParticipant) {
+            return res.status(403).json({ message: 'Bạn không có quyền gửi tin nhắn vào cuộc trò chuyện này.' });
+        }
 
-    // FIX: Không cần cập nhật updatedAt thủ công nữa nếu dùng timestamps: true
-    // conversation.updatedAt = new Date();
+        // 1. Tạo và lưu tin nhắn
+        const message = new Message({ conversationId, senderId: sender._id, content });
+        await message.save();
 
-    // <<< LOGIC ĐÃ SỬA: CHỐNG LỖI NaN >>>
-    let recipientId;
-    if (conversation.customerId.equals(senderId)) {
-        recipientId = conversation.sellerId;
-        // Kiểm tra nếu unreadBySeller tồn tại thì +1, nếu không thì gán bằng 1
-        conversation.unreadBySeller = (conversation.unreadBySeller || 0) + 1;
-    } else {
-        recipientId = conversation.customerId;
-        // Kiểm tra nếu unreadByCustomer tồn tại thì +1, nếu không thì gán bằng 1
-        conversation.unreadByCustomer = (conversation.unreadByCustomer || 0) + 1;
+        // 2. Cập nhật cuộc trò chuyện và xác định người nhận
+        let recipient;
+        if (conversation.customerId._id.equals(sender._id)) {
+            recipient = conversation.sellerId;
+            conversation.unreadBySeller = (conversation.unreadBySeller || 0) + 1;
+        } else {
+            recipient = conversation.customerId;
+            conversation.unreadByCustomer = (conversation.unreadByCustomer || 0) + 1;
+        }
+        await conversation.save();
+        
+        // 3. <<< KHÔI PHỤC LOGIC GỬI THÔNG BÁO - DÙNG ĐÚNG HÀM CỦA BẠN >>>
+        if (recipient && recipient.fcmToken) {
+            await safeNotify(recipient.fcmToken, {
+                title: `Tin nhắn mới từ ${sender.name}`,
+                body: content.length > 100 ? content.substring(0, 97) + '...' : content,
+                // Gửi thêm data để app có thể điều hướng đến đúng màn hình chat
+                data: {
+                    type: 'new_message',
+                    conversationId: conversationId.toString()
+                }
+            });
+        } else {
+            console.log(`Bỏ qua gửi thông báo: Người nhận ${recipient.name} không có FCM token.`);
+        }
+
+        // 4. Populate tin nhắn để trả về cho client
+        const populatedMessage = await Message.findById(message._id).populate('senderId', 'name role');
+        
+        // 5. Trả về kết quả
+        res.status(201).json(populatedMessage);
+
+    } catch (err) {
+        console.error('[MESSAGE POST] Lỗi nghiêm trọng:', err.message, err.stack);
+        res.status(500).json({ message: 'Lỗi server' });
     }
-    
-    // Mongoose sẽ tự động cập nhật `updatedAt` khi save() được gọi (nhờ timestamps: true)
-    await conversation.save();
-
-    const populatedMessage = await Message.findById(message._id).populate('senderId', 'name role');
-    
-    // Gửi thông báo push
-    const recipient = await User.findById(recipientId).select('fcmToken');
-    if (recipient?.fcmToken) {
-        // ...
-    }
-    
-    res.status(201).json(populatedMessage);
-  } catch (err) {
-    console.error('[MESSAGE POST] Lỗi:', err.message); // Thêm log để dễ debug
-    res.status(500).json({ message: 'Lỗi server' });
-  }
 });
 
-module.exports = router;
 module.exports = router;
