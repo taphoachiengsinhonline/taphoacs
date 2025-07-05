@@ -17,6 +17,8 @@ const ConversationSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+   unreadBySeller: { type: Number, default: 0 },
+  unreadByCustomer: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });
