@@ -1,10 +1,9 @@
-// routes/conversations.js (Backend)
-
 const express = require('express');
 const router = express.Router();
 const Conversation = require('../models/Conversation');
 const Product = require('../models/Product');
 const Message = require('../models/Message');
+const mongoose = require('mongoose'); // <<< THÊM DÒNG NÀY VÀO ĐÂY
 const { verifyToken } = require('../middlewares/authMiddleware');
 
 // API để Khách hàng hoặc Seller tạo/tìm cuộc trò chuyện
@@ -19,10 +18,12 @@ router.post('/', verifyToken, async (req, res) => {
 
         let conversation = await Conversation.findOneAndUpdate(
             { productId, customerId, sellerId },
-            { $set: { updatedAt: new Date() } }, // Cập nhật để nó nổi lên đầu
-            { new: true, upsert: true } // upsert: true sẽ tạo mới nếu không tìm thấy
+            { $set: { updatedAt: new Date() } },
+            { new: true, upsert: true }
         );
         
+        // isNew không phải là thuộc tính chuẩn, dùng status 200/201 dựa trên created
+        // Tuy nhiên, logic cũ của bạn vẫn chấp nhận được.
         res.status(conversation.isNew ? 201 : 200).json(conversation);
 
     } catch (err) {
@@ -30,6 +31,39 @@ router.post('/', verifyToken, async (req, res) => {
         res.status(500).json({ message: 'Lỗi server' });
     }
 });
+
+
+// API đếm tổng số tin nhắn chưa đọc
+router.get('/unread/count', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const userRole = req.user.role;
+        
+        let filter, groupField;
+
+        if (userRole === 'seller') {
+            filter = { sellerId: new mongoose.Types.ObjectId(userId) };
+            groupField = '$unreadBySeller';
+        } else { // customer
+            filter = { customerId: new mongoose.Types.ObjectId(userId) };
+            groupField = '$unreadByCustomer';
+        }
+
+        const result = await Conversation.aggregate([
+            { $match: filter },
+            { $group: { _id: null, totalUnread: { $sum: groupField } } }
+        ]);
+
+        const count = result[0]?.totalUnread || 0;
+        res.json({ count });
+
+    } catch (error) {
+        console.error('[UNREAD COUNT] Lỗi:', error.message);
+        res.status(500).json({ message: "Lỗi server" });
+    }
+});
+
+// API LẤY DANH SÁCH CHAT ĐÃ GOM NHÓM
 router.get('/grouped', verifyToken, async (req, res) => {
     try {
         const userId = req.user._id;
@@ -85,8 +119,7 @@ router.get('/grouped', verifyToken, async (req, res) => {
 });
 
 
-
-// API để lấy danh sách các cuộc trò chuyện (dùng cho cả Khách hàng và Seller)
+// API để lấy danh sách các cuộc trò chuyện (chưa gom nhóm, dùng cho màn hình chi tiết)
 router.get('/', verifyToken, async (req, res) => {
     try {
         const { customerId, sellerId } = req.query;
@@ -98,7 +131,7 @@ router.get('/', verifyToken, async (req, res) => {
         const conversations = await Conversation.find(query)
             .populate('customerId', 'name')
             .populate('sellerId', 'name')
-            .populate('productId', 'name images price variantTable') // Lấy đủ thông tin giá
+            .populate('productId', 'name images price variantTable')
             .sort({ updatedAt: -1 });
 
         const conversationsWithLastMessage = await Promise.all(
@@ -112,58 +145,26 @@ router.get('/', verifyToken, async (req, res) => {
         );
         
         res.json(conversationsWithLastMessage);
-    } catch (err) {
+    } catch (err)
+    {
         console.error('[CONVERSATION GET LIST] Lỗi:', err.message);
         res.status(500).json({ message: 'Lỗi server' });
     }
 });
 
 
-
-// API đếm tổng số tin nhắn chưa đọc
-router.get('/unread/count', verifyToken, async (req, res) => {
-    try {
-        const userId = req.user._id;
-        const userRole = req.user.role;
-        
-        let filter = {};
-        let groupField = '';
-
-        if (userRole === 'seller') {
-            filter = { sellerId: userId };
-            groupField = '$unreadBySeller';
-        } else { // customer
-            filter = { customerId: userId };
-            groupField = '$unreadByCustomer';
-        }
-
-        const result = await Conversation.aggregate([
-            { $match: filter },
-            { $group: { _id: null, totalUnread: { $sum: groupField } } }
-        ]);
-
-        const count = result[0]?.totalUnread || 0;
-        res.json({ count });
-
-    } catch (error) {
-        res.status(500).json({ message: "Lỗi server" });
-    }
-});
-
-// API lấy chi tiết một cuộc trò chuyện
+// API lấy chi tiết một cuộc trò chuyện (phải nằm cuối cùng)
 router.get('/:id', verifyToken, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
             .populate('sellerId', 'name')
-            .populate('productId', 'name images price variantTable'); // Lấy đủ thông tin giá
+            .populate('productId', 'name images price variantTable');
             
         if (!conversation) return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện' });
         
-        // Logic xác thực quyền ở đây nếu cần
-        
         res.json(conversation);
     } catch (err) {
-        console.error('[CONVERSATION GET DETAIL] Lỗi:', err.message);
+        console.error('[CONVERSATION GET DETAIL BY ID] Lỗi:', err.message);
         res.status(500).json({ message: 'Lỗi server' });
     }
 });
