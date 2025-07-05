@@ -117,42 +117,40 @@ router.get('/grouped', verifyToken, async (req, res) => {
     try {
         const userId = req.user._id;
         const userRole = req.user.role;
+        console.log(`[GROUPED] Bắt đầu cho user: ${userId}, role: ${userRole}`);
 
-        let matchStage, groupStage, otherUserField;
+        let matchStage, groupStage, otherUserField, unreadField;
 
         if (userRole === 'seller') {
-            // Nếu là Seller, tìm các cuộc trò chuyện có sellerId là mình
             matchStage = { sellerId: userId };
-            // Và gom nhóm theo customerId (người đối diện)
             otherUserField = '$customerId';
+            unreadField = '$unreadBySeller';
         } else { // customer
-            // Nếu là Customer, tìm các cuộc trò chuyện có customerId là mình
             matchStage = { customerId: userId };
-            // Và gom nhóm theo sellerId (người đối diện)
             otherUserField = '$sellerId';
+            unreadField = '$unreadByCustomer';
         }
 
-        groupStage = {
-            _id: otherUserField, // Gom nhóm theo ID của người đối diện
-            totalUnread: { 
-                $sum: userRole === 'seller' ? '$unreadBySeller' : '$unreadByCustomer' 
-            },
-            lastConversation: { $first: '$$ROOT' } // Lấy toàn bộ thông tin của cuộc trò chuyện mới nhất
-        };
-
-        const groupedConversations = await Conversation.aggregate([
+        const pipeline = [
             { $match: matchStage },
-            { $sort: { updatedAt: -1 } }, // Quan trọng: Sắp xếp để lấy cái mới nhất lên đầu
-            { $group: groupStage },
-            { $sort: { 'lastConversation.updatedAt': -1 } }, // Sắp xếp lại danh sách nhóm theo thời gian
+            { $sort: { updatedAt: -1 } },
+            {
+                $group: {
+                    _id: otherUserField,
+                    totalUnread: { $sum: unreadField },
+                    lastConversation: { $first: '$$ROOT' }
+                }
+            },
+            { $sort: { 'lastConversation.updatedAt': -1 } },
             {
                 $lookup: {
-                    from: 'users', // Tên collection 'users' trong db
+                    from: 'users',
                     localField: '_id',
                     foreignField: '_id',
                     as: 'otherUser'
                 }
             },
+            { $unwind: { path: '$otherUser', preserveNullAndEmptyArrays: true } }, // Dùng unwind để xử lý dễ hơn
             {
                 $lookup: {
                     from: 'products',
@@ -161,6 +159,7 @@ router.get('/grouped', verifyToken, async (req, res) => {
                     as: 'lastProduct'
                 }
             },
+            { $unwind: { path: '$lastProduct', preserveNullAndEmptyArrays: true } },
             {
                 $lookup: {
                     from: 'messages',
@@ -170,39 +169,39 @@ router.get('/grouped', verifyToken, async (req, res) => {
                 }
             },
             {
-                $project: {
-                    _id: 1, // Giữ lại _id của người đối diện
-                    totalUnread: 1,
-                    otherUser: { $arrayElemAt: ['$otherUser', 0] }, // Lấy object user đầu tiên
-                    lastMessageContent: { 
-                        $ifNull: [ 
-                            { $arrayElemAt: [ '$messages.content', -1 ] }, // Lấy tin nhắn cuối cùng
-                            "Bắt đầu cuộc trò chuyện" 
-                        ] 
-                    },
-                    lastUpdatedAt: '$lastConversation.updatedAt',
-                    lastProductName: { $arrayElemAt: ['$lastProduct.name', 0] }
+                $addFields: { // Dùng addFields để dễ đọc hơn
+                    lastMessageObject: { $last: '$messages' } // Lấy cả object tin nhắn cuối cùng
                 }
             },
-            { // Chỉ lấy các trường cần thiết của otherUser
+            {
                 $project: {
                     _id: 1,
                     totalUnread: 1,
-                    lastMessageContent: 1,
-                    lastUpdatedAt: 1,
-                    lastProductName: 1,
+                    lastMessageContent: { $ifNull: ['$lastMessageObject.content', 'Bắt đầu cuộc trò chuyện'] },
+                    lastUpdatedAt: '$lastConversation.updatedAt',
                     'otherUser._id': 1,
                     'otherUser.name': 1,
-                    'otherUser.avatar': 1 // Giả sử có trường avatar
+                    'otherUser.avatar': 1
                 }
             }
-        ]);
+        ];
+
+        const groupedConversations = await Conversation.aggregate(pipeline);
+
+        // <<< DEBUG: In ra kết quả cuối cùng trước khi gửi đi >>>
+        console.log('[GROUPED] Kết quả aggregate cuối cùng:', JSON.stringify(groupedConversations, null, 2));
+
+        if (!groupedConversations) {
+            console.log('[GROUPED] Aggregate trả về null hoặc undefined');
+            return res.status(404).json({ message: "Không tìm thấy dữ liệu." });
+        }
 
         res.json(groupedConversations);
 
     } catch (err) {
-        console.error('[CONVERSATION GROUPED GET] Lỗi:', err.message, err.stack);
-        res.status(500).json({ message: 'Lỗi server' });
+        // <<< DEBUG: In ra lỗi chi tiết trên server >>>
+        console.error('[CONVERSATION GROUPED GET] LỖI CHI TIẾT:', err);
+        res.status(500).json({ message: 'Lỗi server khi gom nhóm trò chuyện.' });
     }
 });
 
