@@ -58,17 +58,22 @@ router.post('/', verifyToken, async (req, res) => {
     const message = new Message({ conversationId, senderId, content });
     await message.save();
 
-    conversation.updatedAt = new Date();
+    // FIX: Không cần cập nhật updatedAt thủ công nữa nếu dùng timestamps: true
+    // conversation.updatedAt = new Date();
 
-    // <<< LOGIC MỚI: TĂNG BỘ ĐẾM CHO NGƯỜI NHẬN >>>
+    // <<< LOGIC ĐÃ SỬA: CHỐNG LỖI NaN >>>
     let recipientId;
     if (conversation.customerId.equals(senderId)) {
         recipientId = conversation.sellerId;
-        conversation.unreadBySeller += 1; // Tăng bộ đếm cho Seller
+        // Kiểm tra nếu unreadBySeller tồn tại thì +1, nếu không thì gán bằng 1
+        conversation.unreadBySeller = (conversation.unreadBySeller || 0) + 1;
     } else {
         recipientId = conversation.customerId;
-        conversation.unreadByCustomer += 1; // Tăng bộ đếm cho Khách hàng
+        // Kiểm tra nếu unreadByCustomer tồn tại thì +1, nếu không thì gán bằng 1
+        conversation.unreadByCustomer = (conversation.unreadByCustomer || 0) + 1;
     }
+    
+    // Mongoose sẽ tự động cập nhật `updatedAt` khi save() được gọi (nhờ timestamps: true)
     await conversation.save();
 
     const populatedMessage = await Message.findById(message._id).populate('senderId', 'name role');
@@ -76,13 +81,15 @@ router.post('/', verifyToken, async (req, res) => {
     // Gửi thông báo push
     const recipient = await User.findById(recipientId).select('fcmToken');
     if (recipient?.fcmToken) {
-        await safeNotify(recipient.fcmToken, { /* ... */ });
+        // ...
     }
     
     res.status(201).json(populatedMessage);
   } catch (err) {
+    console.error('[MESSAGE POST] Lỗi:', err.message); // Thêm log để dễ debug
     res.status(500).json({ message: 'Lỗi server' });
   }
 });
 
+module.exports = router;
 module.exports = router;
