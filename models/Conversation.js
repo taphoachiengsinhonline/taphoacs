@@ -17,10 +17,15 @@ const ConversationSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-   unreadBySeller: { type: Number, default: 0 },
+  unreadBySeller: { type: Number, default: 0 },
   unreadByCustomer: { type: Number, default: 0 },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now },
+}, {
+  // THÊM: Sử dụng timestamps để Mongoose tự quản lý createdAt và updatedAt
+  timestamps: true 
 });
+
+// XÓA: Không cần định nghĩa createdAt và updatedAt thủ công nữa
+// createdAt: { type: Date, default: Date.now },
+// updatedAt: { type: Date, default: Date.now },
 
 module.exports = mongoose.model('Conversation', ConversationSchema);
