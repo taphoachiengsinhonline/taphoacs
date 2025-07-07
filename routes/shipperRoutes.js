@@ -80,5 +80,7 @@ router.post('/remittance/confirm', shipperController.confirmRemittance);
 // Route để shipper xem báo cáo doanh thu theo khoảng thời gian tùy chỉnh hoặc theo kỳ
 router.get('/revenue', verifyToken, shipperController.getRevenueReport);
 router.get('/monthly-report', protect, restrictTo('shipper'), shipperController.getMonthlyFinancialReport);
+router.use(protect);
+router.use(restrictTo('shipper'));
 
 module.exports = router;
