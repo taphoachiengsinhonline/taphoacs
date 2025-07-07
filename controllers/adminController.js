@@ -4,36 +4,62 @@ const Order = require('../models/Order');
 const moment = require('moment-timezone');
 
 // API để lấy danh sách tất cả các shipper và công nợ của họ
-exports.getShipperDebts = async (req, res) => {
+
+exports.getShipperDebtOverview = async (req, res) => {
     try {
+        // 1. Lấy tất cả các user có vai trò là shipper
         const shippers = await User.find({ role: 'shipper' }).select('name phone').lean();
-        
+
+        // 2. Lấy tất cả các yêu cầu nộp tiền đang chờ xử lý
+        const pendingRequests = await RemittanceRequest.find({ status: 'pending' }).lean();
+        const pendingRequestMap = new Map();
+        pendingRequests.forEach(req => {
+            const shipperId = req.shipper.toString();
+            if (!pendingRequestMap.has(shipperId)) {
+                pendingRequestMap.set(shipperId, []);
+            }
+            pendingRequestMap.get(shipperId).push(req);
+        });
+
+        // 3. Tính công nợ cho từng shipper
         const debtData = await Promise.all(shippers.map(async (shipper) => {
-            const [orders, remittances] = await Promise.all([
-                Order.find({ shipper: shipper._id, status: 'Đã giao' }).lean(),
-                Remittance.find({ shipper: shipper._id }).lean()
+            // Lấy tổng COD và tổng đã nộp của mỗi shipper
+            const [codResult, remittedResult] = await Promise.all([
+                Order.aggregate([
+                    { $match: { shipper: shipper._id, status: 'Đã giao' } },
+                    { $group: { _id: null, total: { $sum: '$total' } } }
+                ]),
+                // Chỉ tính các khoản nộp tiền đã được 'completed'
+                Remittance.aggregate([
+                    { $match: { shipper: shipper._id, status: 'completed' } },
+                    { $group: { _id: null, total: { $sum: '$amount' } } }
+                ])
             ]);
-            
-            const totalCOD = orders.reduce((sum, order) => sum + (order.total || 0), 0);
-            const totalRemitted = remittances.reduce((sum, remit) => sum + remit.amount, 0);
+
+            const totalCOD = codResult[0]?.total || 0;
+            const totalRemitted = remittedResult[0]?.total || 0;
             const totalDebt = totalCOD - totalRemitted;
 
             return {
                 ...shipper,
                 totalDebt: totalDebt > 0 ? totalDebt : 0,
+                pendingRequests: pendingRequestMap.get(shipper._id.toString()) || [] // Lấy các yêu cầu đang chờ của shipper này
             };
         }));
         
-        // Sắp xếp shipper có nợ cao nhất lên đầu
-        debtData.sort((a, b) => b.totalDebt - a.totalDebt);
+        // Sắp xếp shipper có nợ cao nhất hoặc có yêu cầu chờ xử lý lên đầu
+        debtData.sort((a, b) => {
+            if (b.pendingRequests.length > a.pendingRequests.length) return 1;
+            if (b.pendingRequests.length < a.pendingRequests.length) return -1;
+            return b.totalDebt - a.totalDebt;
+        });
 
         res.status(200).json(debtData);
     } catch (error) {
-        console.error("[getShipperDebts] Lỗi:", error);
+        console.error("[getShipperDebtOverview] Lỗi:", error);
         res.status(500).json({ message: "Lỗi server" });
     }
 };
-
 // API mới: Lấy các yêu cầu đang chờ
 exports.getPendingRemittanceRequests = async (req, res) => {
     try {
