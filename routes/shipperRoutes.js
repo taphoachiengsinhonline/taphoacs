@@ -62,6 +62,6 @@ router.get('/dashboard-summary', shipperController.getDashboardSummary);
 // Route cho RevenueReportScreen để lấy báo cáo chi tiết theo tháng
 router.get('/monthly-report', shipperController.getMonthlyFinancialReport);
 // Route để shipper xác nhận đã nộp tiền
-router.post('/remittance/confirm', shipperController.confirmRemittance);
+router.post('/remittance-request', shipperController.createRemittanceRequest);
 
 module.exports = router;
