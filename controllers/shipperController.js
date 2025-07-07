@@ -146,11 +146,10 @@ exports.changePassword = async (req, res) => {
     }
 };
 
-exports.getRevenueReport = async (req, res) => {
+exports.getDashboardSummary = async (req, res) => {
     try {
         const shipperId = req.user._id;
-        // Chỉ nhận startDate, không cần endDate để tránh lỗi
-        const { startDate } = req.query;
+        const { startDate } = req.query; // Nhận startDate là ngày hôm nay
 
         if (!startDate) {
             return res.status(400).json({ message: "Vui lòng cung cấp ngày." });
@@ -199,12 +198,13 @@ exports.getRevenueReport = async (req, res) => {
         const amountToRemitToday = dailyStats.totalCODCollected - amountRemittedToday;
 
         res.status(200).json({
-            // Luôn trả về dữ liệu của ngày đã chọn
+            remittance: {
+            amountToRemit: amountToRemitToday > 0 ? amountToRemitToday : 0,
+            amountRemittedToday: amountRemittedToday,
             totalCODCollected: dailyStats.totalCODCollected,
             totalShipperIncome: dailyStats.totalShipperIncome,
             completedOrders: dailyStats.completedOrders,
-            amountRemittedToday: amountRemittedToday,
-            amountToRemit: amountToRemitToday > 0 ? amountToRemitToday : 0
+                       
         });
 
     } catch (error) {
