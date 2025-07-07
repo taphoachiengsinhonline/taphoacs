@@ -6,156 +6,85 @@ const { verifyToken, isAdmin } = require('../middlewares/authMiddleware');
 const bcrypt = require('bcrypt');
 const sendPushNotification = require('../utils/sendPushNotification');
 const Product = require('../models/Product');
+const Order = require('../models/Order'); // <<< THÊM
+const Remittance = require('../models/Remittance'); // <<< THÊM
+const moment = require('moment-timezone'); // <<< THÊM
 
-// Tạo tài khoản shipper mới (chỉ admin)
-router.post('/shippers', verifyToken, isAdmin, async (req, res) => {
-  try {
-    const { email, password, name, phone, address, shipperProfile } = req.body;
-    const { vehicleType, licensePlate } = shipperProfile || {};
+// Middleware xác thực admin cho toàn bộ các route trong file này
+router.use(verifyToken, isAdmin);
 
-    // Kiểm tra thông tin bắt buộc
-    if (!email || !password || !name || !phone || !address || !vehicleType || !licensePlate) {
-      return res.status(400).json({ 
-        status: 'error',
-        message: 'Vui lòng cung cấp đầy đủ thông tin'
-      });
-    }
+// ===============================================
+// ===      QUẢN LÝ SHIPPER (Giữ nguyên)       ===
+// ===============================================
 
-    // Kiểm tra email đã tồn tại
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ 
-        status: 'error',
-        message: 'Email đã tồn tại'
-      });
-    }
-
-    // Mã hóa mật khẩu
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Tạo shipper mới
-    const shipper = new User({
-      email,
-      password: hashedPassword,
-      name,
-      address,
-      phone,
-      role: 'shipper',
-      shipperProfile: {
-        vehicleType,
-        licensePlate
-      }
-    });
-
-    await shipper.save();
-
-    res.status(201).json({
-      status: 'success',
-      data: {
-        _id: shipper._id,
-        email: shipper.email,
-        role: shipper.role,
-        shipperProfile: shipper.shipperProfile
-      }
-    });
-  } catch (error) {
-    console.error('Error creating shipper:', error);
-    res.status(500).json({ 
-      status: 'error',
-      message: 'Lỗi server: ' + error.message
-    });
-  }
-});
-
-router.get('/shippers', async (req, res) => {
-  try {
-    // <<< SỬA ĐỔI: Lấy toàn bộ trường shipperProfile >>>
-    const shippers = await User.find({ role: 'shipper' })
-      .select(
-        'name email address phone location locationUpdatedAt isAvailable shipperProfile' // Chỉ cần lấy cả object shipperProfile
-      )
-      .lean({ virtuals: true });
-    // <<< KẾT THÚC SỬA ĐỔI >>>
-
-    const nowVN = Date.now() + (7 * 60 * 60 * 1000);
-    
-    const processedShippers = shippers.map(shipper => {
-      const updatedAt = shipper.locationUpdatedAt?.getTime() || 0;
-      const diff = nowVN - updatedAt;
-      const isOnline = diff > 0 && diff <= 300000; // 5 phút
-      
-      return {
-        ...shipper,
-        isOnline,
-        lastUpdateSeconds: Math.floor(diff / 1000)
-      };
-    });
-    
-    const onlineCount = processedShippers.filter(s => s.isOnline).length;
-
-    res.json({
-      status: 'success',
-      onlineCount,
-      shippers: processedShippers
-    });
-  } catch (error) {
-    console.error('Lỗi lấy danh sách shipper:', error);
-    res.status(500).json({ 
-      status: 'error',
-      message: 'Lỗi server: ' + error.message
-    });
-  }
-});
-
-
-
-router.put('/shippers/:id', verifyToken, isAdmin, async (req, res) => {
-  try {
-    const shipperId = req.params.id;
-    const { name, email, phone, address, shipperProfile } = req.body;
-
-    // Kiểm tra xem shipperProfile có tồn tại trong body không
-    if (!shipperProfile) {
-        return res.status(400).json({ message: 'Thiếu thông tin shipperProfile.' });
-    }
-
-    // <<< LOGIC SỬA ĐỔI QUAN TRỌNG >>>
-    // Tạo một object update để chỉ cập nhật các trường có giá trị
-    const updateData = {
-        name,
-        email,
-        phone,
-        address,
-        // Sử dụng toán tử $set để cập nhật các trường lồng trong shipperProfile
-        // Điều này đảm bảo các trường khác trong shipperProfile (như rating) không bị ghi đè
-        $set: {
-            'shipperProfile.vehicleType': shipperProfile.vehicleType,
-            'shipperProfile.licensePlate': shipperProfile.licensePlate,
-            'shipperProfile.shippingFeeShareRate': shipperProfile.shippingFeeShareRate,
-            'shipperProfile.profitShareRate': shipperProfile.profitShareRate,
+// Tạo tài khoản shipper mới
+router.post('/shippers', async (req, res) => {
+    try {
+        const { email, password, name, phone, address, shipperProfile } = req.body;
+        const { vehicleType, licensePlate } = shipperProfile || {};
+        if (!email || !password || !name || !phone || !address || !vehicleType || !licensePlate) {
+            return res.status(400).json({ status: 'error', message: 'Vui lòng cung cấp đầy đủ thông tin' });
         }
-    };
-    // <<< KẾT THÚC SỬA ĐỔI >>>
-
-    const updated = await User.findByIdAndUpdate(
-      shipperId,
-      updateData,
-      { new: true, runValidators: true } // new: true để trả về document đã được cập nhật
-    );
-
-    if (!updated) {
-      return res.status(404).json({ message: 'Không tìm thấy shipper' });
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ status: 'error', message: 'Email đã tồn tại' });
+        }
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const shipper = new User({
+            email, password: hashedPassword, name, address, phone, role: 'shipper',
+            shipperProfile: { vehicleType, licensePlate }
+        });
+        await shipper.save();
+        res.status(201).json({ status: 'success', data: { _id: shipper._id, email: shipper.email, role: shipper.role, shipperProfile: shipper.shipperProfile } });
+    } catch (error) {
+        console.error('Error creating shipper:', error);
+        res.status(500).json({ status: 'error', message: 'Lỗi server: ' + error.message });
     }
+});
 
-    // Trả về dữ liệu đã được cập nhật để frontend có thể xác nhận
-    res.json({
-      status: 'success',
-      data: updated
-    });
-  } catch (error) {
-    console.error('Lỗi cập nhật shipper:', error);
-    res.status(500).json({ message: 'Lỗi server: ' + error.message });
-  }
+// Lấy danh sách shipper
+router.get('/shippers', async (req, res) => {
+    try {
+        const shippers = await User.find({ role: 'shipper' }).select('name email address phone location locationUpdatedAt isAvailable shipperProfile').lean({ virtuals: true });
+        const nowVN = Date.now() + (7 * 60 * 60 * 1000);
+        const processedShippers = shippers.map(shipper => {
+            const updatedAt = shipper.locationUpdatedAt?.getTime() || 0;
+            const diff = nowVN - updatedAt;
+            const isOnline = diff > 0 && diff <= 300000;
+            return { ...shipper, isOnline, lastUpdateSeconds: Math.floor(diff / 1000) };
+        });
+        const onlineCount = processedShippers.filter(s => s.isOnline).length;
+        res.json({ status: 'success', onlineCount, shippers: processedShippers });
+    } catch (error) {
+        console.error('Lỗi lấy danh sách shipper:', error);
+        res.status(500).json({ status: 'error', message: 'Lỗi server: ' + error.message });
+    }
+});
+
+// Cập nhật thông tin shipper
+router.put('/shippers/:id', async (req, res) => {
+    try {
+        const shipperId = req.params.id;
+        const { name, email, phone, address, shipperProfile } = req.body;
+        if (!shipperProfile) {
+            return res.status(400).json({ message: 'Thiếu thông tin shipperProfile.' });
+        }
+        const updateData = {
+            name, email, phone, address,
+            $set: {
+                'shipperProfile.vehicleType': shipperProfile.vehicleType,
+                'shipperProfile.licensePlate': shipperProfile.licensePlate,
+                'shipperProfile.shippingFeeShareRate': shipperProfile.shippingFeeShareRate,
+                'shipperProfile.profitShareRate': shipperProfile.profitShareRate,
+            }
+        };
+        const updated = await User.findByIdAndUpdate(shipperId, updateData, { new: true, runValidators: true });
+        if (!updated) return res.status(404).json({ message: 'Không tìm thấy shipper' });
+        res.json({ status: 'success', data: updated });
+    } catch (error) {
+        console.error('Lỗi cập nhật shipper:', error);
+        res.status(500).json({ message: 'Lỗi server: ' + error.message });
+    }
 });
 
 
@@ -341,7 +270,86 @@ router.post('/products/:productId/reject', verifyToken, isAdmin, async (req, res
 });
 
 
+// ===============================================
+// ===   API MỚI: QUẢN LÝ CÔNG NỢ SHIPPER      ===
+// ===============================================
 
+// API để lấy danh sách tất cả các shipper và công nợ của họ
+router.get('/shipper-debts', async (req, res) => {
+    try {
+        const shippers = await User.find({ role: 'shipper' }).select('name phone').lean();
+        
+        const debtData = await Promise.all(shippers.map(async (shipper) => {
+            // Lấy tổng COD và tổng đã nộp của mỗi shipper
+            const [codResult, remittedResult] = await Promise.all([
+                Order.aggregate([
+                    { $match: { shipper: shipper._id, status: 'Đã giao' } },
+                    { $group: { _id: null, total: { $sum: '$total' } } }
+                ]),
+                Remittance.aggregate([
+                    { $match: { shipper: shipper._id } },
+                    { $group: { _id: null, total: { $sum: '$amount' } } }
+                ])
+            ]);
+
+            const totalCOD = codResult[0]?.total || 0;
+            const totalRemitted = remittedResult[0]?.total || 0;
+            const totalDebt = totalCOD - totalRemitted;
+
+            return {
+                ...shipper,
+                totalDebt: totalDebt > 0 ? totalDebt : 0,
+            };
+        }));
+        
+        // Sắp xếp shipper có nợ cao nhất lên đầu
+        debtData.sort((a, b) => b.totalDebt - a.totalDebt);
+
+        res.status(200).json(debtData);
+    } catch (error) {
+        console.error("[getShipperDebts] Lỗi:", error);
+        res.status(500).json({ message: "Lỗi server" });
+    }
+});
+
+// API để đếm số shipper đang có công nợ (dùng cho badge)
+router.get('/remittances/pending-count', async (req, res) => {
+    try {
+        const shippers = await User.find({ role: 'shipper' }).select('_id').lean();
+        let pendingCount = 0;
+
+        for (const shipper of shippers) {
+            const [codResult, remittedResult] = await Promise.all([
+                Order.aggregate([ { $match: { shipper: shipper._id, status: 'Đã giao' } }, { $group: { _id: null, total: { $sum: '$total' } } } ]),
+                Remittance.aggregate([ { $match: { shipper: shipper._id } }, { $group: { _id: null, total: { $sum: '$amount' } } } ])
+            ]);
+            const totalDebt = (codResult[0]?.total || 0) - (remittedResult[0]?.total || 0);
+            if (totalDebt > 0) {
+                pendingCount++;
+            }
+        }
+        res.status(200).json({ count: pendingCount });
+    } catch (error) {
+        console.error("[pending-count] Lỗi:", error);
+        res.status(500).json({ message: "Lỗi server" });
+    }
+});
+
+
+// API lấy chi tiết các lần nộp tiền của một shipper
+router.get('/remittances/:shipperId', async (req, res) => {
+    try {
+        const { shipperId } = req.params;
+        const remittances = await Remittance.find({ shipper: shipperId }).sort({ remittanceDate: -1 });
+        res.status(200).json(remittances);
+    } catch (error) {
+        console.error("[getShipperRemittances] Lỗi:", error);
+        res.status(500).json({ message: "Lỗi server" });
+    }
+});
+
+
+module.exports = router;
 
 
 module.exports = router;
