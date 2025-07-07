@@ -223,21 +223,16 @@ exports.getMonthlyFinancialReport = async (req, res) => {
             return res.status(400).json({ message: "Vui lòng cung cấp tháng và năm." });
         }
 
-        const targetMonth = parseInt(month) - 1; // JS month is 0-11
+        const targetMonth = parseInt(month) - 1;
         const targetYear = parseInt(year);
 
-        // <<< SỬA LẠI LOGIC TẠO NGÀY THÁNG AN TOÀN >>>
         const startDate = new Date(Date.UTC(targetYear, targetMonth, 1));
         const endDate = new Date(Date.UTC(targetYear, targetMonth + 1, 1));
         endDate.setUTCMilliseconds(endDate.getUTCMilliseconds() - 1);
         
-        console.log(`[FIN_REPORT_DEBUG] Tìm kiếm cho shipper ${shipperId}`);
-        console.log(`[FIN_REPORT_DEBUG] Khoảng thời gian (UTC): ${startDate.toISOString()} -> ${endDate.toISOString()}`);
-
         const [deliveredOrders, remittances] = await Promise.all([
             Order.find({
-                shipper: shipperId,
-                status: 'Đã giao',
+                shipper: shipperId, status: 'Đã giao',
                 'timestamps.deliveredAt': { $gte: startDate, $lte: endDate }
             }).lean(),
             Remittance.find({
@@ -246,9 +241,6 @@ exports.getMonthlyFinancialReport = async (req, res) => {
             }).lean()
         ]);
         
-        console.log(`[FIN_REPORT_DEBUG] Tìm thấy ${deliveredOrders.length} đơn đã giao và ${remittances.length} lần nộp tiền.`);
-
-        // --- Xử lý dữ liệu theo từng ngày ---
         const dailyData = {};
         const daysInMonth = moment(startDate).utc().daysInMonth();
         for (let i = 1; i <= daysInMonth; i++) {
@@ -272,20 +264,26 @@ exports.getMonthlyFinancialReport = async (req, res) => {
             }
         });
         
-        // --- Tính toán các con số tổng hợp ---
-        let totalCODCollected = 0, totalIncome = 0, totalRemitted = 0, totalCompletedOrders = 0, totalDebt = 0;
+        let totalCODCollected = 0, totalIncome = 0, totalRemitted = 0, totalCompletedOrders = 0;
+        let accumulatedDebt = 0; // <<< TÍNH CÔNG NỢ TỒN ĐỌNG
+
+        const todayString = moment().tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
         
         Object.entries(dailyData).forEach(([day, data]) => {
             totalCODCollected += data.codCollected;
             totalIncome += data.income;
             totalRemitted += data.amountRemitted;
             totalCompletedOrders += data.orderCount;
-            totalDebt += (data.codCollected - data.amountRemitted);
+            
+            // <<< SỬA LOGIC: Chỉ cộng dồn nợ của các ngày TRƯỚC HÔM NAY >>>
+            if (day < todayString) {
+                accumulatedDebt += (data.codCollected - data.amountRemitted);
+            }
         });
         
         res.status(200).json({
             overview: {
-                totalDebt: totalDebt > 0 ? totalDebt : 0,
+                totalDebt: accumulatedDebt > 0 ? accumulatedDebt : 0, // Trả về công nợ tồn đọng
                 totalIncome,
                 totalCODCollected,
                 totalRemitted,
