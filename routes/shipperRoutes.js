@@ -79,6 +79,6 @@ router.post('/change-password', verifyToken, shipperController.changePassword);
 router.post('/remittance/confirm', shipperController.confirmRemittance);
 // Route để shipper xem báo cáo doanh thu theo khoảng thời gian tùy chỉnh hoặc theo kỳ
 router.get('/revenue', verifyToken, shipperController.getRevenueReport);
-
+router.get('/monthly-report', protect, restrictTo('shipper'), shipperController.getMonthlyFinancialReport);
 
 module.exports = router;
