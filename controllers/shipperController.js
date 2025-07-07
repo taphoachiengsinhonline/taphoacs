@@ -223,12 +223,17 @@ exports.getMonthlyFinancialReport = async (req, res) => {
             return res.status(400).json({ message: "Vui lòng cung cấp tháng và năm." });
         }
 
-        const targetMonth = parseInt(month) - 1;
+        const targetMonth = parseInt(month) - 1; // JS month is 0-11
         const targetYear = parseInt(year);
 
-        const startDate = moment.tz({ year: targetYear, month: targetMonth }, 'Asia/Ho_Chi_Minh').startOf('month').toDate();
-        const endDate = moment.tz({ year: targetYear, month: targetMonth }, 'Asia/Ho_Chi_Minh').endOf('month').toDate();
+        // <<< SỬA LẠI LOGIC TẠO NGÀY THÁNG AN TOÀN >>>
+        const startDate = new Date(Date.UTC(targetYear, targetMonth, 1));
+        const endDate = new Date(Date.UTC(targetYear, targetMonth + 1, 1));
+        endDate.setUTCMilliseconds(endDate.getUTCMilliseconds() - 1);
         
+        console.log(`[FIN_REPORT_DEBUG] Tìm kiếm cho shipper ${shipperId}`);
+        console.log(`[FIN_REPORT_DEBUG] Khoảng thời gian (UTC): ${startDate.toISOString()} -> ${endDate.toISOString()}`);
+
         const [deliveredOrders, remittances] = await Promise.all([
             Order.find({
                 shipper: shipperId,
@@ -241,9 +246,11 @@ exports.getMonthlyFinancialReport = async (req, res) => {
             }).lean()
         ]);
         
+        console.log(`[FIN_REPORT_DEBUG] Tìm thấy ${deliveredOrders.length} đơn đã giao và ${remittances.length} lần nộp tiền.`);
+
+        // --- Xử lý dữ liệu theo từng ngày ---
         const dailyData = {};
         const daysInMonth = moment(startDate).utc().daysInMonth();
-
         for (let i = 1; i <= daysInMonth; i++) {
             const day = moment(startDate).utc().date(i).format('YYYY-MM-DD');
             dailyData[day] = { codCollected: 0, amountRemitted: 0, income: 0, orderCount: 0 };
@@ -265,8 +272,8 @@ exports.getMonthlyFinancialReport = async (req, res) => {
             }
         });
         
+        // --- Tính toán các con số tổng hợp ---
         let totalCODCollected = 0, totalIncome = 0, totalRemitted = 0, totalCompletedOrders = 0, totalDebt = 0;
-        const todayString = moment().tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
         
         Object.entries(dailyData).forEach(([day, data]) => {
             totalCODCollected += data.codCollected;
@@ -288,7 +295,7 @@ exports.getMonthlyFinancialReport = async (req, res) => {
         });
     } catch (error) {
         console.error('[getMonthlyFinancialReport] Lỗi:', error);
-        res.status(500).json({ message: 'Lỗi server khi lấy báo cáo tháng.' });
+        res.status(500).json({ message: 'Lỗi server khi lấy báo cáo.' });
     }
 };
 
