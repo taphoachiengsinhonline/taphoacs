@@ -10,7 +10,7 @@ const Remittance = require('../models/Remittance');
 const RemittanceRequest = require('../models/RemittanceRequest');
 const moment = require('moment-timezone');
 const mongoose = require('mongoose'); // Thêm để dùng transaction
-const adminController= require('../controllers/Product');
+
 
 // Middleware xác thực admin cho toàn bộ các route trong file này
 router.use(verifyToken, isAdmin);
@@ -202,8 +202,43 @@ router.post('/products/:productId/reject', async (req, res) => {
 // ===   API MỚI: QUẢN LÝ CÔNG NỢ SHIPPER      ===
 // ===============================================
 
-// Lấy danh sách các yêu cầu nộp tiền đang chờ duyệt
-router.get('/remittances/pending', adminController.getShipperDebtOverview); 
+router.get('/shipper-debts', async (req, res) => {
+    try {
+        const shippers = await User.find({ role: 'shipper' }).select('name phone').lean();
+        const pendingRequests = await RemittanceRequest.find({ status: 'pending' }).lean();
+        const pendingRequestMap = new Map();
+        pendingRequests.forEach(req => {
+            const shipperId = req.shipper.toString();
+            if (!pendingRequestMap.has(shipperId)) {
+                pendingRequestMap.set(shipperId, []);
+            }
+            pendingRequestMap.get(shipperId).push(req);
+        });
+
+        const debtData = await Promise.all(shippers.map(async (shipper) => {
+            const [codResult, remittedResult] = await Promise.all([
+                Order.aggregate([ { $match: { shipper: shipper._id, status: 'Đã giao' } }, { $group: { _id: null, total: { $sum: '$total' } } } ]),
+                Remittance.aggregate([ { $match: { shipper: shipper._id, status: 'completed' } }, { $group: { _id: null, total: { $sum: '$amount' } } } ])
+            ]);
+            const totalCOD = codResult[0]?.total || 0;
+            const totalRemitted = remittedResult[0]?.total || 0;
+            const totalDebt = totalCOD - totalRemitted;
+            return { ...shipper, totalDebt: totalDebt > 0 ? totalDebt : 0, pendingRequests: pendingRequestMap.get(shipper._id.toString()) || [] };
+        }));
+        
+        debtData.sort((a, b) => {
+            if (b.pendingRequests.length > a.pendingRequests.length) return 1;
+            if (b.pendingRequests.length < a.pendingRequests.length) return -1;
+            return b.totalDebt - a.totalDebt;
+        });
+
+        res.status(200).json(debtData);
+    } catch (error) {
+        console.error("[getShipperDebtOverview] Lỗi:", error);
+        res.status(500).json({ message: "Lỗi server" });
+    }
+});
+
 
 // Đếm số lượng yêu cầu đang chờ duyệt để hiển thị badge
 router.get('/remittances/pending-count', async (req, res) => {
@@ -234,7 +269,7 @@ router.patch('/remittance-request/:requestId/process', async (req, res) => {
             let amountToApply = request.amount;
             
             const orders = await Order.find({ shipper: request.shipper, status: 'Đã giao' }).sort({ 'timestamps.deliveredAt': 1 }).session(session);
-            const allRemittances = await Remittance.find({ shipper: request.shipper, status: 'completed' }).session(session);
+            const allRemittances = await Remittance.find({ shipper: request.shipper }).session(session);
 
             const remittedMap = new Map();
             allRemittances.forEach(r => { remittedMap.set(moment(r.remittanceDate).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD'), r.amount || 0); });
@@ -254,7 +289,7 @@ router.patch('/remittance-request/:requestId/process', async (req, res) => {
                     const payment = Math.min(debtOfDay, amountToApply);
                     await Remittance.findOneAndUpdate(
                         { shipper: request.shipper, remittanceDate: moment.tz(day, 'YYYY-MM-DD', 'Asia/Ho_Chi_Minh').startOf('day').toDate() },
-                        { $inc: { amount: payment }, $set: { status: 'completed' } },
+                        { $inc: { amount: payment } },
                         { upsert: true, new: true, session: session }
                     );
                     amountToApply -= payment;
