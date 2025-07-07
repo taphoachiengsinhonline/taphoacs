@@ -149,18 +149,26 @@ exports.changePassword = async (req, res) => {
 exports.getRevenueReport = async (req, res) => {
     try {
         const shipperId = req.user._id;
-        const { month, year } = req.query; // Nhận tháng và năm từ query
+        const { month, year } = req.query;
 
-        const targetMonth = month ? parseInt(month) - 1 : moment().month();
-        const targetYear = year ? parseInt(year) : moment().year();
+        const targetMonth = month ? parseInt(month) - 1 : new Date().getMonth();
+        const targetYear = year ? parseInt(year) : new Date().getFullYear();
 
-        const startDate = moment.tz({ year: targetYear, month: targetMonth }, 'Asia/Ho_Chi_Minh').startOf('month').toDate();
-        const endDate = moment.tz({ year: targetYear, month: targetMonth }, 'Asia/Ho_Chi_Minh').endOf('month').toDate();
-
+        // <<< SỬA LẠI LOGIC TẠO NGÀY THÁNG CHO AN TOÀN >>>
+        // Tạo ngày đầu tiên của tháng trong múi giờ UTC
+        const startDate = new Date(Date.UTC(targetYear, targetMonth, 1, 0, 0, 0));
+        // Tạo ngày cuối cùng của tháng trong múi giờ UTC
+        const endDate = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
+        
+        // In ra để debug
+        console.log(`[REVENUE REPORT] Bắt đầu tìm kiếm cho shipper ${shipperId}`);
+        console.log(`[REVENUE REPORT] Khoảng thời gian: ${startDate.toISOString()} -> ${endDate.toISOString()}`);
+        
         // --- 1. Lấy tất cả dữ liệu cần thiết trong tháng ---
         const [deliveredOrders, remittances] = await Promise.all([
             Order.find({
-                shipper: shipperId, status: 'Đã giao',
+                shipper: shipperId,
+                status: 'Đã giao',
                 'timestamps.deliveredAt': { $gte: startDate, $lte: endDate }
             }).lean(),
             Remittance.find({
@@ -168,13 +176,15 @@ exports.getRevenueReport = async (req, res) => {
                 remittanceDate: { $gte: startDate, $lte: endDate }
             }).lean()
         ]);
+        
+        console.log(`[REVENUE REPORT] Tìm thấy ${deliveredOrders.length} đơn đã giao và ${remittances.length} lần nộp tiền.`);
 
         // --- 2. Xử lý dữ liệu theo từng ngày ---
         const dailyData = {};
-        const daysInMonth = moment(startDate).daysInMonth();
+        const daysInMonth = moment(startDate).utc().daysInMonth();
 
         for (let i = 1; i <= daysInMonth; i++) {
-            const day = moment(startDate).date(i).format('YYYY-MM-DD');
+            const day = moment(startDate).utc().date(i).format('YYYY-MM-DD');
             dailyData[day] = {
                 codCollected: 0,
                 amountRemitted: 0,
@@ -184,6 +194,7 @@ exports.getRevenueReport = async (req, res) => {
         }
 
         deliveredOrders.forEach(order => {
+            // Luôn chuyển về múi giờ VN để lấy đúng ngày
             const day = moment(order.timestamps.deliveredAt).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
             if (dailyData[day]) {
                 dailyData[day].codCollected += (order.total || 0);
@@ -204,28 +215,28 @@ exports.getRevenueReport = async (req, res) => {
         let totalIncome = 0;
         let totalRemitted = 0;
         let totalCompletedOrders = 0;
-        let totalDebt = 0; // Tổng công nợ
+        let totalDebt = 0;
 
         const todayString = moment().tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
         
-        Object.values(dailyData).forEach(data => {
+        Object.entries(dailyData).forEach(([day, data]) => {
             totalCODCollected += data.codCollected;
             totalIncome += data.income;
             totalRemitted += data.amountRemitted;
             totalCompletedOrders += data.orderCount;
-        });
 
-        // Công nợ = tổng COD đã thu (không tính hôm nay) - tổng đã nộp
-        Object.entries(dailyData).forEach(([day, data]) => {
+            // Nợ cũ là nợ của những ngày trước hôm nay
             if (day < todayString) {
                 totalDebt += (data.codCollected - data.amountRemitted);
             }
         });
         
-        // Thêm nợ của ngày hôm nay vào
+        // Nợ của ngày hôm nay
         const todayData = dailyData[todayString] || { codCollected: 0, amountRemitted: 0 };
-        const todayRemitAmount = todayData.codCollected - todayData.amountRemitted;
-        totalDebt += todayRemitAmount > 0 ? todayRemitAmount : 0;
+        const todayDebt = todayData.codCollected - todayData.amountRemitted;
+        
+        // Cộng dồn nợ cũ và nợ hôm nay
+        totalDebt += (todayDebt > 0 ? todayDebt : 0);
         
         res.status(200).json({
             overview: {
@@ -237,7 +248,7 @@ exports.getRevenueReport = async (req, res) => {
             },
             dailyBreakdown: Object.entries(dailyData).map(([day, data]) => ({
                 day, ...data
-            })).reverse() // Đảo ngược để ngày mới nhất lên đầu
+            })).reverse()
         });
 
     } catch (error) {
