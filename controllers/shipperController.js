@@ -166,12 +166,10 @@ exports.getRevenueReport = async (req, res) => {
             {
                 $group: {
                     _id: null,
-                    // 1. TỔNG TIỀN COD ĐÃ THU
-                    // Đây là tổng số tiền mặt shipper cầm của khách.
+                    // 1. TỔNG TIỀN COD ĐÃ THU (PHẢI NỘP 100%)
                     totalCODCollected: { $sum: '$total' },
                     
-                    // 2. TỔNG THU NHẬP CỦA SHIPPER
-                    // Đây là phần shipper được giữ lại.
+                    // 2. TỔNG THU NHẬP TẠM TÍNH (ĐỂ THAM KHẢO)
                     totalShipperIncome: { $sum: '$shipperIncome' },
 
                     // 3. ĐẾM SỐ ĐƠN
@@ -186,15 +184,10 @@ exports.getRevenueReport = async (req, res) => {
             completedOrders: 0
         };
         
-        // 4. TÍNH SỐ TIỀN PHẢI NỘP LẠI
-        const amountToRemit = stats.totalCODCollected - stats.totalShipperIncome;
+        delete stats._id;
 
-        res.status(200).json({
-            totalCODCollected: stats.totalCODCollected,
-            totalShipperIncome: stats.totalShipperIncome,
-            amountToRemit: amountToRemit,
-            completedOrders: stats.completedOrders
-        });
+        // Trả về đúng 3 con số này
+        res.status(200).json(stats);
 
     } catch (error) {
         console.error('[getShipperRevenue] Lỗi:', error);
