@@ -34,28 +34,75 @@ exports.getShipperDebts = async (req, res) => {
     }
 };
 
-// API lấy chi tiết các lần nộp tiền của một shipper
-exports.getShipperRemittances = async (req, res) => {
+// API mới: Lấy các yêu cầu đang chờ
+exports.getPendingRemittanceRequests = async (req, res) => {
     try {
-        const { shipperId } = req.params;
-        const remittances = await Remittance.find({ shipper: shipperId }).sort({ remittanceDate: -1 });
-        res.status(200).json(remittances);
-    } catch (error) {
-        console.error("[getShipperRemittances] Lỗi:", error);
-        res.status(500).json({ message: "Lỗi server" });
-    }
+        const requests = await RemittanceRequest.find({ status: 'pending' }).populate('shipper', 'name phone').sort({ createdAt: -1 });
+        res.status(200).json(requests);
+    } catch (error) { res.status(500).json({ message: "Lỗi server" }); }
 };
 
-// API để Admin xác nhận một lần nộp tiền
-// (Trong thực tế, hàm này cần phức tạp hơn, có thể thêm trường status vào Remittance)
-// Ở đây ta làm đơn giản là chỉ để tham khảo
-exports.confirmShipperRemittance = async (req, res) => {
+// API mới: Đếm số yêu cầu đang chờ
+exports.countPendingRemittanceRequests = async (req, res) => {
     try {
-        const { remittanceId } = req.params;
-        // Logic ví dụ: cập nhật một trường `isVerified: true` vào transaction
-        // await Remittance.updateOne( ... );
-        res.status(200).json({ message: "Xác nhận thành công (chức năng ví dụ)." });
+        const count = await RemittanceRequest.countDocuments({ status: 'pending' });
+        res.status(200).json({ count });
+    } catch (error) { res.status(500).json({ message: "Lỗi server" }); }
+};
+
+// API mới: Admin duyệt yêu cầu
+exports.processRemittanceRequest = async (req, res) => {
+    const { requestId } = req.params;
+    const { action, adminNotes } = req.body; // 'approve' hoặc 'reject'
+    const adminId = req.user._id;
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const request = await RemittanceRequest.findById(requestId).session(session);
+        if (!request || request.status !== 'pending') {
+            throw new Error("Yêu cầu không hợp lệ hoặc đã được xử lý.");
+        }
+
+        if (action === 'approve') {
+            let amountToApply = request.amount;
+            
+            // <<< LOGIC PHÂN BỔ TIỀN VÀO CÁC NGÀY NỢ CŨ >>>
+            // (giữ nguyên logic từ hàm confirmRemittance cũ)
+            // Tìm các ngày còn nợ, trừ dần từ cũ đến mới...
+            const orders = await Order.find({ shipper: request.shipper, status: 'Đã giao' }).sort({ 'timestamps.deliveredAt': 1 }).session(session);
+            const allRemittances = await Remittance.find({ shipper: request.shipper }).session(session);
+            // ...
+            for (const day of sortedDebtDays) {
+                // ...
+                await Remittance.findOneAndUpdate(
+                    { shipper: request.shipper, remittanceDate: ... },
+                    { $inc: { amount: payment }, ... },
+                    { upsert: true, session: session }
+                );
+                amountToApply -= payment;
+            }
+            
+            request.status = 'approved';
+            
+        } else if (action === 'reject') {
+            request.status = 'rejected';
+        } else {
+            throw new Error("Hành động không hợp lệ.");
+        }
+
+        request.adminNotes = adminNotes;
+        request.processedAt = new Date();
+        request.approvedBy = adminId;
+        await request.save({ session });
+        
+        await session.commitTransaction();
+        res.status(200).json({ message: `Đã ${action} yêu cầu thành công.` });
     } catch (error) {
-        //...
+        await session.abortTransaction();
+        console.error("[processRemittanceRequest] Lỗi:", error);
+        res.status(500).json({ message: error.message });
+    } finally {
+        session.endSession();
     }
 };
