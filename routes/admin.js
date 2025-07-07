@@ -202,15 +202,7 @@ router.post('/products/:productId/reject', async (req, res) => {
 // ===============================================
 
 // Lấy danh sách các yêu cầu nộp tiền đang chờ duyệt
-router.get('/remittances/pending', async (req, res) => {
-    try {
-        const requests = await RemittanceRequest.find({ status: 'pending' }).populate('shipper', 'name phone').sort({ createdAt: -1 });
-        res.status(200).json(requests);
-    } catch (error) { 
-        console.error("[getPendingRemittanceRequests] Lỗi:", error);
-        res.status(500).json({ message: "Lỗi server" });
-    }
-});
+router.get('/remittances/pending', adminController.getShipperDebtOverview); 
 
 // Đếm số lượng yêu cầu đang chờ duyệt để hiển thị badge
 router.get('/remittances/pending-count', async (req, res) => {
