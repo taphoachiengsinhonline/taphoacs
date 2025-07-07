@@ -172,24 +172,21 @@ exports.getRevenueReport = async (req, res) => {
         const totalCODCollected = deliveredOrders.reduce((sum, order) => sum + (order.total || 0), 0);
         const totalShipperIncome = deliveredOrders.reduce((sum, order) => sum + (order.shipperIncome || 0), 0);
         const totalRemitted = remittances.reduce((sum, item) => sum + item.amount, 0);
-
-        // Số tiền còn lại phải nộp trong khoảng thời gian đã chọn
-        const amountToRemitInRange = totalCODCollected - totalRemitted;
+        const amountToRemit = totalCODCollected - totalRemitted;
 
         res.status(200).json({
             totalCODCollected,
             totalShipperIncome,
             totalRemitted,
-            amountToRemit: amountToRemitInRange > 0 ? amountToRemitInRange : 0,
+            amountToRemit: amountToRemit > 0 ? amountToRemit : 0,
             completedOrders: deliveredOrders.length,
         });
 
     } catch (error) {
-        console.error('[getShipperRevenue] Lỗi:', error);
+        console.error('[getRevenueReport] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server khi lấy báo cáo doanh thu.' });
     }
 };
-
 // ======================================================================
 // ===          API MỚI: SHIPPER XÁC NHẬN ĐÃ NỘP TIỀN                ===
 // ======================================================================
