@@ -198,10 +198,7 @@ router.post('/products/:productId/reject', async (req, res) => {
 });
 
 
-// ===============================================
-// ===   API MỚI: QUẢN LÝ CÔNG NỢ SHIPPER      ===
-// ===============================================
-
+// Lấy danh sách tổng quan công nợ của tất cả shipper
 router.get('/shipper-debts', async (req, res) => {
     try {
         const shippers = await User.find({ role: 'shipper' }).select('name phone').lean();
