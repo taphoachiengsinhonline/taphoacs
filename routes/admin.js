@@ -9,10 +9,9 @@ const Order = require('../models/Order');
 const Remittance = require('../models/Remittance');
 const RemittanceRequest = require('../models/RemittanceRequest');
 const moment = require('moment-timezone');
-const mongoose = require('mongoose'); // Thêm để dùng transaction
+const mongoose = require('mongoose');
 
-
-// Middleware xác thực admin cho toàn bộ các route trong file này
+// Middleware: Yêu cầu tất cả các route trong file này phải là admin đã đăng nhập
 router.use(verifyToken, isAdmin);
 
 // ===============================================
@@ -155,7 +154,6 @@ router.patch('/sellers/:sellerId/commission', async (req, res) => {
     }
 });
 
-
 // ===============================================
 // ===      QUẢN LÝ SẢN PHẨM (Giữ nguyên)     ===
 // ===============================================
@@ -197,31 +195,41 @@ router.post('/products/:productId/reject', async (req, res) => {
     }
 });
 
+// ===============================================
+// ===   API MỚI: QUẢN LÝ CÔNG NỢ SHIPPER      ===
+// ===============================================
 
 // Lấy danh sách tổng quan công nợ của tất cả shipper
-router.get('/shipper-debts', async (req, res) => {
+router.get('/shipper-debt-overview', async (req, res) => {
     try {
         const shippers = await User.find({ role: 'shipper' }).select('name phone').lean();
-        const pendingRequests = await RemittanceRequest.find({ status: 'pending' }).lean();
+        if (shippers.length === 0) {
+            return res.status(200).json([]);
+        }
+        
+        const pendingRequests = await RemittanceRequest.find({ status: 'pending' }).populate('shipper', 'name').lean();
         const pendingRequestMap = new Map();
         pendingRequests.forEach(req => {
-            const shipperId = req.shipper.toString();
+            const shipperId = req.shipper._id.toString();
             if (!pendingRequestMap.has(shipperId)) {
                 pendingRequestMap.set(shipperId, []);
             }
             pendingRequestMap.get(shipperId).push(req);
         });
 
-        const debtData = await Promise.all(shippers.map(async (shipper) => {
+        const debtData = [];
+        for (const shipper of shippers) {
+            const shipperId = shipper._id;
             const [codResult, remittedResult] = await Promise.all([
-                Order.aggregate([ { $match: { shipper: shipper._id, status: 'Đã giao' } }, { $group: { _id: null, total: { $sum: '$total' } } } ]),
-                Remittance.aggregate([ { $match: { shipper: shipper._id, status: 'completed' } }, { $group: { _id: null, total: { $sum: '$amount' } } } ])
+                Order.aggregate([ { $match: { shipper: shipperId, status: 'Đã giao' } }, { $group: { _id: null, total: { $sum: '$total' } } } ]),
+                Remittance.aggregate([ { $match: { shipper: shipperId, status: 'completed' } }, { $group: { _id: null, total: { $sum: '$amount' } } } ])
             ]);
             const totalCOD = codResult[0]?.total || 0;
             const totalRemitted = remittedResult[0]?.total || 0;
             const totalDebt = totalCOD - totalRemitted;
-            return { ...shipper, totalDebt: totalDebt > 0 ? totalDebt : 0, pendingRequests: pendingRequestMap.get(shipper._id.toString()) || [] };
-        }));
+
+            debtData.push({ ...shipper, totalDebt: totalDebt > 0 ? totalDebt : 0, pendingRequests: pendingRequestMap.get(shipperId.toString()) || [] });
+        }
         
         debtData.sort((a, b) => {
             if (b.pendingRequests.length > a.pendingRequests.length) return 1;
@@ -235,7 +243,6 @@ router.get('/shipper-debts', async (req, res) => {
         res.status(500).json({ message: "Lỗi server" });
     }
 });
-
 
 // Đếm số lượng yêu cầu đang chờ duyệt để hiển thị badge
 router.get('/remittances/pending-count', async (req, res) => {
@@ -286,7 +293,7 @@ router.patch('/remittance-request/:requestId/process', async (req, res) => {
                     const payment = Math.min(debtOfDay, amountToApply);
                     await Remittance.findOneAndUpdate(
                         { shipper: request.shipper, remittanceDate: moment.tz(day, 'YYYY-MM-DD', 'Asia/Ho_Chi_Minh').startOf('day').toDate() },
-                        { $inc: { amount: payment } },
+                        { $inc: { amount: payment }, $set: { status: 'completed' } },
                         { upsert: true, new: true, session: session }
                     );
                     amountToApply -= payment;
