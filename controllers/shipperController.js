@@ -223,15 +223,19 @@ exports.getMonthlyFinancialReport = async (req, res) => {
             return res.status(400).json({ message: "Vui lòng cung cấp tháng và năm." });
         }
 
-        const targetMonth = parseInt(month) - 1;
+        const targetMonth = parseInt(month) - 1; // JavaScript month is 0-11
         const targetYear = parseInt(year);
+
+        // Tạo ngày đầu tiên và cuối cùng của tháng trong múi giờ UTC để query cho đúng
         const startDate = new Date(Date.UTC(targetYear, targetMonth, 1));
         const endDate = new Date(Date.UTC(targetYear, targetMonth + 1, 1));
         endDate.setUTCMilliseconds(endDate.getUTCMilliseconds() - 1);
         
+        // Lấy tất cả dữ liệu cần thiết trong một lần gọi để tối ưu
         const [deliveredOrders, remittances] = await Promise.all([
             Order.find({
-                shipper: shipperId, status: 'Đã giao',
+                shipper: shipperId, 
+                status: 'Đã giao',
                 'timestamps.deliveredAt': { $gte: startDate, $lte: endDate }
             }).lean(),
             Remittance.find({
@@ -240,13 +244,20 @@ exports.getMonthlyFinancialReport = async (req, res) => {
             }).lean()
         ]);
         
+        // Tạo một object rỗng để chứa dữ liệu của mỗi ngày trong tháng
         const dailyData = {};
         const daysInMonth = moment(startDate).utc().daysInMonth();
         for (let i = 1; i <= daysInMonth; i++) {
             const day = moment(startDate).utc().date(i).format('YYYY-MM-DD');
-            dailyData[day] = { codCollected: 0, amountRemitted: 0, income: 0, orderCount: 0 };
+            dailyData[day] = { 
+                codCollected: 0, 
+                amountRemitted: 0, 
+                income: 0, 
+                orderCount: 0 
+            };
         }
 
+        // Điền dữ liệu từ các đơn hàng đã giao vào các ngày tương ứng
         deliveredOrders.forEach(order => {
             const day = moment(order.timestamps.deliveredAt).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
             if (dailyData[day]) {
@@ -256,6 +267,7 @@ exports.getMonthlyFinancialReport = async (req, res) => {
             }
         });
 
+        // Điền dữ liệu từ các lần đã nộp tiền vào các ngày tương ứng
         remittances.forEach(remit => {
             const day = moment(remit.remittanceDate).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
             if (dailyData[day]) {
@@ -263,46 +275,52 @@ exports.getMonthlyFinancialReport = async (req, res) => {
             }
         });
         
-       let totalCODCollected = 0, totalIncome = 0, totalRemitted = 0, totalCompletedOrders = 0;
+        // Bắt đầu tính toán các con số tổng hợp
+        let totalCODCollected = 0;
+        let totalIncome = 0;
+        let totalRemitted = 0;
+        let totalCompletedOrders = 0;
         let accumulatedDebt = 0; // Công nợ tồn đọng (không tính hôm nay)
 
         const todayString = moment().tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
         
+        // Lặp qua dữ liệu đã xử lý để tính tổng
         Object.entries(dailyData).forEach(([day, data]) => {
             totalCODCollected += data.codCollected;
             totalIncome += data.income;
             totalRemitted += data.amountRemitted;
             totalCompletedOrders += data.orderCount;
             
+            // Chỉ cộng dồn công nợ của những ngày TRƯỚC HÔM NAY
             if (day < todayString) {
                 accumulatedDebt += (data.codCollected - data.amountRemitted);
             }
         });
-        // Tính riêng nợ của ngày hôm nay
+        
+        // Tính riêng công nợ của ngày hôm nay để hiển thị tham khảo
         const todayData = dailyData[todayString] || { codCollected: 0, amountRemitted: 0 };
         const todayDebt = todayData.codCollected - todayData.amountRemitted;
         
-        // Tổng công nợ là nợ cũ + nợ hôm nay
-        const totalDebt = (accumulatedDebt > 0 ? accumulatedDebt : 0) + (todayDebt > 0 ? todayDebt : 0);
-        
+        // Trả về response cuối cùng
         res.status(200).json({
             overview: {
-                totalDebt: totalDebt, // Tổng nợ phải nộp
-                accumulatedDebt: accumulatedDebt > 0 ? accumulatedDebt : 0, // Nợ cũ
-                todayDebt: todayDebt > 0 ? todayDebt : 0, // Nợ hôm nay
+                totalDebt: accumulatedDebt > 0 ? accumulatedDebt : 0, // Chỉ là nợ của các ngày cũ
+                todayDebt: todayDebt > 0 ? todayDebt : 0, // Nợ phát sinh trong hôm nay
                 totalIncome,
                 totalCODCollected,
                 totalRemitted,
                 totalCompletedOrders
             },
-            dailyBreakdown: Object.entries(dailyData).map(([day, data]) => ({ day, ...data })).reverse()
+            dailyBreakdown: Object.entries(dailyData).map(([day, data]) => ({ 
+                day, 
+                ...data 
+            })).reverse() // Đảo ngược để ngày mới nhất lên đầu
         });
     } catch (error) {
         console.error('[getMonthlyFinancialReport] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server khi lấy báo cáo.' });
     }
 };
-
 
 
 // ======================================================================
