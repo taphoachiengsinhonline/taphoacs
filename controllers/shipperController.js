@@ -158,56 +158,30 @@ exports.getRevenueReport = async (req, res) => {
         const fromDate = moment.tz(startDate, 'Asia/Ho_Chi_Minh').startOf('day').toDate();
         const toDate = moment.tz(endDate, 'Asia/Ho_Chi_Minh').endOf('day').toDate();
         
-        // --- 1. Lấy tất cả các đơn đã giao trong khoảng thời gian ---
         const deliveredOrders = await Order.find({
             shipper: shipperId,
             status: 'Đã giao',
             'timestamps.deliveredAt': { $gte: fromDate, $lte: toDate }
         });
 
-        // --- 2. Lấy tất cả các lần đã nộp tiền trong khoảng thời gian ---
         const remittances = await Remittance.find({
             shipper: shipperId,
             remittanceDate: { $gte: fromDate, $lte: toDate }
         });
         
-        // Tính toán trên server
-        let totalCODCollected = 0;
-        let totalShipperIncome = 0;
-        deliveredOrders.forEach(order => {
-            totalCODCollected += order.total || 0;
-            totalShipperIncome += order.shipperIncome || 0;
-        });
-
+        const totalCODCollected = deliveredOrders.reduce((sum, order) => sum + (order.total || 0), 0);
+        const totalShipperIncome = deliveredOrders.reduce((sum, order) => sum + (order.shipperIncome || 0), 0);
         const totalRemitted = remittances.reduce((sum, item) => sum + item.amount, 0);
 
-        // --- 3. TÍNH SỐ TIỀN CẦN NỘP CỦA CHỈ HÔM NAY ---
-        const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
-        const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
-        
-        const todayDeliveredOrders = await Order.find({
-            shipper: shipperId,
-            status: 'Đã giao',
-            'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd }
-        });
-        const todayCOD = todayDeliveredOrders.reduce((sum, order) => sum + (order.total || 0), 0);
-        
-        const todayRemittance = await Remittance.findOne({
-            shipper: shipperId,
-            remittanceDate: { $gte: todayStart, $lte: todayEnd }
-        });
-        
-        // Số tiền cần nộp hôm nay là tổng COD trừ đi số đã nộp (nếu có)
-        const amountToRemitToday = todayCOD - (todayRemittance ? todayRemittance.amount : 0);
+        // Số tiền còn lại phải nộp trong khoảng thời gian đã chọn
+        const amountToRemitInRange = totalCODCollected - totalRemitted;
 
         res.status(200).json({
-            // Dữ liệu cho khoảng thời gian đã chọn
             totalCODCollected,
             totalShipperIncome,
             totalRemitted,
+            amountToRemit: amountToRemitInRange > 0 ? amountToRemitInRange : 0,
             completedOrders: deliveredOrders.length,
-            // Dữ liệu riêng cho hôm nay để hiển thị trên home
-            amountToRemitToday: amountToRemitToday > 0 ? amountToRemitToday : 0
         });
 
     } catch (error) {
@@ -215,7 +189,6 @@ exports.getRevenueReport = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server khi lấy báo cáo doanh thu.' });
     }
 };
-
 
 // ======================================================================
 // ===          API MỚI: SHIPPER XÁC NHẬN ĐÃ NỘP TIỀN                ===
@@ -225,15 +198,13 @@ exports.confirmRemittance = async (req, res) => {
     session.startTransaction();
     try {
         const shipperId = req.user._id;
-        const { amount, transactionDate } = req.body; // Ngày giao dịch thực tế
+        const { amount, transactionDate } = req.body;
 
         if (!amount || amount <= 0 || !transactionDate) {
             return res.status(400).json({ message: "Thiếu thông tin số tiền hoặc ngày giao dịch." });
         }
 
         const date = moment(transactionDate).tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
-
-        // Tìm hoặc tạo mới bản ghi nộp tiền cho ngày hôm đó
         let remittance = await Remittance.findOne({ shipper: shipperId, remittanceDate: date }).session(session);
 
         if (remittance) {
@@ -250,9 +221,7 @@ exports.confirmRemittance = async (req, res) => {
         
         await remittance.save({ session });
         await session.commitTransaction();
-
         res.status(200).json({ message: "Xác nhận nộp tiền thành công!", remittance });
-
     } catch (error) {
         await session.abortTransaction();
         console.error('[confirmRemittance] Lỗi:', error);
@@ -261,7 +230,6 @@ exports.confirmRemittance = async (req, res) => {
         session.endSession();
     }
 };
-
 
 // ======================================================================
 // ===       HÀM MỚI: Gửi thông báo nhắc nợ COD (dùng cho Cron Job)    ===
