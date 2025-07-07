@@ -148,15 +148,13 @@ exports.getRevenueReport = async (req, res) => {
         const shipperId = req.user._id;
         const { startDate, endDate } = req.query;
 
-        // Kiểm tra đầu vào
         if (!startDate || !endDate) {
             return res.status(400).json({ message: "Vui lòng cung cấp ngày bắt đầu và kết thúc." });
         }
 
-        // Tạo điều kiện match cho aggregation pipeline
         const matchConditions = {
             shipper: new mongoose.Types.ObjectId(shipperId),
-            status: 'Đã giao', // Chỉ tính các đơn đã giao thành công
+            status: 'Đã giao',
             'timestamps.deliveredAt': {
                 $gte: moment.tz(startDate, 'Asia/Ho_Chi_Minh').startOf('day').toDate(),
                 $lte: moment.tz(endDate, 'Asia/Ho_Chi_Minh').endOf('day').toDate()
@@ -167,33 +165,36 @@ exports.getRevenueReport = async (req, res) => {
             { $match: matchConditions },
             {
                 $group: {
-                    _id: null, // Gom tất cả các đơn hàng phù hợp lại
+                    _id: null,
+                    // 1. TỔNG TIỀN COD ĐÃ THU
+                    // Đây là tổng số tiền mặt shipper cầm của khách.
+                    totalCODCollected: { $sum: '$total' },
                     
-                    // 1. TÍNH TỔNG THU NHẬP THỰC NHẬN CỦA SHIPPER
-                    // Đây là số tiền shipper thực sự bỏ túi.
-                    totalIncome: { $sum: '$shipperIncome' },
-                    
-                    // 2. TÍNH TỔNG PHÍ SHIP GỐC ĐÃ GIAO
-                    // Đây là tổng phí ship + phụ phí, không bị ảnh hưởng bởi voucher, dùng để đối soát.
-                    totalShippingFeeGenerated: { $sum: { $add: ["$shippingFee", "$extraSurcharge"] } },
-                    
-                    // 3. ĐẾM TỔNG SỐ ĐƠN ĐÃ HOÀN THÀNH
+                    // 2. TỔNG THU NHẬP CỦA SHIPPER
+                    // Đây là phần shipper được giữ lại.
+                    totalShipperIncome: { $sum: '$shipperIncome' },
+
+                    // 3. ĐẾM SỐ ĐƠN
                     completedOrders: { $sum: 1 }
                 }
             }
         ]);
 
-        // Nếu không có đơn nào trong khoảng thời gian, trả về kết quả mặc định là 0
         const stats = result[0] || {
-            totalIncome: 0,
-            totalShippingFeeGenerated: 0,
+            totalCODCollected: 0,
+            totalShipperIncome: 0,
             completedOrders: 0
         };
         
-        // Xóa trường _id không cần thiết khỏi kết quả cuối cùng
-        delete stats._id;
+        // 4. TÍNH SỐ TIỀN PHẢI NỘP LẠI
+        const amountToRemit = stats.totalCODCollected - stats.totalShipperIncome;
 
-        res.status(200).json(stats);
+        res.status(200).json({
+            totalCODCollected: stats.totalCODCollected,
+            totalShipperIncome: stats.totalShipperIncome,
+            amountToRemit: amountToRemit,
+            completedOrders: stats.completedOrders
+        });
 
     } catch (error) {
         console.error('[getShipperRevenue] Lỗi:', error);
