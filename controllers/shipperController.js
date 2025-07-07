@@ -204,7 +204,7 @@ exports.getDashboardSummary = async (req, res) => {
             totalCODCollected: dailyStats.totalCODCollected,
             totalShipperIncome: dailyStats.totalShipperIncome,
             completedOrders: dailyStats.completedOrders,
-                       
+            }            
         });
 
     } catch (error) {
