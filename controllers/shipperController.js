@@ -225,7 +225,6 @@ exports.getMonthlyFinancialReport = async (req, res) => {
 
         const targetMonth = parseInt(month) - 1;
         const targetYear = parseInt(year);
-
         const startDate = new Date(Date.UTC(targetYear, targetMonth, 1));
         const endDate = new Date(Date.UTC(targetYear, targetMonth + 1, 1));
         endDate.setUTCMilliseconds(endDate.getUTCMilliseconds() - 1);
@@ -264,8 +263,8 @@ exports.getMonthlyFinancialReport = async (req, res) => {
             }
         });
         
-        let totalCODCollected = 0, totalIncome = 0, totalRemitted = 0, totalCompletedOrders = 0;
-        let accumulatedDebt = 0; // <<< TÍNH CÔNG NỢ TỒN ĐỌNG
+       let totalCODCollected = 0, totalIncome = 0, totalRemitted = 0, totalCompletedOrders = 0;
+        let accumulatedDebt = 0; // Công nợ tồn đọng (không tính hôm nay)
 
         const todayString = moment().tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
         
@@ -275,15 +274,22 @@ exports.getMonthlyFinancialReport = async (req, res) => {
             totalRemitted += data.amountRemitted;
             totalCompletedOrders += data.orderCount;
             
-            // <<< SỬA LOGIC: Chỉ cộng dồn nợ của các ngày TRƯỚC HÔM NAY >>>
             if (day < todayString) {
                 accumulatedDebt += (data.codCollected - data.amountRemitted);
             }
         });
+        // Tính riêng nợ của ngày hôm nay
+        const todayData = dailyData[todayString] || { codCollected: 0, amountRemitted: 0 };
+        const todayDebt = todayData.codCollected - todayData.amountRemitted;
+        
+        // Tổng công nợ là nợ cũ + nợ hôm nay
+        const totalDebt = (accumulatedDebt > 0 ? accumulatedDebt : 0) + (todayDebt > 0 ? todayDebt : 0);
         
         res.status(200).json({
             overview: {
-                totalDebt: accumulatedDebt > 0 ? accumulatedDebt : 0, // Trả về công nợ tồn đọng
+                totalDebt: totalDebt, // Tổng nợ phải nộp
+                accumulatedDebt: accumulatedDebt > 0 ? accumulatedDebt : 0, // Nợ cũ
+                todayDebt: todayDebt > 0 ? todayDebt : 0, // Nợ hôm nay
                 totalIncome,
                 totalCODCollected,
                 totalRemitted,
