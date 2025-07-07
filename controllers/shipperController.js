@@ -149,42 +149,100 @@ exports.changePassword = async (req, res) => {
 exports.getRevenueReport = async (req, res) => {
     try {
         const shipperId = req.user._id;
-        const { startDate, endDate } = req.query;
+        const { month, year } = req.query; // Nhận tháng và năm từ query
 
-        if (!startDate || !endDate) {
-            return res.status(400).json({ message: "Vui lòng cung cấp ngày bắt đầu và kết thúc." });
+        const targetMonth = month ? parseInt(month) - 1 : moment().month();
+        const targetYear = year ? parseInt(year) : moment().year();
+
+        const startDate = moment.tz({ year: targetYear, month: targetMonth }, 'Asia/Ho_Chi_Minh').startOf('month').toDate();
+        const endDate = moment.tz({ year: targetYear, month: targetMonth }, 'Asia/Ho_Chi_Minh').endOf('month').toDate();
+
+        // --- 1. Lấy tất cả dữ liệu cần thiết trong tháng ---
+        const [deliveredOrders, remittances] = await Promise.all([
+            Order.find({
+                shipper: shipperId, status: 'Đã giao',
+                'timestamps.deliveredAt': { $gte: startDate, $lte: endDate }
+            }).lean(),
+            Remittance.find({
+                shipper: shipperId,
+                remittanceDate: { $gte: startDate, $lte: endDate }
+            }).lean()
+        ]);
+
+        // --- 2. Xử lý dữ liệu theo từng ngày ---
+        const dailyData = {};
+        const daysInMonth = moment(startDate).daysInMonth();
+
+        for (let i = 1; i <= daysInMonth; i++) {
+            const day = moment(startDate).date(i).format('YYYY-MM-DD');
+            dailyData[day] = {
+                codCollected: 0,
+                amountRemitted: 0,
+                income: 0,
+                orderCount: 0
+            };
         }
 
-        const fromDate = moment.tz(startDate, 'Asia/Ho_Chi_Minh').startOf('day').toDate();
-        const toDate = moment.tz(endDate, 'Asia/Ho_Chi_Minh').endOf('day').toDate();
-        
-        const deliveredOrders = await Order.find({
-            shipper: shipperId,
-            status: 'Đã giao',
-            'timestamps.deliveredAt': { $gte: fromDate, $lte: toDate }
+        deliveredOrders.forEach(order => {
+            const day = moment(order.timestamps.deliveredAt).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
+            if (dailyData[day]) {
+                dailyData[day].codCollected += (order.total || 0);
+                dailyData[day].income += (order.shipperIncome || 0);
+                dailyData[day].orderCount += 1;
+            }
         });
 
-        const remittances = await Remittance.find({
-            shipper: shipperId,
-            remittanceDate: { $gte: fromDate, $lte: toDate }
+        remittances.forEach(remit => {
+            const day = moment(remit.remittanceDate).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
+            if (dailyData[day]) {
+                dailyData[day].amountRemitted = remit.amount || 0;
+            }
         });
         
-        const totalCODCollected = deliveredOrders.reduce((sum, order) => sum + (order.total || 0), 0);
-        const totalShipperIncome = deliveredOrders.reduce((sum, order) => sum + (order.shipperIncome || 0), 0);
-        const totalRemitted = remittances.reduce((sum, item) => sum + item.amount, 0);
-        const amountToRemit = totalCODCollected - totalRemitted;
+        // --- 3. Tính toán các con số tổng hợp ---
+        let totalCODCollected = 0;
+        let totalIncome = 0;
+        let totalRemitted = 0;
+        let totalCompletedOrders = 0;
+        let totalDebt = 0; // Tổng công nợ
 
+        const todayString = moment().tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
+        
+        Object.values(dailyData).forEach(data => {
+            totalCODCollected += data.codCollected;
+            totalIncome += data.income;
+            totalRemitted += data.amountRemitted;
+            totalCompletedOrders += data.orderCount;
+        });
+
+        // Công nợ = tổng COD đã thu (không tính hôm nay) - tổng đã nộp
+        Object.entries(dailyData).forEach(([day, data]) => {
+            if (day < todayString) {
+                totalDebt += (data.codCollected - data.amountRemitted);
+            }
+        });
+        
+        // Thêm nợ của ngày hôm nay vào
+        const todayData = dailyData[todayString] || { codCollected: 0, amountRemitted: 0 };
+        const todayRemitAmount = todayData.codCollected - todayData.amountRemitted;
+        totalDebt += todayRemitAmount > 0 ? todayRemitAmount : 0;
+        
         res.status(200).json({
-            totalCODCollected,
-            totalShipperIncome,
-            totalRemitted,
-            amountToRemit: amountToRemit > 0 ? amountToRemit : 0,
-            completedOrders: deliveredOrders.length,
+            overview: {
+                totalDebt: totalDebt > 0 ? totalDebt : 0,
+                totalIncome,
+                totalCODCollected,
+                totalRemitted,
+                totalCompletedOrders
+            },
+            dailyBreakdown: Object.entries(dailyData).map(([day, data]) => ({
+                day, ...data
+            })).reverse() // Đảo ngược để ngày mới nhất lên đầu
         });
 
     } catch (error) {
         console.error('[getRevenueReport] Lỗi:', error);
-        res.status(500).json({ message: 'Lỗi server khi lấy báo cáo doanh thu.' });
+        res.status(500).json({ message: 'Lỗi server khi lấy báo cáo.' });
     }
 };
 // ======================================================================
