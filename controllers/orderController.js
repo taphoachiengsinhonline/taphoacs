@@ -1,11 +1,13 @@
 // controllers/orderController.js
-
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const { safeNotify } = require('../utils/notificationMiddleware');
 const assignOrderToNearestShipper = require('../utils/assignOrderToNearestShipper');
 const { processOrderCompletionForFinance, reverseFinancialEntryForOrder } = require('./financeController');
+const UserVoucher = require('../models/UserVoucher');
+const Voucher = require('../models/Voucher'); // Thêm model Voucher
+const mongoose = require('mongoose');
 
 // Hàm kiểm tra giờ bán
 const validateSaleTime = (product, nowMin) => {
@@ -39,97 +41,128 @@ const notifyAdmins = async (order) => {
 // ===                      HÀM CREATE ORDER - PHIÊN BẢN HOÀN CHỈNH          ===
 // ==============================================================================
 exports.createOrder = async (req, res) => {
-  try {
-    const {
-      items, total, phone, shippingAddress, shippingLocation, customerName,
-      paymentMethod, shippingFee, extraSurcharge, voucherDiscount, voucherCode
-    } = req.body;
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const {
+            items, total, phone, shippingAddress, shippingLocation, customerName,
+            paymentMethod, shippingFee, extraSurcharge, voucherDiscount, voucherCode
+        } = req.body;
+        const userId = req.user._id;
 
-    // --- 1. Validation cơ bản ---
-    if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ message: 'Giỏ hàng không được để trống' });
-    if (!phone || !shippingAddress || !shippingLocation) return res.status(400).json({ message: 'Thiếu thông tin nhận hàng' });
-
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    const enrichedItems = []; // Mảng chứa các item đã được "làm giàu" thông tin
-
-    // --- 2. Xử lý và làm giàu thông tin cho từng item ---
-    for (const item of items) {
-      const product = await Product.findById(item.productId).populate('seller');
-      if (!product) throw new Error(`Sản phẩm "${item.name}" không còn tồn tại.`);
-      if (!product.seller) throw new Error(`Sản phẩm "${product.name}" không có thông tin người bán.`);
-
-      if (!validateSaleTime(product, nowMin)) {
-        throw new Error(`Sản phẩm "${product.name}" chỉ bán từ ${product.saleStartTime} đến ${product.saleEndTime}.`);
-      }
-
-      // Xác định tồn kho của sản phẩm/biến thể
-      let stock;
-      if (product.variantTable && product.variantTable.length > 0) {
-          const variant = product.variantTable.find(v => v.combination === item.combination);
-          stock = variant ? variant.stock : 0;
-      } else {
-          stock = product.stock;
-      }
-      if (stock < item.quantity) {
-        throw new Error(`Sản phẩm "${product.name}" không đủ hàng trong kho.`);
-      }
-
-      // <<< LOGIC MỚI: TÍNH PHÍ SÀN (COMMISSION) >>>
-      const itemTotal = item.price * item.quantity;
-      const commissionRate = product.seller.commissionRate || 0;
-      const commissionAmount = itemTotal * (commissionRate / 100);
-      
-      enrichedItems.push({
-        ...item,
-        sellerId: product.seller._id,
-        commissionAmount: commissionAmount, // <-- Lưu lại tiền phí sàn
-      });
-
-      // Trừ kho
-      if (product.variantTable && product.variantTable.length > 0) {
-        const variantIndex = product.variantTable.findIndex(v => v.combination === item.combination);
-        if (variantIndex > -1) {
-            product.variantTable[variantIndex].stock -= item.quantity;
+        // --- 1. Validation cơ bản ---
+        if (!Array.isArray(items) || items.length === 0) {
+            throw new Error('Giỏ hàng không được để trống');
         }
-      } else {
-        product.stock -= item.quantity;
-      }
-      await product.save();
+        if (!phone || !shippingAddress || !shippingLocation) {
+            throw new Error('Thiếu thông tin nhận hàng');
+        }
+
+        const now = new Date();
+        const nowMin = now.getHours() * 60 + now.getMinutes();
+        const enrichedItems = [];
+
+        // --- 2. Xử lý và làm giàu thông tin cho từng item ---
+        for (const item of items) {
+            const product = await Product.findById(item.productId).populate('seller').session(session);
+            if (!product) throw new Error(`Sản phẩm "${item.name}" không còn tồn tại.`);
+            if (!product.seller) throw new Error(`Sản phẩm "${product.name}" không có thông tin người bán.`);
+            if (!validateSaleTime(product, nowMin)) {
+                throw new Error(`Sản phẩm "${product.name}" chỉ bán từ ${product.saleStartTime} đến ${product.saleEndTime}.`);
+            }
+
+            let stock;
+            if (product.variantTable && product.variantTable.length > 0) {
+                const variant = product.variantTable.find(v => v.combination === item.combination);
+                if (!variant) throw new Error(`Biến thể của sản phẩm "${item.name}" không tồn tại.`);
+                stock = variant.stock;
+            } else {
+                stock = product.stock;
+            }
+            if (stock < item.quantity) {
+                throw new Error(`Sản phẩm "${product.name}" không đủ hàng trong kho.`);
+            }
+
+            const itemTotal = item.price * item.quantity;
+            const commissionRate = product.seller.commissionRate || 0;
+            const commissionAmount = itemTotal * (commissionRate / 100);
+            
+            enrichedItems.push({
+                ...item,
+                sellerId: product.seller._id,
+                commissionAmount: commissionAmount,
+            });
+
+            // Trừ kho
+            if (product.variantTable && product.variantTable.length > 0) {
+                const variantIndex = product.variantTable.findIndex(v => v.combination === item.combination);
+                product.variantTable[variantIndex].stock -= item.quantity;
+            } else {
+                product.stock -= item.quantity;
+            }
+            await product.save({ session });
+        }
+
+        // --- 3. ĐÁNH DẤU VOUCHER ĐÃ DÙNG (NẾU CÓ) ---
+        if (voucherCode && voucherDiscount > 0) {
+            const voucher = await Voucher.findOne({ code: voucherCode.toUpperCase() }).session(session);
+            if (!voucher) {
+                throw new Error(`Mã voucher "${voucherCode}" không tồn tại.`);
+            }
+
+            const userVoucher = await UserVoucher.findOne({
+                user: userId,
+                voucher: voucher._id,
+                isUsed: false
+            }).session(session);
+
+            if (!userVoucher) {
+                throw new Error(`Bạn không sở hữu voucher "${voucherCode}" hoặc đã sử dụng nó.`);
+            }
+
+            userVoucher.isUsed = true;
+            await userVoucher.save({ session });
+        }
+
+        // --- 4. Tạo đơn hàng ---
+        const order = new Order({
+            user: userId,
+            items: enrichedItems,
+            total,
+            customerName,
+            phone,
+            shippingAddress,
+            shippingLocation,
+            paymentMethod: paymentMethod || 'COD',
+            shippingFee,
+            extraSurcharge,
+            voucherDiscount,
+            voucherCode,
+            status: 'Chờ xác nhận',
+        });
+        
+        // Dùng create thay vì new + save để nó trả về một mảng
+        const [savedOrder] = await Order.create([order], { session });
+
+        await session.commitTransaction();
+
+        // Các hành động không quan trọng bằng có thể chạy sau khi transaction thành công
+        assignOrderToNearestShipper(savedOrder._id).catch(console.error);
+        notifyAdmins(savedOrder);
+
+        return res.status(201).json({
+            message: 'Tạo đơn thành công',
+            order: { ...savedOrder.toObject(), timestamps: savedOrder.timestamps }
+        });
+
+    } catch (err) {
+        await session.abortTransaction();
+        console.error('Lỗi khi tạo đơn hàng:', err);
+        const statusCode = err.message.includes('tồn tại') || err.message.includes('đủ hàng') || err.message.includes('voucher') ? 400 : 500;
+        return res.status(statusCode).json({ message: err.message || 'Lỗi server' });
+    } finally {
+        session.endSession();
     }
-
-    // --- 3. Tạo đơn hàng với thông tin đã được làm giàu ---
-    const order = new Order({
-      user: req.user._id,
-      items: enrichedItems,
-      total,
-      customerName,
-      phone,
-      shippingAddress,
-      shippingLocation,
-      paymentMethod: paymentMethod || 'COD',
-      shippingFee,
-      extraSurcharge,
-      voucherDiscount,
-      voucherCode,
-      status: 'Chờ xác nhận',
-    });
-
-    const savedOrder = await order.save();
-    
-    assignOrderToNearestShipper(savedOrder._id).catch(console.error);
-    notifyAdmins(savedOrder);
-
-    return res.status(201).json({
-      message: 'Tạo đơn thành công',
-      order: { ...savedOrder.toObject(), timestamps: savedOrder.timestamps }
-    });
-
-  } catch (err) {
-    console.error('Lỗi khi tạo đơn hàng:', err);
-    const statusCode = err.name === 'ValidationError' ? 400 : (err.message.includes('tồn tại') || err.message.includes('đủ hàng')) ? 400 : 500;
-    return res.status(statusCode).json({ message: err.message || 'Lỗi server' });
-  }
 };
 
 
