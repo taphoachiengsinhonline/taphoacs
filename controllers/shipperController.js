@@ -149,110 +149,66 @@ exports.changePassword = async (req, res) => {
 exports.getRevenueReport = async (req, res) => {
     try {
         const shipperId = req.user._id;
-        const { month, year } = req.query;
+        // Chỉ nhận startDate, không cần endDate để tránh lỗi
+        const { startDate } = req.query;
 
-        const targetMonth = month ? parseInt(month) - 1 : new Date().getMonth();
-        const targetYear = year ? parseInt(year) : new Date().getFullYear();
-
-        // <<< SỬA LẠI LOGIC TẠO NGÀY THÁNG CHO AN TOÀN >>>
-        // Tạo ngày đầu tiên của tháng trong múi giờ UTC
-        const startDate = new Date(Date.UTC(targetYear, targetMonth, 1, 0, 0, 0));
-        // Tạo ngày cuối cùng của tháng trong múi giờ UTC
-        const endDate = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
-        
-        // In ra để debug
-        console.log(`[REVENUE REPORT] Bắt đầu tìm kiếm cho shipper ${shipperId}`);
-        console.log(`[REVENUE REPORT] Khoảng thời gian: ${startDate.toISOString()} -> ${endDate.toISOString()}`);
-        
-        // --- 1. Lấy tất cả dữ liệu cần thiết trong tháng ---
-        const [deliveredOrders, remittances] = await Promise.all([
-            Order.find({
-                shipper: shipperId,
-                status: 'Đã giao',
-                'timestamps.deliveredAt': { $gte: startDate, $lte: endDate }
-            }).lean(),
-            Remittance.find({
-                shipper: shipperId,
-                remittanceDate: { $gte: startDate, $lte: endDate }
-            }).lean()
-        ]);
-        
-        console.log(`[REVENUE REPORT] Tìm thấy ${deliveredOrders.length} đơn đã giao và ${remittances.length} lần nộp tiền.`);
-
-        // --- 2. Xử lý dữ liệu theo từng ngày ---
-        const dailyData = {};
-        const daysInMonth = moment(startDate).utc().daysInMonth();
-
-        for (let i = 1; i <= daysInMonth; i++) {
-            const day = moment(startDate).utc().date(i).format('YYYY-MM-DD');
-            dailyData[day] = {
-                codCollected: 0,
-                amountRemitted: 0,
-                income: 0,
-                orderCount: 0
-            };
+        if (!startDate) {
+            return res.status(400).json({ message: "Vui lòng cung cấp ngày." });
         }
 
-        deliveredOrders.forEach(order => {
-            // Luôn chuyển về múi giờ VN để lấy đúng ngày
-            const day = moment(order.timestamps.deliveredAt).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
-            if (dailyData[day]) {
-                dailyData[day].codCollected += (order.total || 0);
-                dailyData[day].income += (order.shipperIncome || 0);
-                dailyData[day].orderCount += 1;
-            }
-        });
+        // Tạo khoảng thời gian cho ngày đã chọn, dựa trên múi giờ Việt Nam
+        const fromDate = moment.tz(startDate, "YYYY-MM-DD", 'Asia/Ho_Chi_Minh').startOf('day').toDate();
+        const toDate = moment.tz(startDate, "YYYY-MM-DD", 'Asia/Ho_Chi_Minh').endOf('day').toDate();
+        
+        console.log(`[REVENUE_DEBUG] Bắt đầu tìm cho shipper ${shipperId}`);
+        console.log(`[REVENUE_DEBUG] Khoảng thời gian query (UTC): ${fromDate.toISOString()} -> ${toDate.toISOString()}`);
 
-        remittances.forEach(remit => {
-            const day = moment(remit.remittanceDate).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
-            if (dailyData[day]) {
-                dailyData[day].amountRemitted = remit.amount || 0;
+        const matchConditions = {
+            shipper: new mongoose.Types.ObjectId(shipperId),
+            status: 'Đã giao',
+            'timestamps.deliveredAt': { $gte: fromDate, $lte: toDate }
+        };
+        
+        const result = await Order.aggregate([
+            { $match: matchConditions },
+            {
+                $group: {
+                    _id: null,
+                    totalCODCollected: { $sum: '$total' },
+                    totalShipperIncome: { $sum: '$shipperIncome' },
+                    completedOrders: { $sum: 1 }
+                }
             }
+        ]);
+        
+        console.log(`[REVENUE_DEBUG] Kết quả aggregate:`, result);
+
+        const dailyStats = result[0] || {
+            totalCODCollected: 0,
+            totalShipperIncome: 0,
+            completedOrders: 0
+        };
+
+        // Tìm xem ngày hôm đó đã nộp tiền chưa
+        const remittance = await Remittance.findOne({
+            shipper: shipperId,
+            remittanceDate: fromDate // Tìm đúng ngày đã nộp
         });
         
-        // --- 3. Tính toán các con số tổng hợp ---
-        let totalCODCollected = 0;
-        let totalIncome = 0;
-        let totalRemitted = 0;
-        let totalCompletedOrders = 0;
-        let totalDebt = 0;
+        const amountRemittedToday = remittance ? remittance.amount : 0;
+        const amountToRemitToday = dailyStats.totalCODCollected - amountRemittedToday;
 
-        const todayString = moment().tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
-        
-        Object.entries(dailyData).forEach(([day, data]) => {
-            totalCODCollected += data.codCollected;
-            totalIncome += data.income;
-            totalRemitted += data.amountRemitted;
-            totalCompletedOrders += data.orderCount;
-
-            // Nợ cũ là nợ của những ngày trước hôm nay
-            if (day < todayString) {
-                totalDebt += (data.codCollected - data.amountRemitted);
-            }
-        });
-        
-        // Nợ của ngày hôm nay
-        const todayData = dailyData[todayString] || { codCollected: 0, amountRemitted: 0 };
-        const todayDebt = todayData.codCollected - todayData.amountRemitted;
-        
-        // Cộng dồn nợ cũ và nợ hôm nay
-        totalDebt += (todayDebt > 0 ? todayDebt : 0);
-        
         res.status(200).json({
-            overview: {
-                totalDebt: totalDebt > 0 ? totalDebt : 0,
-                totalIncome,
-                totalCODCollected,
-                totalRemitted,
-                totalCompletedOrders
-            },
-            dailyBreakdown: Object.entries(dailyData).map(([day, data]) => ({
-                day, ...data
-            })).reverse()
+            // Luôn trả về dữ liệu của ngày đã chọn
+            totalCODCollected: dailyStats.totalCODCollected,
+            totalShipperIncome: dailyStats.totalShipperIncome,
+            completedOrders: dailyStats.completedOrders,
+            amountRemittedToday: amountRemittedToday,
+            amountToRemit: amountToRemitToday > 0 ? amountToRemitToday : 0
         });
 
     } catch (error) {
-        console.error('[getRevenueReport] Lỗi:', error);
+        console.error('[getShipperRevenue] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server khi lấy báo cáo.' });
     }
 };
