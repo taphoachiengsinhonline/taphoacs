@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const bcrypt = require('bcrypt');
 const moment = require('moment-timezone');
+const mongoose = require('mongoose');
 
 exports.updateLocation = async (req, res) => {
     try {
@@ -144,33 +145,58 @@ exports.changePassword = async (req, res) => {
 
 exports.getRevenueReport = async (req, res) => {
     try {
+        const shipperId = req.user._id;
         const { startDate, endDate } = req.query;
-        let fromDate, toDate;
-        if (startDate && endDate) {
-            fromDate = moment.tz(startDate, 'Asia/Ho_Chi_Minh').startOf('day').toDate();
-            toDate = moment.tz(endDate, 'Asia/Ho_Chi_Minh').endOf('day').toDate();
-        } else {
-            const todayVN = moment().tz('Asia/Ho_Chi_Minh');
-            fromDate = todayVN.clone().startOf('day').toDate();
-            toDate = todayVN.clone().endOf('day').toDate();
+
+        // Kiểm tra đầu vào
+        if (!startDate || !endDate) {
+            return res.status(400).json({ message: "Vui lòng cung cấp ngày bắt đầu và kết thúc." });
         }
-        const orders = await Order.find({
-            shipper: req.user._id,
-            status: 'Đã giao',
-            'timestamps.deliveredAt': { $gte: fromDate, $lte: toDate }
-        });
-        const { totalRevenue, totalIncome } = orders.reduce((acc, order) => {
-            acc.totalRevenue += order.total || 0;
-            acc.totalIncome += order.shipperIncome || 0;
-            return acc;
-        }, { totalRevenue: 0, totalIncome: 0 });
-        res.json({
-            period: { startDate: moment(fromDate).format('YYYY-MM-DD'), endDate: moment(toDate).format('YYYY-MM-DD') },
-            totalRevenue,
-            totalIncome,
-            completedOrders: orders.length
-        });
+
+        // Tạo điều kiện match cho aggregation pipeline
+        const matchConditions = {
+            shipper: new mongoose.Types.ObjectId(shipperId),
+            status: 'Đã giao', // Chỉ tính các đơn đã giao thành công
+            'timestamps.deliveredAt': {
+                $gte: moment.tz(startDate, 'Asia/Ho_Chi_Minh').startOf('day').toDate(),
+                $lte: moment.tz(endDate, 'Asia/Ho_Chi_Minh').endOf('day').toDate()
+            }
+        };
+
+        const result = await Order.aggregate([
+            { $match: matchConditions },
+            {
+                $group: {
+                    _id: null, // Gom tất cả các đơn hàng phù hợp lại
+                    
+                    // 1. TÍNH TỔNG THU NHẬP THỰC NHẬN CỦA SHIPPER
+                    // Đây là số tiền shipper thực sự bỏ túi.
+                    totalIncome: { $sum: '$shipperIncome' },
+                    
+                    // 2. TÍNH TỔNG PHÍ SHIP GỐC ĐÃ GIAO
+                    // Đây là tổng phí ship + phụ phí, không bị ảnh hưởng bởi voucher, dùng để đối soát.
+                    totalShippingFeeGenerated: { $sum: { $add: ["$shippingFee", "$extraSurcharge"] } },
+                    
+                    // 3. ĐẾM TỔNG SỐ ĐƠN ĐÃ HOÀN THÀNH
+                    completedOrders: { $sum: 1 }
+                }
+            }
+        ]);
+
+        // Nếu không có đơn nào trong khoảng thời gian, trả về kết quả mặc định là 0
+        const stats = result[0] || {
+            totalIncome: 0,
+            totalShippingFeeGenerated: 0,
+            completedOrders: 0
+        };
+        
+        // Xóa trường _id không cần thiết khỏi kết quả cuối cùng
+        delete stats._id;
+
+        res.status(200).json(stats);
+
     } catch (error) {
-        res.status(500).json({ message: 'Lỗi server: ' + error.message });
+        console.error('[getShipperRevenue] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server khi lấy báo cáo doanh thu.' });
     }
 };
