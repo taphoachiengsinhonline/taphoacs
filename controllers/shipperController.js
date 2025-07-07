@@ -8,6 +8,7 @@ const bcrypt = require('bcrypt');
 const moment = require('moment-timezone');
 const mongoose = require('mongoose');
 const { safeNotify } = require('../utils/notificationMiddleware'); // <<< THÊM
+const RemittanceRequest = require('../models/RemittanceRequest'); // Thêm import mới
 
 
 exports.updateLocation = async (req, res) => {
@@ -210,6 +211,40 @@ exports.getDashboardSummary = async (req, res) => {
     } catch (error) {
         console.error('[getShipperRevenue] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server khi lấy báo cáo.' });
+    }
+};
+
+
+exports.createRemittanceRequest = async (req, res) => {
+    try {
+        const shipperId = req.user._id;
+        const { amount, notes } = req.body;
+
+        if (!amount || amount <= 0) {
+            return res.status(400).json({ message: "Số tiền yêu cầu không hợp lệ." });
+        }
+        
+        // Kiểm tra xem có yêu cầu nào đang chờ không để tránh spam
+        const existingPending = await RemittanceRequest.findOne({ shipper: shipperId, status: 'pending' });
+        if (existingPending) {
+            return res.status(400).json({ message: "Bạn đã có một yêu cầu đang chờ xử lý. Vui lòng đợi admin xác nhận." });
+        }
+
+        const newRequest = new RemittanceRequest({
+            shipper: shipperId,
+            amount: amount,
+            shipperNotes: notes || `Tự xác nhận đã nộp tiền lúc ${new Date().toLocaleString('vi-VN')}`
+        });
+
+        await newRequest.save();
+        
+        // Gửi thông báo cho tất cả admin
+        // ... (logic notifyAdmins)
+
+        res.status(201).json({ message: "Yêu cầu đã được gửi. Vui lòng chờ admin xác nhận." });
+    } catch (error) {
+        console.error('[createRemittanceRequest] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server.' });
     }
 };
 
