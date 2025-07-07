@@ -10,6 +10,7 @@ const Remittance = require('../models/Remittance');
 const RemittanceRequest = require('../models/RemittanceRequest');
 const moment = require('moment-timezone');
 const mongoose = require('mongoose'); // Thêm để dùng transaction
+const adminController= require('../controllers/Product');
 
 // Middleware xác thực admin cho toàn bộ các route trong file này
 router.use(verifyToken, isAdmin);
