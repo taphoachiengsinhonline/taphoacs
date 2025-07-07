@@ -150,67 +150,46 @@ exports.changePassword = async (req, res) => {
 exports.getDashboardSummary = async (req, res) => {
     try {
         const shipperId = req.user._id;
-        const { startDate } = req.query; // Nhận startDate là ngày hôm nay
-
-        if (!startDate) {
-            return res.status(400).json({ message: "Vui lòng cung cấp ngày." });
-        }
-
-        // Tạo khoảng thời gian cho ngày đã chọn, dựa trên múi giờ Việt Nam
-        const fromDate = moment.tz(startDate, "YYYY-MM-DD", 'Asia/Ho_Chi_Minh').startOf('day').toDate();
-        const toDate = moment.tz(startDate, "YYYY-MM-DD", 'Asia/Ho_Chi_Minh').endOf('day').toDate();
         
-        console.log(`[REVENUE_DEBUG] Bắt đầu tìm cho shipper ${shipperId}`);
-        console.log(`[REVENUE_DEBUG] Khoảng thời gian query (UTC): ${fromDate.toISOString()} -> ${toDate.toISOString()}`);
+        // <<< SỬA: TỰ ĐỘNG LẤY NGÀY HÔM NAY, KHÔNG CẦN FRONTEND GỬI LÊN >>>
+        const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
+        const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
 
-        const matchConditions = {
-            shipper: new mongoose.Types.ObjectId(shipperId),
-            status: 'Đã giao',
-            'timestamps.deliveredAt': { $gte: fromDate, $lte: toDate }
-        };
-        
-        const result = await Order.aggregate([
-            { $match: matchConditions },
-            {
-                $group: {
-                    _id: null,
-                    totalCODCollected: { $sum: '$total' },
-                    totalShipperIncome: { $sum: '$shipperIncome' },
-                    completedOrders: { $sum: 1 }
-                }
-            }
+        const [todayDeliveredOrders, todayRemittance, processingOrders, notifications] = await Promise.all([
+            Order.find({
+                shipper: shipperId,
+                status: 'Đã giao',
+                'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd }
+            }),
+            Remittance.findOne({
+                shipper: shipperId,
+                remittanceDate: todayStart
+            }),
+            Order.countDocuments({
+                shipper: shipperId,
+                status: { $in: ['Đang xử lý', 'Đang giao'] }
+            }),
+            Notification.find({ user: shipperId }).sort('-createdAt').limit(3)
         ]);
-        
-        console.log(`[REVENUE_DEBUG] Kết quả aggregate:`, result);
 
-        const dailyStats = result[0] || {
-            totalCODCollected: 0,
-            totalShipperIncome: 0,
-            completedOrders: 0
-        };
-
-        // Tìm xem ngày hôm đó đã nộp tiền chưa
-        const remittance = await Remittance.findOne({
-            shipper: shipperId,
-            remittanceDate: fromDate // Tìm đúng ngày đã nộp
-        });
-        
-        const amountRemittedToday = remittance ? remittance.amount : 0;
-        const amountToRemitToday = dailyStats.totalCODCollected - amountRemittedToday;
+        const todayCOD = todayDeliveredOrders.reduce((sum, order) => sum + (order.total || 0), 0);
+        const todayIncome = todayDeliveredOrders.reduce((sum, order) => sum + (order.shipperIncome || 0), 0);
+        const amountRemittedToday = todayRemittance ? todayRemittance.amount : 0;
+        const amountToRemitToday = todayCOD - amountRemittedToday;
 
         res.status(200).json({
             remittance: {
-            amountToRemit: amountToRemitToday > 0 ? amountToRemitToday : 0,
-            amountRemittedToday: amountRemittedToday,
-            totalCODCollected: dailyStats.totalCODCollected,
-            totalShipperIncome: dailyStats.totalShipperIncome,
-            completedOrders: dailyStats.completedOrders,
-            }            
+                amountToRemit: amountToRemitToday > 0 ? amountToRemitToday : 0,
+                completedOrders: todayDeliveredOrders.length,
+                totalShipperIncome: todayIncome
+            },
+            notifications,
+            processingOrderCount: processingOrders
         });
 
     } catch (error) {
-        console.error('[getShipperRevenue] Lỗi:', error);
-        res.status(500).json({ message: 'Lỗi server khi lấy báo cáo.' });
+        console.error('[getDashboardSummary] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server khi lấy dữ liệu dashboard.' });
     }
 };
 
