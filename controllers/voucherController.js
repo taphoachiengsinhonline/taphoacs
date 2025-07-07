@@ -29,45 +29,54 @@ exports.createBulkVouchers = async (req, res) => {
 };
 
 exports.getAvailableVouchers = async (req, res) => {
-  try {
-    console.log('[getAvailableVouchers] User ID:', req.user?.id); // Log debug
-    const userId = req.user?.id;
-    const vouchers = await Voucher.find({
-      type: { $in: ['fixed', 'percentage'] },
-      isActive: true,
-      isFeatured: true,
-      expiryDate: { $gt: new Date() },
-      $expr: { $lt: ['$currentCollects', '$maxCollects'] }
-    });
-    console.log(`[getAvailableVouchers] Tìm thấy ${vouchers.length} voucher khả dụng`); // Log debug
-    if (userId) {
-      const collectedVouchers = await UserVoucher.find({ user: userId }).select('voucher');
-      const collectedIds = collectedVouchers.map(uv => uv.voucher.toString());
-      const filteredVouchers = vouchers.filter(v => !collectedIds.includes(v._id.toString()));
-      console.log(`[getAvailableVouchers] Sau lọc user ${userId}: ${filteredVouchers.length} voucher`); // Log debug
-      return res.status(200).json(filteredVouchers);
+    try {
+        const userId = req.user._id; // Lấy từ protect middleware
+        const now = new Date();
+
+        // Lấy tất cả voucher nổi bật, còn hạn, còn lượt
+        const availableVouchers = await Voucher.find({
+            isActive: true,
+            isFeatured: true,
+            expiryDate: { $gt: now },
+            $expr: { $lt: ["$currentCollects", "$maxCollects"] }
+        });
+
+        // Lấy ID của các voucher người dùng đã thu thập
+        const collectedVoucherDocs = await UserVoucher.find({ user: userId }).select('voucher -_id');
+        const collectedVoucherIds = new Set(collectedVoucherDocs.map(uv => uv.voucher.toString()));
+
+        // Lọc ra những voucher người dùng CHƯA thu thập
+        const finalVouchers = availableVouchers.filter(v => !collectedVoucherIds.has(v._id.toString()));
+
+        res.status(200).json(finalVouchers);
+    } catch (err) {
+        console.error('[getAvailableVouchers] Lỗi:', err);
+        res.status(500).json({ message: 'Lỗi server', error: err.message });
     }
-    res.status(200).json(vouchers);
-  } catch (err) {
-    console.error('[getAvailableVouchers] Lỗi:', err);
-    res.status(500).json({ message: 'Lỗi server', error: err.message });
-  }
 };
 
 exports.getMyVouchers = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const userVouchers = await UserVoucher.find({ user: userId, isUsed: false })
-      .populate('voucher')
-      .select('voucher collectedAt');
-    const vouchers = userVouchers
-      .map(uv => uv.voucher)
-      .filter(v => v && v.isActive && v.expiryDate > new Date());
-    res.status(200).json(vouchers);
-  } catch (err) {
-    console.error('[getMyVouchers] Lỗi:', err);
-    res.status(500).json({ message: 'Lỗi server', error: err.message });
-  }
+    try {
+        const userId = req.user._id;
+        const now = new Date();
+        
+        // Lấy các UserVoucher mà voucher của nó còn hoạt động và còn hạn
+        const userVouchers = await UserVoucher.find({ user: userId, isUsed: false })
+            .populate({
+                path: 'voucher',
+                match: { isActive: true, expiryDate: { $gt: now } }
+            });
+        
+        // Lọc bỏ những kết quả mà populate không thành công (do voucher không khớp điều kiện)
+        const validVouchers = userVouchers
+            .filter(uv => uv.voucher) // Chỉ giữ lại những cái có voucher hợp lệ
+            .map(uv => uv.voucher);
+
+        res.status(200).json(validVouchers);
+    } catch (err) {
+        console.error('[getMyVouchers] Lỗi:', err);
+        res.status(500).json({ message: 'Lỗi server', error: err.message });
+    }
 };
 
 exports.createVoucher = async (req, res) => {
@@ -103,27 +112,47 @@ exports.createVoucher = async (req, res) => {
 };
 
 exports.collectVoucher = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.id;
-    const voucher = await Voucher.findById(id);
-    if (!voucher || !voucher.isActive || voucher.expiryDate < new Date() || voucher.currentCollects >= voucher.maxCollects) {
-      return res.status(400).json({ message: 'Voucher không khả dụng' });
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const voucherId = req.params.id;
+        const userId = req.user._id;
+
+        const voucher = await Voucher.findById(voucherId).session(session);
+
+        if (!voucher) {
+            return res.status(404).json({ message: 'Voucher không tồn tại.' });
+        }
+        if (!voucher.isActive || voucher.expiryDate < new Date()) {
+            return res.status(400).json({ message: 'Voucher đã hết hạn hoặc không hoạt động.' });
+        }
+        if (voucher.currentCollects >= voucher.maxCollects) {
+            return res.status(400).json({ message: 'Voucher đã hết lượt thu thập.' });
+        }
+        
+        const existingUserVoucher = await UserVoucher.findOne({ user: userId, voucher: voucherId }).session(session);
+        if (existingUserVoucher) {
+            return res.status(400).json({ message: 'Bạn đã thu thập voucher này rồi.' });
+        }
+
+        // Tạo UserVoucher và tăng lượt đếm trong một transaction để đảm bảo an toàn
+        await UserVoucher.create([{ user: userId, voucher: voucherId }], { session });
+        voucher.currentCollects += 1;
+        await voucher.save({ session });
+
+        await session.commitTransaction();
+        res.status(200).json({ message: 'Thu thập voucher thành công.' });
+
+    } catch (err) {
+        await session.abortTransaction();
+        console.error('[collectVoucher] Lỗi:', err);
+        res.status(500).json({ message: 'Lỗi server khi thu thập voucher.' });
+    } finally {
+        session.endSession();
     }
-    const existing = await UserVoucher.findOne({ user: userId, voucher: id });
-    if (existing) {
-      return res.status(400).json({ message: 'Bạn đã thu thập voucher này' });
-    }
-    await UserVoucher.create({ user: userId, voucher: id });
-    voucher.currentCollects += 1;
-    await voucher.save();
-    res.status(200).json({ message: 'Thu thập voucher thành công' });
-  } catch (err) {
-    console.error('[collectVoucher] Lỗi:', err);
-    res.status(500).json({ message: 'Lỗi server', error: err.message });
-  }
 };
 
+// applyVoucher không cần sửa, nó đã đúng logic.
 exports.applyVoucher = async (req, res) => {
   try {
     const { voucherId, shippingFee } = req.body;
