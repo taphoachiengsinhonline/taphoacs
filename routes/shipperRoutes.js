@@ -75,7 +75,7 @@ router.post('/update-fcm-token', verifyToken, shipperController.updateFcmToken);
 
 // Route để shipper đổi mật khẩu
 router.post('/change-password', verifyToken, shipperController.changePassword);
-
+router.post('/remittance/confirm', protect, restrictTo('shipper'), shipperController.confirmRemittance);
 // Route để shipper xem báo cáo doanh thu theo khoảng thời gian tùy chỉnh hoặc theo kỳ
 router.get('/revenue', verifyToken, shipperController.getRevenueReport);
 
