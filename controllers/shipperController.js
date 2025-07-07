@@ -212,6 +212,88 @@ exports.getRevenueReport = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server khi lấy báo cáo.' });
     }
 };
+
+
+exports.getMonthlyFinancialReport = async (req, res) => {
+    try {
+        const shipperId = req.user._id;
+        const { month, year } = req.query;
+
+        if (!month || !year) {
+            return res.status(400).json({ message: "Vui lòng cung cấp tháng và năm." });
+        }
+
+        const targetMonth = parseInt(month) - 1;
+        const targetYear = parseInt(year);
+
+        const startDate = moment.tz({ year: targetYear, month: targetMonth }, 'Asia/Ho_Chi_Minh').startOf('month').toDate();
+        const endDate = moment.tz({ year: targetYear, month: targetMonth }, 'Asia/Ho_Chi_Minh').endOf('month').toDate();
+        
+        const [deliveredOrders, remittances] = await Promise.all([
+            Order.find({
+                shipper: shipperId,
+                status: 'Đã giao',
+                'timestamps.deliveredAt': { $gte: startDate, $lte: endDate }
+            }).lean(),
+            Remittance.find({
+                shipper: shipperId,
+                remittanceDate: { $gte: startDate, $lte: endDate }
+            }).lean()
+        ]);
+        
+        const dailyData = {};
+        const daysInMonth = moment(startDate).utc().daysInMonth();
+
+        for (let i = 1; i <= daysInMonth; i++) {
+            const day = moment(startDate).utc().date(i).format('YYYY-MM-DD');
+            dailyData[day] = { codCollected: 0, amountRemitted: 0, income: 0, orderCount: 0 };
+        }
+
+        deliveredOrders.forEach(order => {
+            const day = moment(order.timestamps.deliveredAt).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
+            if (dailyData[day]) {
+                dailyData[day].codCollected += (order.total || 0);
+                dailyData[day].income += (order.shipperIncome || 0);
+                dailyData[day].orderCount += 1;
+            }
+        });
+
+        remittances.forEach(remit => {
+            const day = moment(remit.remittanceDate).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
+            if (dailyData[day]) {
+                dailyData[day].amountRemitted = remit.amount || 0;
+            }
+        });
+        
+        let totalCODCollected = 0, totalIncome = 0, totalRemitted = 0, totalCompletedOrders = 0, totalDebt = 0;
+        const todayString = moment().tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
+        
+        Object.entries(dailyData).forEach(([day, data]) => {
+            totalCODCollected += data.codCollected;
+            totalIncome += data.income;
+            totalRemitted += data.amountRemitted;
+            totalCompletedOrders += data.orderCount;
+            totalDebt += (data.codCollected - data.amountRemitted);
+        });
+        
+        res.status(200).json({
+            overview: {
+                totalDebt: totalDebt > 0 ? totalDebt : 0,
+                totalIncome,
+                totalCODCollected,
+                totalRemitted,
+                totalCompletedOrders
+            },
+            dailyBreakdown: Object.entries(dailyData).map(([day, data]) => ({ day, ...data })).reverse()
+        });
+    } catch (error) {
+        console.error('[getMonthlyFinancialReport] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server khi lấy báo cáo tháng.' });
+    }
+};
+
+
+
 // ======================================================================
 // ===          API MỚI: SHIPPER XÁC NHẬN ĐÃ NỘP TIỀN                ===
 // ======================================================================
