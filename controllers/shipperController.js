@@ -3,9 +3,12 @@
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const Remittance = require('../models/Remittance');
 const bcrypt = require('bcrypt');
 const moment = require('moment-timezone');
 const mongoose = require('mongoose');
+const { safeNotify } = require('../utils/notificationMiddleware'); // <<< THÊM
+
 
 exports.updateLocation = async (req, res) => {
     try {
@@ -152,45 +155,168 @@ exports.getRevenueReport = async (req, res) => {
             return res.status(400).json({ message: "Vui lòng cung cấp ngày bắt đầu và kết thúc." });
         }
 
-        const matchConditions = {
-            shipper: new mongoose.Types.ObjectId(shipperId),
-            status: 'Đã giao',
-            'timestamps.deliveredAt': {
-                $gte: moment.tz(startDate, 'Asia/Ho_Chi_Minh').startOf('day').toDate(),
-                $lte: moment.tz(endDate, 'Asia/Ho_Chi_Minh').endOf('day').toDate()
-            }
-        };
-
-        const result = await Order.aggregate([
-            { $match: matchConditions },
-            {
-                $group: {
-                    _id: null,
-                    // 1. TỔNG TIỀN COD ĐÃ THU (PHẢI NỘP 100%)
-                    totalCODCollected: { $sum: '$total' },
-                    
-                    // 2. TỔNG THU NHẬP TẠM TÍNH (ĐỂ THAM KHẢO)
-                    totalShipperIncome: { $sum: '$shipperIncome' },
-
-                    // 3. ĐẾM SỐ ĐƠN
-                    completedOrders: { $sum: 1 }
-                }
-            }
-        ]);
-
-        const stats = result[0] || {
-            totalCODCollected: 0,
-            totalShipperIncome: 0,
-            completedOrders: 0
-        };
+        const fromDate = moment.tz(startDate, 'Asia/Ho_Chi_Minh').startOf('day').toDate();
+        const toDate = moment.tz(endDate, 'Asia/Ho_Chi_Minh').endOf('day').toDate();
         
-        delete stats._id;
+        // --- 1. Lấy tất cả các đơn đã giao trong khoảng thời gian ---
+        const deliveredOrders = await Order.find({
+            shipper: shipperId,
+            status: 'Đã giao',
+            'timestamps.deliveredAt': { $gte: fromDate, $lte: toDate }
+        });
 
-        // Trả về đúng 3 con số này
-        res.status(200).json(stats);
+        // --- 2. Lấy tất cả các lần đã nộp tiền trong khoảng thời gian ---
+        const remittances = await Remittance.find({
+            shipper: shipperId,
+            remittanceDate: { $gte: fromDate, $lte: toDate }
+        });
+        
+        // Tính toán trên server
+        let totalCODCollected = 0;
+        let totalShipperIncome = 0;
+        deliveredOrders.forEach(order => {
+            totalCODCollected += order.total || 0;
+            totalShipperIncome += order.shipperIncome || 0;
+        });
+
+        const totalRemitted = remittances.reduce((sum, item) => sum + item.amount, 0);
+
+        // --- 3. TÍNH SỐ TIỀN CẦN NỘP CỦA CHỈ HÔM NAY ---
+        const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
+        const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
+        
+        const todayDeliveredOrders = await Order.find({
+            shipper: shipperId,
+            status: 'Đã giao',
+            'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd }
+        });
+        const todayCOD = todayDeliveredOrders.reduce((sum, order) => sum + (order.total || 0), 0);
+        
+        const todayRemittance = await Remittance.findOne({
+            shipper: shipperId,
+            remittanceDate: { $gte: todayStart, $lte: todayEnd }
+        });
+        
+        // Số tiền cần nộp hôm nay là tổng COD trừ đi số đã nộp (nếu có)
+        const amountToRemitToday = todayCOD - (todayRemittance ? todayRemittance.amount : 0);
+
+        res.status(200).json({
+            // Dữ liệu cho khoảng thời gian đã chọn
+            totalCODCollected,
+            totalShipperIncome,
+            totalRemitted,
+            completedOrders: deliveredOrders.length,
+            // Dữ liệu riêng cho hôm nay để hiển thị trên home
+            amountToRemitToday: amountToRemitToday > 0 ? amountToRemitToday : 0
+        });
 
     } catch (error) {
         console.error('[getShipperRevenue] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server khi lấy báo cáo doanh thu.' });
+    }
+};
+
+
+// ======================================================================
+// ===          API MỚI: SHIPPER XÁC NHẬN ĐÃ NỘP TIỀN                ===
+// ======================================================================
+exports.confirmRemittance = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+        const shipperId = req.user._id;
+        const { amount, transactionDate } = req.body; // Ngày giao dịch thực tế
+
+        if (!amount || amount <= 0 || !transactionDate) {
+            return res.status(400).json({ message: "Thiếu thông tin số tiền hoặc ngày giao dịch." });
+        }
+
+        const date = moment(transactionDate).tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
+
+        // Tìm hoặc tạo mới bản ghi nộp tiền cho ngày hôm đó
+        let remittance = await Remittance.findOne({ shipper: shipperId, remittanceDate: date }).session(session);
+
+        if (remittance) {
+            remittance.amount += amount;
+            remittance.transactions.push({ amount, confirmedAt: new Date() });
+        } else {
+            remittance = new Remittance({
+                shipper: shipperId,
+                remittanceDate: date,
+                amount: amount,
+                transactions: [{ amount, confirmedAt: new Date() }]
+            });
+        }
+        
+        await remittance.save({ session });
+        await session.commitTransaction();
+
+        res.status(200).json({ message: "Xác nhận nộp tiền thành công!", remittance });
+
+    } catch (error) {
+        await session.abortTransaction();
+        console.error('[confirmRemittance] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server khi xác nhận nộp tiền.' });
+    } finally {
+        session.endSession();
+    }
+};
+
+
+// ======================================================================
+// ===       HÀM MỚI: Gửi thông báo nhắc nợ COD (dùng cho Cron Job)    ===
+// ======================================================================
+exports.sendCODRemittanceReminder = async () => {
+    console.log("CRON JOB: Bắt đầu gửi thông báo nhắc nộp tiền COD...");
+    try {
+        const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
+        const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
+
+        // Lấy tất cả shipper có hoạt động giao hàng hôm nay
+        const activeShippers = await Order.distinct('shipper', {
+            status: 'Đã giao',
+            'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd }
+        });
+        
+        if (activeShippers.length === 0) {
+            console.log("CRON JOB: Không có shipper nào hoạt động hôm nay.");
+            return;
+        }
+
+        for (const shipperId of activeShippers) {
+            const shipper = await User.findById(shipperId);
+            if (!shipper || !shipper.fcmToken) continue;
+
+            // Tính toán số tiền cần nộp của shipper này
+            const orders = await Order.find({ shipper: shipperId, status: 'Đã giao', 'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd } });
+            const totalCOD = orders.reduce((sum, order) => sum + order.total, 0);
+
+            const remittance = await Remittance.findOne({ shipper: shipperId, remittanceDate: { $gte: todayStart, $lte: todayEnd } });
+            const amountRemitted = remittance ? remittance.amount : 0;
+            const amountToRemit = totalCOD - amountRemitted;
+
+            if (amountToRemit > 0) {
+                const message = `Bạn cần nộp ${amountToRemit.toLocaleString()}đ tiền thu hộ (COD) cho ngày hôm nay. Vui lòng hoàn thành trước khi bắt đầu ca làm việc tiếp theo.`;
+                
+                // Gửi thông báo đẩy
+                await safeNotify(shipper.fcmToken, {
+                    title: '📢 Nhắc nhở nộp tiền COD',
+                    body: message,
+                    data: { type: 'remittance_reminder' }
+                });
+
+                // Lưu vào DB Notification
+                await Notification.create({
+                    user: shipperId,
+                    title: 'Nhắc nhở nộp tiền COD',
+                    message: message,
+                    type: 'finance'
+                });
+                console.log(`CRON JOB: Đã gửi thông báo cho shipper ${shipperId} số tiền ${amountToRemit}`);
+            }
+        }
+        console.log("CRON JOB: Hoàn thành gửi thông báo.");
+    } catch (error) {
+        console.error("CRON JOB ERROR: Lỗi khi gửi thông báo nhắc nợ:", error);
     }
 };
