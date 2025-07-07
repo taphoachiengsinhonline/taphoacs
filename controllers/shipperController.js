@@ -331,57 +331,62 @@ exports.confirmRemittance = async (req, res) => {
     session.startTransaction();
     try {
         const shipperId = req.user._id;
-        let amountToApply = req.body.amount; // Số tiền shipper vừa nộp
+        // isForOldDebt: một cờ để biết đây là nộp nợ cũ hay nộp cho ngày cụ thể
+        const { amount, transactionDate, isForOldDebt } = req.body;
 
-        if (!amountToApply || amountToApply <= 0) {
+        if (!amount || amount <= 0) {
             return res.status(400).json({ message: "Số tiền nộp không hợp lệ." });
         }
 
-        // 1. Tìm tất cả các đơn hàng đã giao nhưng chưa được đối soát hết
-        const [deliveredOrders, allRemittances] = await Promise.all([
-            Order.find({ shipper: shipperId, status: 'Đã giao' }).sort({ 'timestamps.deliveredAt': 1 }).session(session), // Sắp xếp từ cũ đến mới
-            Remittance.find({ shipper: shipperId }).session(session)
-        ]);
+        if (isForOldDebt) {
+            // === LOGIC NỘP CÔNG NỢ CŨ ===
+            let amountToApply = amount;
+            
+            // Tìm tất cả các ngày có công nợ (COD > đã nộp)
+            const orders = await Order.find({ shipper: shipperId, status: 'Đã giao' }).sort({ 'timestamps.deliveredAt': 1 }).session(session);
+            const remittances = await Remittance.find({ shipper: shipperId }).session(session);
 
-        // 2. Tạo một map để tra cứu số tiền đã nộp cho mỗi ngày
-        const remittedMap = new Map();
-        allRemittances.forEach(remit => {
-            const day = moment(remit.remittanceDate).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
-            remittedMap.set(day, remit.amount || 0);
-        });
+            const remittedMap = new Map();
+            remittances.forEach(r => { remittedMap.set(moment(r.remittanceDate).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD'), r.amount || 0); });
 
-        // 3. Tạo một map để tính tổng COD thu được mỗi ngày
-        const codMap = new Map();
-        deliveredOrders.forEach(order => {
-            const day = moment(order.timestamps.deliveredAt).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
-            codMap.set(day, (codMap.get(day) || 0) + (order.total || 0));
-        });
+            const debtByDay = {};
+            orders.forEach(o => {
+                const day = moment(o.timestamps.deliveredAt).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
+                debtByDay[day] = (debtByDay[day] || 0) + (o.total || 0);
+            });
 
-        // 4. Lặp qua các ngày có COD và trừ dần số tiền shipper vừa nộp
-        const sortedDays = Array.from(codMap.keys()).sort(); // Sắp xếp các ngày từ cũ đến mới
+            const sortedDebtDays = Object.keys(debtByDay).sort();
+            const todayString = moment().tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
 
-        for (const day of sortedDays) {
-            if (amountToApply <= 0) break; // Hết tiền để áp dụng thì dừng
+            for (const day of sortedDebtDays) {
+                if (amountToApply <= 0) break;
+                if (day >= todayString) continue; // Bỏ qua ngày hôm nay
 
-            const codOfDay = codMap.get(day);
-            const remittedOfDay = remittedMap.get(day) || 0;
-            const debtOfDay = codOfDay - remittedOfDay;
-
-            if (debtOfDay > 0) { // Nếu ngày này còn nợ
-                const amountToPayForThisDay = Math.min(debtOfDay, amountToApply);
-                
-                // Cập nhật hoặc tạo mới bản ghi Remittance cho ngày này
-                await Remittance.findOneAndUpdate(
-                    { shipper: shipperId, remittanceDate: moment.tz(day, "YYYY-MM-DD", 'Asia/Ho_Chi_Minh').startOf('day').toDate() },
-                    { 
-                        $inc: { amount: amountToPayForThisDay },
-                        $push: { transactions: { amount: amountToPayForThisDay, confirmedAt: new Date() } }
-                    },
-                    { upsert: true, new: true, session: session }
-                );
-
-                amountToApply -= amountToPayForThisDay; // Trừ đi số tiền vừa áp dụng
+                const debtOfDay = (debtByDay[day] || 0) - (remittedMap.get(day) || 0);
+                if (debtOfDay > 0) {
+                    const payment = Math.min(debtOfDay, amountToApply);
+                    await Remittance.findOneAndUpdate(
+                        { shipper: shipperId, remittanceDate: moment.tz(day, 'YYYY-MM-DD', 'Asia/Ho_Chi_Minh').startOf('day').toDate() },
+                        { $inc: { amount: payment }, $push: { transactions: { amount: payment, confirmedAt: new Date(), notes: "Thanh toán nợ cũ" } } },
+                        { upsert: true, new: true, session: session }
+                    );
+                    amountToApply -= payment;
+                }
             }
+        } else {
+            // === LOGIC NỘP CHO NGÀY CỤ THỂ (HÔM NAY) ===
+            if (!transactionDate) {
+                 return res.status(400).json({ message: "Thiếu ngày giao dịch." });
+            }
+            const date = moment(transactionDate).tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
+            await Remittance.findOneAndUpdate(
+                { shipper: shipperId, remittanceDate: date },
+                { 
+                    $inc: { amount: amount },
+                    $push: { transactions: { amount: amount, confirmedAt: new Date() } }
+                },
+                { upsert: true, new: true, session: session }
+            );
         }
         
         await session.commitTransaction();
