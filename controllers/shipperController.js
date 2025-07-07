@@ -331,30 +331,62 @@ exports.confirmRemittance = async (req, res) => {
     session.startTransaction();
     try {
         const shipperId = req.user._id;
-        const { amount, transactionDate } = req.body;
+        let amountToApply = req.body.amount; // Số tiền shipper vừa nộp
 
-        if (!amount || amount <= 0 || !transactionDate) {
-            return res.status(400).json({ message: "Thiếu thông tin số tiền hoặc ngày giao dịch." });
+        if (!amountToApply || amountToApply <= 0) {
+            return res.status(400).json({ message: "Số tiền nộp không hợp lệ." });
         }
 
-        const date = moment(transactionDate).tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
-        let remittance = await Remittance.findOne({ shipper: shipperId, remittanceDate: date }).session(session);
+        // 1. Tìm tất cả các đơn hàng đã giao nhưng chưa được đối soát hết
+        const [deliveredOrders, allRemittances] = await Promise.all([
+            Order.find({ shipper: shipperId, status: 'Đã giao' }).sort({ 'timestamps.deliveredAt': 1 }).session(session), // Sắp xếp từ cũ đến mới
+            Remittance.find({ shipper: shipperId }).session(session)
+        ]);
 
-        if (remittance) {
-            remittance.amount += amount;
-            remittance.transactions.push({ amount, confirmedAt: new Date() });
-        } else {
-            remittance = new Remittance({
-                shipper: shipperId,
-                remittanceDate: date,
-                amount: amount,
-                transactions: [{ amount, confirmedAt: new Date() }]
-            });
+        // 2. Tạo một map để tra cứu số tiền đã nộp cho mỗi ngày
+        const remittedMap = new Map();
+        allRemittances.forEach(remit => {
+            const day = moment(remit.remittanceDate).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
+            remittedMap.set(day, remit.amount || 0);
+        });
+
+        // 3. Tạo một map để tính tổng COD thu được mỗi ngày
+        const codMap = new Map();
+        deliveredOrders.forEach(order => {
+            const day = moment(order.timestamps.deliveredAt).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
+            codMap.set(day, (codMap.get(day) || 0) + (order.total || 0));
+        });
+
+        // 4. Lặp qua các ngày có COD và trừ dần số tiền shipper vừa nộp
+        const sortedDays = Array.from(codMap.keys()).sort(); // Sắp xếp các ngày từ cũ đến mới
+
+        for (const day of sortedDays) {
+            if (amountToApply <= 0) break; // Hết tiền để áp dụng thì dừng
+
+            const codOfDay = codMap.get(day);
+            const remittedOfDay = remittedMap.get(day) || 0;
+            const debtOfDay = codOfDay - remittedOfDay;
+
+            if (debtOfDay > 0) { // Nếu ngày này còn nợ
+                const amountToPayForThisDay = Math.min(debtOfDay, amountToApply);
+                
+                // Cập nhật hoặc tạo mới bản ghi Remittance cho ngày này
+                await Remittance.findOneAndUpdate(
+                    { shipper: shipperId, remittanceDate: moment.tz(day, "YYYY-MM-DD", 'Asia/Ho_Chi_Minh').startOf('day').toDate() },
+                    { 
+                        $inc: { amount: amountToPayForThisDay },
+                        $push: { transactions: { amount: amountToPayForThisDay, confirmedAt: new Date() } }
+                    },
+                    { upsert: true, new: true, session: session }
+                );
+
+                amountToApply -= amountToPayForThisDay; // Trừ đi số tiền vừa áp dụng
+            }
         }
         
-        await remittance.save({ session });
         await session.commitTransaction();
-        res.status(200).json({ message: "Xác nhận nộp tiền thành công!", remittance });
+        res.status(200).json({ message: "Xác nhận nộp tiền thành công!" });
+
     } catch (error) {
         await session.abortTransaction();
         console.error('[confirmRemittance] Lỗi:', error);
