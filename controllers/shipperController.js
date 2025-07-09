@@ -205,15 +205,21 @@ exports.createRemittanceRequest = async (req, res) => {
             throw new Error("Số tiền yêu cầu không hợp lệ.");
         }
 
-        // Tạo một yêu cầu nộp tiền mới
+// Kiểm tra xem có yêu cầu nào của shipper này đang 'pending' hay không.
+        const existingPending = await RemittanceRequest.findOne({ shipper: shipperId, status: 'pending' });
+        if (existingPending) {
+            // Trả về thông báo lỗi chung, không cần phân biệt
+            return res.status(400).json({ message: "Bạn đã có một yêu cầu đang chờ xử lý. Vui lòng đợi Admin xác nhận trước khi tạo yêu cầu mới." });
+        }
+
         const newRequest = new RemittanceRequest({
             shipper: shipperId,
             amount: amount,
             shipperNotes: notes || `Yêu cầu nộp tiền lúc ${new Date().toLocaleString('vi-VN')}`,
-            isForOldDebt: isForOldDebt // Lưu lại mục đích của lần nộp tiền
+            isForOldDebt: isForOldDebt
         });
 
-        await newRequest.save({ session });
+        await newRequest.save();
         
         // (Tùy chọn) Gửi thông báo cho Admin ở đây...
         
