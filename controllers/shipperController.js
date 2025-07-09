@@ -7,7 +7,7 @@ const moment = require('moment-timezone');
 const mongoose = require('mongoose');
 const { safeNotify } = require('../utils/notificationMiddleware');
 const RemittanceRequest = require('../models/RemittanceRequest');
-
+const SalaryPayment = require('../models/SalaryPayment'); // THÊM DÒNG NÀY
 
 exports.updateLocation = async (req, res) => {
     try {
@@ -145,9 +145,6 @@ exports.changePassword = async (req, res) => {
     }
 };
 
-// ==========================================================
-// === GET DASHBOARD SUMMARY - SỬA LẠI BẰNG AGGREGATION    ===
-// ==========================================================
 exports.getDashboardSummary = async (req, res) => {
     try {
         const shipperId = req.user._id;
@@ -222,7 +219,7 @@ exports.createRemittanceRequest = async (req, res) => {
 };
 
 // ==========================================================
-// === GET MONTHLY REPORT - SỬA LẠI BẰNG AGGREGATION      ===
+// === GET MONTHLY REPORT - SỬA LẠI ĐỂ THÊM DỮ LIỆU LƯƠNG ===
 // ==========================================================
 exports.getMonthlyFinancialReport = async (req, res) => {
     try {
@@ -233,7 +230,8 @@ exports.getMonthlyFinancialReport = async (req, res) => {
         const targetMonth = parseInt(month);
         const targetYear = parseInt(year);
         
-        const [dailyBreakdown, remittances, pendingRequest] = await Promise.all([
+        // <<< SỬA ĐỔI PROMISE.ALL TẠI ĐÂY >>>
+        const [dailyBreakdown, remittances, salaryPayments, pendingRequest] = await Promise.all([
             Order.aggregate([
                 {
                     $match: {
@@ -268,6 +266,14 @@ exports.getMonthlyFinancialReport = async (req, res) => {
                 }
             ]),
             Remittance.find({ shipper: shipperId, status: 'completed' }).lean(),
+            // Thêm query lấy lương đã trả
+            SalaryPayment.find({ 
+                shipper: shipperId, 
+                paymentDate: {
+                    $gte: moment.tz(`${year}-${month}-01`, "YYYY-M-DD", "Asia/Ho_Chi_Minh").startOf('month').toDate(),
+                    $lte: moment.tz(`${year}-${month}-01`, "YYYY-M-DD", "Asia/Ho_Chi_Minh").endOf('month').toDate()
+                }
+            }).lean(),
             RemittanceRequest.findOne({ shipper: shipperId, status: 'pending' }).lean()
         ]);
         
@@ -296,6 +302,9 @@ exports.getMonthlyFinancialReport = async (req, res) => {
         
         const todayData = dailyBreakdown.find(item => item.day === todayString) || { codCollected: 0, amountRemitted: 0 };
         const todayDebt = todayData.codCollected - todayData.amountRemitted;
+        
+        // <<< TÍNH TOÁN LƯƠNG ĐÃ NHẬN >>>
+        const totalSalaryPaid = salaryPayments.reduce((sum, payment) => sum + payment.amount, 0);
 
         const filteredBreakdown = dailyBreakdown
             .filter(item => {
@@ -309,6 +318,7 @@ exports.getMonthlyFinancialReport = async (req, res) => {
                 totalDebt: accumulatedDebt > 0 ? accumulatedDebt : 0,
                 todayDebt: todayDebt > 0 ? todayDebt : 0,
                 totalIncome: totalIncomeThisMonth,
+                totalSalaryPaid: totalSalaryPaid // <<< THÊM TRƯỜNG NÀY VÀO RESPONSE
             },
             dailyBreakdown: filteredBreakdown,
             hasPendingRequest: !!pendingRequest
