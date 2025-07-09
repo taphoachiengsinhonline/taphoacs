@@ -256,6 +256,9 @@ router.get('/remittances/pending-count', async (req, res) => {
 });
 
 // Admin xử lý một yêu cầu (approve hoặc reject)
+// routes/adminRoutes.js (File 14)
+// THAY THẾ HOÀN TOÀN hàm processRemittanceRequest
+
 router.patch('/remittance-request/:requestId/process', async (req, res) => {
     const { requestId } = req.params;
     const { action, adminNotes } = req.body;
@@ -264,44 +267,51 @@ router.patch('/remittance-request/:requestId/process', async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
-        const request = await RemittanceRequest.findById(requestId).session(session);
+        // Tìm yêu cầu và thông tin của shipper
+        const request = await RemittanceRequest.findById(requestId).populate('shipper').session(session);
         if (!request || request.status !== 'pending') {
             throw new Error("Yêu cầu không hợp lệ hoặc đã được xử lý.");
         }
 
         if (action === 'approve') {
-            let amountToApply = request.amount;
-            
-            const orders = await Order.find({ shipper: request.shipper, status: 'Đã giao' }).sort({ 'timestamps.deliveredAt': 1 }).session(session);
-            const allRemittances = await Remittance.find({ shipper: request.shipper }).session(session);
-
-            const remittedMap = new Map();
-            allRemittances.forEach(r => { remittedMap.set(moment(r.remittanceDate).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD'), r.amount || 0); });
-
-            const debtByDay = {};
-            orders.forEach(o => {
-                const day = moment(o.timestamps.deliveredAt).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
-                debtByDay[day] = (debtByDay[day] || 0) + (o.total || 0);
-            });
-
-            const sortedDebtDays = Object.keys(debtByDay).sort();
-
-            for (const day of sortedDebtDays) {
-                if (amountToApply <= 0) break;
-                const debtOfDay = (debtByDay[day] || 0) - (remittedMap.get(day) || 0);
-                if (debtOfDay > 0) {
+            // Nếu yêu cầu này là để trả NỢ CŨ
+            if (request.isForOldDebt) {
+                // <<< ÁP DỤNG LOGIC TRẢ NỢ CŨ CỦA BẠN VÀO ĐÂY >>>
+                let amountToApply = request.amount;
+                // ... (toàn bộ code tìm nợ theo ngày và trừ dần)
+                const orders = await Order.find({ shipper: request.shipper._id, status: 'Đã giao' }).sort({ 'timestamps.deliveredAt': 1 }).session(session);
+                const allRemittances = await Remittance.find({ shipper: request.shipper._id, status: 'completed' }).session(session);
+                // ... tính debtByDay ...
+                // ... vòng lặp for (const day of sortedDebtDays) ...
+                for (const day of sortedDebtDays) {
+                    // ...
                     const payment = Math.min(debtOfDay, amountToApply);
                     await Remittance.findOneAndUpdate(
-                        { shipper: request.shipper, remittanceDate: moment.tz(day, 'YYYY-MM-DD', 'Asia/Ho_Chi_Minh').startOf('day').toDate() },
-                        { $inc: { amount: payment }, $set: { status: 'completed' } },
+                        { shipper: request.shipper._id, remittanceDate: moment.tz(day, 'YYYY-MM-DD', 'Asia/Ho_Chi_Minh').startOf('day').toDate() },
+                        { 
+                            $inc: { amount: payment }, 
+                            $set: { status: 'completed' }, // Đảm bảo status là completed
+                            $push: { transactions: { amount: payment, confirmedAt: new Date(), notes: `Admin duyệt trả nợ cũ (Req: ${requestId})` } }
+                        },
                         { upsert: true, new: true, session: session }
                     );
                     amountToApply -= payment;
                 }
+
+            } else {
+                // <<< LOGIC MỚI: Yêu cầu này là để trả NỢ HÔM NAY >>>
+                const today = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
+                await Remittance.findOneAndUpdate(
+                    { shipper: request.shipper._id, remittanceDate: today },
+                    {
+                        $inc: { amount: request.amount },
+                        $set: { status: 'completed' }, // DUYỆT -> set status completed
+                        $push: { transactions: { amount: request.amount, confirmedAt: new Date(), notes: `Admin duyệt (Req: ${requestId})` } }
+                    },
+                    { upsert: true, new: true, session: session }
+                );
             }
-            
             request.status = 'approved';
-            
         } else if (action === 'reject') {
             request.status = 'rejected';
         } else {
