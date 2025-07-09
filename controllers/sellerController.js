@@ -151,11 +151,14 @@ exports.getSellerProducts = async (req, res) => {
 exports.getSellerOrders = async (req, res) => {
     try {
         const sellerId = req.user._id;
+        
+        // <<< SỬA LẠI DÒNG .select() Ở ĐÂY >>>
         const orders = await Order.find({ 'items.sellerId': sellerId })
-            .select('customerName total status createdAt items.name items.price items.quantity') 
+            // Yêu cầu lấy thêm 'timestamps.createdAt'
+            .select('customerName total status timestamps.createdAt items.name items.price items.quantity') 
             .populate('user', 'name')
-            .sort({ createdAt: -1 });
-            .lean(); 
+            .sort({ createdAt: -1 })
+            .lean();
             
         res.json(orders);
     } catch (error) {
