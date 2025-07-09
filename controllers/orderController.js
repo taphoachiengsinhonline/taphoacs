@@ -6,12 +6,12 @@ const { safeNotify } = require('../utils/notificationMiddleware');
 const assignOrderToNearestShipper = require('../utils/assignOrderToNearestShipper');
 const { processOrderCompletionForFinance, reverseFinancialEntryForOrder } = require('./financeController');
 const UserVoucher = require('../models/UserVoucher');
-const Voucher = require('../models/Voucher'); // Thêm model Voucher
+const Voucher = require('../models/Voucher');
 const mongoose = require('mongoose');
 
 // Hàm kiểm tra giờ bán
 const validateSaleTime = (product, nowMin) => {
-    if (!product.saleStartTime || !product.saleEndTime) return true; // Bán 24/7 nếu không có giờ
+    if (!product.saleStartTime || !product.saleEndTime) return true;
     const toMin = str => {
         const [h, m] = str.split(':').map(Number);
         return h * 60 + m;
@@ -37,9 +37,6 @@ const notifyAdmins = async (order) => {
     }
 };
 
-// ==============================================================================
-// ===                      HÀM CREATE ORDER - PHIÊN BẢN HOÀN CHỈNH          ===
-// ==============================================================================
 exports.createOrder = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -50,7 +47,6 @@ exports.createOrder = async (req, res) => {
         } = req.body;
         const userId = req.user._id;
 
-        // --- 1. Validation cơ bản ---
         if (!Array.isArray(items) || items.length === 0) {
             throw new Error('Giỏ hàng không được để trống');
         }
@@ -62,7 +58,6 @@ exports.createOrder = async (req, res) => {
         const nowMin = now.getHours() * 60 + now.getMinutes();
         const enrichedItems = [];
 
-        // --- 2. Xử lý và làm giàu thông tin cho từng item ---
         for (const item of items) {
             const product = await Product.findById(item.productId).populate('seller').session(session);
             if (!product) throw new Error(`Sản phẩm "${item.name}" không còn tồn tại.`);
@@ -93,7 +88,6 @@ exports.createOrder = async (req, res) => {
                 commissionAmount: commissionAmount,
             });
 
-            // Trừ kho
             if (product.variantTable && product.variantTable.length > 0) {
                 const variantIndex = product.variantTable.findIndex(v => v.combination === item.combination);
                 product.variantTable[variantIndex].stock -= item.quantity;
@@ -103,7 +97,6 @@ exports.createOrder = async (req, res) => {
             await product.save({ session });
         }
 
-        // --- 3. ĐÁNH DẤU VOUCHER ĐÃ DÙNG (NẾU CÓ) ---
         if (voucherCode && voucherDiscount > 0) {
             const voucher = await Voucher.findOne({ code: voucherCode.toUpperCase() }).session(session);
             if (!voucher) {
@@ -124,7 +117,6 @@ exports.createOrder = async (req, res) => {
             await userVoucher.save({ session });
         }
 
-        // --- 4. Tạo đơn hàng ---
         const order = new Order({
             user: userId,
             items: enrichedItems,
@@ -141,12 +133,10 @@ exports.createOrder = async (req, res) => {
             status: 'Chờ xác nhận',
         });
         
-        // Dùng create thay vì new + save để nó trả về một mảng
         const [savedOrder] = await Order.create([order], { session });
 
         await session.commitTransaction();
 
-        // Các hành động không quan trọng bằng có thể chạy sau khi transaction thành công
         assignOrderToNearestShipper(savedOrder._id).catch(console.error);
         notifyAdmins(savedOrder);
 
@@ -164,11 +154,6 @@ exports.createOrder = async (req, res) => {
         session.endSession();
     }
 };
-
-
-// ==============================================================================
-// ===                      CÁC HÀM KHÁC GIỮ NGUYÊN                             ===
-// ==============================================================================
 
 exports.countByStatus = async (req, res) => {
   try {
@@ -191,12 +176,10 @@ exports.acceptOrder = async (req, res) => {
       return res.status(403).json({ message: 'Tài khoản không phải là shipper.' });
     }
 
-    // Gán shipper và cập nhật trạng thái
     order.status = 'Đang xử lý';
     order.shipper = shipper._id;
     order.timestamps.acceptedAt = new Date();
 
-    // Tính toán và lưu thu nhập cho shipper (giữ nguyên logic đã sửa)
     const shareRate = (shipper.shipperProfile.shippingFeeShareRate || 0) / 100;
     const totalShippingFee = (order.shippingFee || 0) + (order.extraSurcharge || 0);
     const totalCommission = order.items.reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
@@ -211,9 +194,6 @@ exports.acceptOrder = async (req, res) => {
     
     const updatedOrder = await order.save();
 
-    // <<< LOGIC MỚI: GỬI THÔNG BÁO CHO SELLER VÀ CUSTOMER >>>
-
-    // 1. Gửi thông báo cho khách hàng (Customer)
     const customer = await User.findById(order.user);
     if (customer?.fcmToken) {
         await safeNotify(customer.fcmToken, {
@@ -223,14 +203,12 @@ exports.acceptOrder = async (req, res) => {
         });
     }
 
-    // 2. Tìm tất cả các seller có sản phẩm trong đơn hàng
     const sellerIds = [...new Set(order.items.map(item => item.sellerId.toString()))];
     const sellers = await User.find({
         _id: { $in: sellerIds },
         fcmToken: { $exists: true, $ne: null }
     }).select('fcmToken');
 
-    // 3. Gửi thông báo cho từng seller
     for (const seller of sellers) {
         await safeNotify(seller.fcmToken, {
             title: 'Shipper đã nhận đơn hàng!',
@@ -238,7 +216,6 @@ exports.acceptOrder = async (req, res) => {
             data: { orderId: order._id.toString(), type: 'order_accepted_by_shipper' }
         });
     }
-    // <<< KẾT THÚC LOGIC MỚI >>>
     
     res.json({ message: 'Nhận đơn thành công', order: updatedOrder });
   } catch (error) {
@@ -247,57 +224,58 @@ exports.acceptOrder = async (req, res) => {
   }
 };
 
+// ==========================================================
+// ===   SỬA HÀM NÀY ĐỂ GHI NHẬN TIMESTAMP ĐÚNG CÁCH      ===
+// ==========================================================
 exports.updateOrderStatusByShipper = async (req, res) => {
-  try {
-    const { status, cancelReason } = req.body;
-    const order = await Order.findById(req.params.id);
+    try {
+        const { status, cancelReason } = req.body;
+        const orderId = req.params.id;
 
-    if (!order) {
-      return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
+        const order = await Order.findOne({ _id: orderId, shipper: req.user._id });
+
+        if (!order) {
+            return res.status(404).json({ message: 'Đơn hàng không tồn tại hoặc bạn không phải shipper của đơn này.' });
+        }
+
+        const validTransitions = {
+            'Đang xử lý': ['Đang giao', 'Đã huỷ'],
+            'Đang giao': ['Đã giao', 'Đã huỷ']
+        };
+
+        if (!validTransitions[order.status]?.includes(status)) {
+            return res.status(400).json({ message: `Không thể chuyển từ trạng thái "${order.status}" sang "${status}".` });
+        }
+
+        const updatePayload = {
+            status: status,
+        };
+        const now = new Date();
+
+        if (status === 'Đang giao') {
+            updatePayload['timestamps.deliveringAt'] = now;
+        } else if (status === 'Đã giao') {
+            updatePayload['timestamps.deliveredAt'] = now;
+        } else if (status === 'Đã huỷ') {
+            updatePayload['timestamps.canceledAt'] = now;
+            updatePayload.cancelReason = cancelReason || 'Shipper đã hủy đơn';
+        }
+
+        const updatedOrder = await Order.findByIdAndUpdate(
+            orderId,
+            { $set: updatePayload },
+            { new: true }
+        );
+
+        if (status === 'Đã giao') {
+            await processOrderCompletionForFinance(updatedOrder._id);
+        }
+
+        res.json({ message: 'Cập nhật trạng thái thành công', order: updatedOrder });
+    } catch (error) {
+        console.error(`Lỗi khi shipper cập nhật trạng thái:`, error);
+        res.status(500).json({ message: 'Lỗi server' });
     }
-    if (!order.shipper || order.shipper.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Bạn không phải là shipper của đơn hàng này.' });
-    }
-
-    const validTransitions = {
-      'Đang xử lý': ['Đang giao', 'Đã huỷ'],
-      'Đang giao': ['Đã giao', 'Đã huỷ']
-    };
-
-    if (!validTransitions[order.status]?.includes(status)) {
-      return res.status(400).json({ message: `Không thể chuyển từ trạng thái "${order.status}" sang "${status}".` });
-    }
-
-    // Cập nhật trạng thái và thời gian
-    order.status = status;
-    const now = new Date();
-
-    if (status === 'Đang giao') {
-      order.timestamps.deliveringAt = now;
-    } else if (status === 'Đã giao') {
-      order.timestamps.deliveredAt = now;
-    } else if (status === 'Đã huỷ') {
-      order.timestamps.canceledAt = now;
-      order.cancelReason = cancelReason || 'Shipper đã hủy đơn';
-    }
-
-    // Lưu các thay đổi về trạng thái và thời gian vào DB
-    const updatedOrder = await order.save();
-    
-    // <<< LOGIC ĐÚNG: CHỈ XỬ LÝ TÀI CHÍNH SAU KHI ĐƠN HÀNG ĐÃ THỰC SỰ LÀ "ĐÃ GIAO" >>>
-    if (status === 'Đã giao') {
-        // Gọi hàm xử lý tài chính một cách an toàn
-        // Dùng `await` để đảm bảo nó chạy xong trước khi gửi response
-        await processOrderCompletionForFinance(updatedOrder._id);
-    }
-
-    // Gửi thông báo cho khách hàng (nếu có)
-
-    res.json({ message: 'Cập nhật trạng thái thành công', order: updatedOrder });
-  } catch (error) {
-    console.error(`Lỗi khi shipper cập nhật trạng thái:`, error);
-    res.status(500).json({ message: 'Lỗi server' });
-  }
 };
 
 exports.getShipperOrders = async (req, res) => {
@@ -326,20 +304,12 @@ exports.countOrdersByStatus = async (req, res) => {
       return res.status(401).json({ message: 'Phiên đăng nhập không hợp lệ' });
     }
 
-    // Sử dụng aggregate để tối ưu và chính xác hơn
     const counts = await Order.aggregate([
-      { $match: { user: req.user._id } }, // Chỉ tìm đơn của user đang đăng nhập
+      { $match: { user: req.user._id } },
       { $group: { _id: '$status', count: { $sum: 1 } } }
     ]);
 
-    // Chuyển đổi kết quả về đúng định dạng mà frontend mong đợi
-    const result = {
-        pending: 0,
-        confirmed: 0,
-        shipped: 0,
-        delivered: 0,
-        canceled: 0
-    };
+    const result = { pending: 0, confirmed: 0, shipped: 0, delivered: 0, canceled: 0 };
 
     counts.forEach(item => {
         if (item._id === 'Chờ xác nhận') result.pending = item.count;
@@ -350,7 +320,6 @@ exports.countOrdersByStatus = async (req, res) => {
     });
 
     res.status(200).json(result);
-
   } catch (err) {
     console.error('[countOrdersByStatus] Lỗi:', err);
     return res.status(500).json({ message: 'Lỗi server khi đếm đơn hàng' });
@@ -360,8 +329,8 @@ exports.countOrdersByStatus = async (req, res) => {
 exports.getOrderById = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id)
-      .populate('user', 'name phone') // Lấy tên và SĐT của khách hàng
-      .populate('shipper', 'name phone shipperProfile.vehicleType shipperProfile.licensePlate'); // Lấy thông tin của shipper
+      .populate('user', 'name phone')
+      .populate('shipper', 'name phone shipperProfile.vehicleType shipperProfile.licensePlate');
 
     if (!order) {
       return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
@@ -380,38 +349,27 @@ exports.getOrderById = async (req, res) => {
     if (canView) {
       let responseOrder = order.toObject({ virtuals: true });
       responseOrder.timestamps = order.timestamps;
-      
-      // Không cần xóa thông tin nữa, vì frontend sẽ tự quyết định hiển thị gì
       res.json(responseOrder);
     } else {
       res.status(403).json({ message: 'Bạn không có quyền truy cập đơn hàng này.' });
     }
-
   } catch (err) {
     console.error('[getOrderById] error:', err);
     res.status(500).json({ message: err.message || 'Lỗi server' });
   }
 };
 
-
 exports.getAllOrders = async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
     const query = status ? { status } : {};
-
-    // <<< SỬA ĐỔI: Thêm `sort` để sắp xếp đơn hàng mới nhất lên đầu >>>
     const options = {
       page: parseInt(page, 10),
       limit: parseInt(limit, 10),
       sort: { 'timestamps.createdAt': -1 }, 
-      populate: {
-        path: 'user',
-        select: 'name' // Chỉ lấy tên user cho gọn
-      },
+      populate: { path: 'user', select: 'name' },
     };
-
     const result = await Order.paginate(query, options);
-    
     res.json({
       docs: result.docs.map(doc => ({ ...doc.toObject(), timestamps: doc.timestamps })),
       totalPages: result.totalPages,
@@ -425,20 +383,17 @@ exports.getAllOrders = async (req, res) => {
 
 exports.updateOrderStatus = async (req, res) => {
   try {
-    const { status, cancelReason } = req.body; // Thêm cancelReason
+    const { status, cancelReason } = req.body;
     if (!status) {
       return res.status(400).json({ message: 'Thiếu thông tin trạng thái mới' });
     }
-
     const order = await Order.findById(req.params.id);
     if (!order) {
       return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
     }
-
-    const oldStatus = order.status; // Lưu lại trạng thái cũ để so sánh
+    const oldStatus = order.status;
     order.status = status;
     const now = new Date();
-
     switch (status) {
       case 'Đang xử lý':
         if (!order.timestamps.acceptedAt) order.timestamps.acceptedAt = now;
@@ -457,23 +412,14 @@ exports.updateOrderStatus = async (req, res) => {
           order.timestamps.canceledAt = now;
           const reason = cancelReason || 'Admin đã hủy đơn';
           order.cancelReason = reason;
-
-          // <<< LOGIC MỚI: KIỂM TRA VÀ ĐẢO NGƯỢC GIAO DỊCH >>>
-          // Chỉ đảo ngược nếu trạng thái cũ là "Đã giao"
           if (oldStatus === 'Đã giao') {
             await reverseFinancialEntryForOrder(order._id, reason);
           }
         }
         break;
     }
-
     const updatedOrder = await order.save();
-    
-    res.json({
-      message: 'Cập nhật trạng thái thành công',
-      order: updatedOrder
-    });
-
+    res.json({ message: 'Cập nhật trạng thái thành công', order: updatedOrder });
   } catch (err) {
     console.error('[updateOrderStatus by Admin] error:', err);
     res.status(500).json({ message: err.message || 'Lỗi server khi cập nhật trạng thái' });
@@ -497,32 +443,15 @@ exports.cancelOrder = async (req, res) => {
 
 exports.adminCountByStatus = async (req, res) => {
   try {
-    const counts = await Order.aggregate([
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 }
-        }
-      }
-    ]);
-
-    const result = {
-        'pending': 0,
-        'confirmed': 0,
-        'shipped': 0,
-        'delivered': 0,
-        'canceled': 0
-    };
-
+    const counts = await Order.aggregate([ { $group: { _id: '$status', count: { $sum: 1 } } } ]);
+    const result = { 'pending': 0, 'confirmed': 0, 'shipped': 0, 'delivered': 0, 'canceled': 0 };
     counts.forEach(item => {
-        // Ánh xạ từ tên trạng thái trong DB sang key mà frontend mong đợi
         if (item._id === 'Chờ xác nhận') result.pending = item.count;
         if (item._id === 'Đang xử lý') result.confirmed = item.count;
         if (item._id === 'Đang giao') result.shipped = item.count;
         if (item._id === 'Đã giao') result.delivered = item.count;
         if (item._id === 'Đã huỷ') result.canceled = item.count;
     });
-
     res.status(200).json(result);
   } catch (error) {
     console.error('[adminCountByStatus] Lỗi:', error);
