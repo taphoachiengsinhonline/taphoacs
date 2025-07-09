@@ -13,7 +13,10 @@ const remittanceRequestSchema = new mongoose.Schema({
     adminNotes: String,
     approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     processedAt: Date,
-    isForOldDebt: { type: Boolean, default: false }
+    isForOldDebt: { // Mục đích của yêu cầu: true-trả nợ cũ, false-trả nợ hôm nay
+        type: Boolean, 
+        default: false 
+    }
 }, { timestamps: true });
 
 module.exports = mongoose.model('RemittanceRequest', remittanceRequestSchema);
