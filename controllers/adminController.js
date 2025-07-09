@@ -219,8 +219,8 @@ exports.getShipperFinancialDetails = async (req, res) => {
         const targetMonth = parseInt(month);
         const targetYear = parseInt(year);
 
-        const [incomeAggregation, paymentResult, remittances] = await Promise.all([
-            // 1. Tính thu nhập bằng aggregation pipeline chuẩn (copy từ shipperController)
+        const [incomeAggregation, paymentAggregation, remittances] = await Promise.all([
+            // 1. Tính TỔNG THU NHẬP trong tháng
             Order.aggregate([
                 {
                     $match: {
@@ -232,37 +232,30 @@ exports.getShipperFinancialDetails = async (req, res) => {
                 {
                     $project: {
                         income: "$shipperIncome",
-                        // Dùng toán tử của MongoDB để lấy năm/tháng theo timezone
                         year: { $year: { date: "$timestamps.deliveredAt", timezone: "Asia/Ho_Chi_Minh" } },
                         month: { $month: { date: "$timestamps.deliveredAt", timezone: "Asia/Ho_Chi_Minh" } }
                     }
                 },
-                {
-                    // Match lại sau khi đã có year/month chuẩn
-                    $match: {
-                        year: targetYear,
-                        month: targetMonth
-                    }
-                },
-                {
-                    $group: {
-                        _id: null,
-                        totalIncome: { $sum: "$income" }
-                    }
-                }
+                { $match: { year: targetYear, month: targetMonth } },
+                { $group: { _id: null, totalIncome: { $sum: "$income" } } }
             ]),
             
-            // 2. Tính lương đã trả (giữ nguyên, logic này đã đúng)
+            // 2. Tính TỔNG LƯƠNG ĐÃ TRẢ trong tháng
             SalaryPayment.aggregate([
                 {
                     $match: {
                         shipper: new mongoose.Types.ObjectId(shipperId),
-                        paymentDate: {
-                            $gte: moment({ year: targetYear, month: targetMonth - 1 }).startOf('month').toDate(),
-                            $lte: moment({ year: targetYear, month: targetMonth - 1 }).endOf('month').toDate()
-                        }
+                        'paymentDate': { $exists: true, $ne: null }
                     }
                 },
+                {
+                    $project: {
+                        amount: "$amount",
+                        year: { $year: { date: "$paymentDate", timezone: "Asia/Ho_Chi_Minh" } },
+                        month: { $month: { date: "$paymentDate", timezone: "Asia/Ho_Chi_Minh" } }
+                    }
+                },
+                { $match: { year: targetYear, month: targetMonth } },
                 { $group: { _id: null, totalPaid: { $sum: "$amount" } } }
             ]),
             
@@ -278,7 +271,7 @@ exports.getShipperFinancialDetails = async (req, res) => {
         ]);
         
         const totalIncome = incomeAggregation[0]?.totalIncome || 0;
-        const totalSalaryPaid = paymentResult[0]?.totalPaid || 0;
+        const totalSalaryPaid = paymentAggregation[0]?.totalPaid || 0;
 
         res.status(200).json({
             totalIncome: totalIncome,
