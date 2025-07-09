@@ -10,6 +10,7 @@ const Remittance = require('../models/Remittance');
 const RemittanceRequest = require('../models/RemittanceRequest');
 const moment = require('moment-timezone');
 const mongoose = require('mongoose');
+const adminController = require('../controllers/adminController');
 
 // Middleware: Yêu cầu tất cả các route trong file này phải là admin đã đăng nhập
 router.use(verifyToken, isAdmin);
@@ -334,5 +335,7 @@ router.patch('/remittance-request/:requestId/process', async (req, res) => {
     }
 });
 
+router.post('/shippers/:shipperId/pay-salary', adminController.payShipperSalary);
+router.get('/shippers/:shipperId/financial-details', adminController.getShipperFinancialDetails);
 
 module.exports = router;
