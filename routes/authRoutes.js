@@ -30,7 +30,6 @@ router.post('/register', async (req, res) => {
   try {
     const { name, email, password, address, phone, location, role, fcmToken, shipperProfile } = req.body;
 
-    // Kiểm tra thông tin bắt buộc
     if (!name || !email || !password || !address || !phone) {
       return res.status(400).json({
         status: 'error',
@@ -38,19 +37,16 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Kiểm tra email đã tồn tại
     const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
     if (existingUser) {
       return res.status(409).json({ status: 'error', message: 'Email đã tồn tại' });
     }
 
-    // Kiểm tra role hợp lệ
     const validRoles = ['customer', 'admin', 'shipper'];
     if (role && !validRoles.includes(role)) {
       return res.status(400).json({ status: 'error', message: 'Role không hợp lệ' });
     }
 
-    // Chuẩn bị dữ liệu user
     const userData = {
       name,
       email: email.toLowerCase().trim(),
@@ -61,12 +57,10 @@ router.post('/register', async (req, res) => {
       location: location || { type: 'Point', coordinates: [0, 0] }
     };
 
-    // Thêm fcmToken nếu có
     if (fcmToken) {
       userData.fcmToken = fcmToken;
     }
 
-    // Thêm thông tin shipper nếu role là shipper
     if (role === 'shipper') {
       if (!shipperProfile?.vehicleType || !shipperProfile?.licensePlate) {
         return res.status(400).json({ status: 'error', message: 'Thiếu thông tin phương tiện cho shipper' });
@@ -74,30 +68,38 @@ router.post('/register', async (req, res) => {
       userData.shipperProfile = shipperProfile;
     }
 
-    // Tạo user mới
     const user = new User(userData);
     await user.save();
 
-    // Cấp voucher cho khách mới nếu role là customer
     if (user.role === 'customer') {
       await voucherController.grantNewUserVoucher(user._id);
     }
 
-    // Tạo token
     const { accessToken, refreshToken } = generateTokens(user._id);
+    
+    // Tạo đối tượng user trả về
+    const userResponse = {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        address: user.address,
+        phone: user.phone,
+        role: user.role,
+        isAdmin: user.role === 'admin'
+    };
+    
+    // Thêm các trường đặc thù theo role
+    if (user.role === 'shipper') {
+        userResponse.shipperProfile = user.shipperProfile;
+    }
+    if (user.role === 'seller') {
+        userResponse.commissionRate = user.commissionRate;
+    }
 
     res.status(201).json({
       status: 'success',
       data: {
-        user: {
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          address: user.address,
-          phone: user.phone,
-          role: user.role,
-          isAdmin: user.role === 'admin'
-        },
+        user: userResponse,
         token: accessToken,
         refreshToken
       }
@@ -114,20 +116,20 @@ router.post('/login', async (req, res) => {
     const { email, password, client_type } = req.body;
     console.log('[DEBUG] Login request:', { email, client_type });
 
-    // Kiểm tra email và password
     if (!email || !password) {
       return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
     }
 
-    // Tìm user
-    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password +role +phone +address');
+    // SỬA LẠI .select() ĐỂ LẤY THÊM TRƯỜNG CẦN THIẾT
+    const user = await User.findOne({ email: email.toLowerCase().trim() })
+        .select('+password +role +phone +address +name +email +shipperProfile +commissionRate');
+    
     console.log('[DEBUG] User found:', user ? user.email : 'Không tồn tại');
 
     if (!user) {
       return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
     }
 
-    // So sánh mật khẩu
     const isMatch = await bcrypt.compare(password, user.password);
     console.log('[DEBUG] Password match:', isMatch);
 
@@ -135,38 +137,45 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
     }
 
-   const allowedRoles = {
-    customer: ['customer', 'admin'], // App khách hàng cho phép user và admin
-    shipper: ['shipper'],             // App shipper chỉ cho shipper
-    seller: ['seller']                // App seller chỉ cho seller
-};
+    const allowedRoles = {
+      customer: ['customer', 'admin'],
+      shipper: ['shipper'],
+      seller: ['seller']
+    };
+    const requestClientType = client_type || 'customer'; 
+    if (!allowedRoles[requestClientType] || !allowedRoles[requestClientType].includes(user.role)) {
+        console.log(`[DEBUG] Role không hợp lệ. client_type: ${requestClientType}, user.role: ${user.role}`);
+        return res.status(403).json({
+            status: 'error',
+            message: 'Tài khoản của bạn không có quyền truy cập vào ứng dụng này.'
+        });
+    }
 
-// client_type được gửi từ frontend, ví dụ: 'customer', 'shipper', 'seller'
-const requestClientType = client_type || 'customer'; 
-
-if (!allowedRoles[requestClientType] || !allowedRoles[requestClientType].includes(user.role)) {
-    console.log(`[DEBUG] Role không hợp lệ. client_type: ${requestClientType}, user.role: ${user.role}`);
-    return res.status(403).json({
-        status: 'error',
-        message: 'Tài khoản của bạn không có quyền truy cập vào ứng dụng này.'
-    });
-}
-// ===== KẾT THÚC LOGIC KIỂM TRA =====
-
-    // Tạo token và response
     const { accessToken, refreshToken } = generateTokens(user._id);
+
+    // SỬA LẠI userResponse ĐỂ TRẢ VỀ ĐẦY ĐỦ DỮ LIỆU
+    const userResponse = {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        address: user.address,
+        role: user.role,
+        isAdmin: user.role === 'admin',
+    };
+    
+    // Thêm các trường đặc thù theo role
+    if (user.role === 'shipper') {
+        userResponse.shipperProfile = user.shipperProfile;
+    }
+    if (user.role === 'seller') {
+        userResponse.commissionRate = user.commissionRate;
+    }
+
     res.status(200).json({
       status: 'success',
       data: {
-        user: {
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          address: user.address,
-          role: user.role,
-          isAdmin: user.role === 'admin'
-        },
+        user: userResponse,
         token: accessToken,
         refreshToken
       }
@@ -218,14 +227,37 @@ router.post('/refresh-token', async (req, res) => {
   }
 });
 
+// Lấy thông tin người dùng hiện tại
 router.get('/me', verifyToken, async (req, res) => {
     try {
-        // req.user đã được gán bởi middleware verifyToken
-        // Trả về thông tin user (không bao gồm password)
+        // Query lại DB để đảm bảo lấy dữ liệu mới và đầy đủ nhất
+        const user = await User.findById(req.user._id).select('+role +phone +address +name +email +shipperProfile +commissionRate');
+        
+        if (!user) {
+            return res.status(404).json({ status: 'error', message: 'Không tìm thấy người dùng' });
+        }
+
+        const userResponse = {
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            phone: user.phone,
+            address: user.address,
+            role: user.role,
+            isAdmin: user.role === 'admin',
+        };
+
+        if (user.role === 'shipper') {
+            userResponse.shipperProfile = user.shipperProfile;
+        }
+        if (user.role === 'seller') {
+            userResponse.commissionRate = user.commissionRate;
+        }
+
         res.status(200).json({
             status: 'success',
             data: {
-                user: req.user 
+                user: userResponse 
             }
         });
     } catch (error) {
