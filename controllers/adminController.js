@@ -2,18 +2,33 @@ const User = require('../models/User');
 const Remittance = require('../models/Remittance');
 const Order = require('../models/Order');
 const moment = require('moment-timezone');
-const SalaryPayment = require('../models/SalaryPayment');
-const mongoose = require('mongoose');
+const mongoose = require('mongoose'); // THÊM DÒNG NÀY
+const RemittanceRequest = require('../models/RemittanceRequest'); // THÊM DÒNG NÀY
+const SalaryPayment = require('../models/SalaryPayment'); // THÊM DÒNG NÀY
 
 // API để lấy danh sách tất cả các shipper và công nợ của họ
-
 exports.getShipperDebtOverview = async (req, res) => {
     try {
-        // 1. Lấy tất cả các user có vai trò là shipper
         const shippers = await User.find({ role: 'shipper' }).select('name phone').lean();
 
-        // 2. Lấy tất cả các yêu cầu nộp tiền đang chờ xử lý
-        const pendingRequests = await RemittanceRequest.find({ status: 'pending' }).lean();
+        if (shippers.length === 0) {
+            return res.status(200).json([]);
+        }
+
+        const shipperIds = shippers.map(s => s._id);
+
+        const [pendingRequests, codResults, remittedResults] = await Promise.all([
+            RemittanceRequest.find({ shipper: { $in: shipperIds }, status: 'pending' }).lean(),
+            Order.aggregate([
+                { $match: { shipper: { $in: shipperIds }, status: 'Đã giao' } },
+                { $group: { _id: '$shipper', total: { $sum: '$total' } } }
+            ]),
+            Remittance.aggregate([
+                { $match: { shipper: { $in: shipperIds }, status: 'completed' } },
+                { $group: { _id: '$shipper', total: { $sum: '$amount' } } }
+            ])
+        ]);
+
         const pendingRequestMap = new Map();
         pendingRequests.forEach(req => {
             const shipperId = req.shipper.toString();
@@ -23,36 +38,25 @@ exports.getShipperDebtOverview = async (req, res) => {
             pendingRequestMap.get(shipperId).push(req);
         });
 
-        // 3. Tính công nợ cho từng shipper
-        const debtData = await Promise.all(shippers.map(async (shipper) => {
-            // Lấy tổng COD và tổng đã nộp của mỗi shipper
-            const [codResult, remittedResult] = await Promise.all([
-                Order.aggregate([
-                    { $match: { shipper: shipper._id, status: 'Đã giao' } },
-                    { $group: { _id: null, total: { $sum: '$total' } } }
-                ]),
-                // Chỉ tính các khoản nộp tiền đã được 'completed'
-                Remittance.aggregate([
-                    { $match: { shipper: shipper._id, status: 'completed' } },
-                    { $group: { _id: null, total: { $sum: '$amount' } } }
-                ])
-            ]);
+        const codMap = new Map(codResults.map(item => [item._id.toString(), item.total]));
+        const remittedMap = new Map(remittedResults.map(item => [item._id.toString(), item.total]));
 
-            const totalCOD = codResult[0]?.total || 0;
-            const totalRemitted = remittedResult[0]?.total || 0;
+        const debtData = shippers.map(shipper => {
+            const shipperIdStr = shipper._id.toString();
+            const totalCOD = codMap.get(shipperIdStr) || 0;
+            const totalRemitted = remittedMap.get(shipperIdStr) || 0;
             const totalDebt = totalCOD - totalRemitted;
 
             return {
                 ...shipper,
                 totalDebt: totalDebt > 0 ? totalDebt : 0,
-                pendingRequests: pendingRequestMap.get(shipper._id.toString()) || [] // Lấy các yêu cầu đang chờ của shipper này
+                pendingRequests: pendingRequestMap.get(shipperIdStr) || []
             };
-        }));
-        
-        // Sắp xếp shipper có nợ cao nhất hoặc có yêu cầu chờ xử lý lên đầu
+        });
+
         debtData.sort((a, b) => {
             if (b.pendingRequests.length > a.pendingRequests.length) return 1;
-            if (b.pendingRequests.length < a.pendingRequests.length) return -1;
+            if (a.pendingRequests.length > b.pendingRequests.length) return -1;
             return b.totalDebt - a.totalDebt;
         });
 
@@ -62,7 +66,8 @@ exports.getShipperDebtOverview = async (req, res) => {
         res.status(500).json({ message: "Lỗi server" });
     }
 };
-// API mới: Lấy các yêu cầu đang chờ
+
+// API lấy các yêu cầu nộp tiền đang chờ
 exports.getPendingRemittanceRequests = async (req, res) => {
     try {
         const requests = await RemittanceRequest.find({ status: 'pending' }).populate('shipper', 'name phone').sort({ createdAt: -1 });
@@ -70,7 +75,7 @@ exports.getPendingRemittanceRequests = async (req, res) => {
     } catch (error) { res.status(500).json({ message: "Lỗi server" }); }
 };
 
-// API mới: Đếm số yêu cầu đang chờ
+// API đếm số yêu cầu nộp tiền đang chờ
 exports.countPendingRemittanceRequests = async (req, res) => {
     try {
         const count = await RemittanceRequest.countDocuments({ status: 'pending' });
@@ -78,10 +83,10 @@ exports.countPendingRemittanceRequests = async (req, res) => {
     } catch (error) { res.status(500).json({ message: "Lỗi server" }); }
 };
 
-// API mới: Admin duyệt yêu cầu
+// API Admin duyệt yêu cầu nộp tiền
 exports.processRemittanceRequest = async (req, res) => {
     const { requestId } = req.params;
-    const { action, adminNotes } = req.body; // 'approve' hoặc 'reject'
+    const { action, adminNotes } = req.body;
     const adminId = req.user._id;
 
     const session = await mongoose.startSession();
@@ -93,26 +98,48 @@ exports.processRemittanceRequest = async (req, res) => {
         }
 
         if (action === 'approve') {
-            let amountToApply = request.amount;
-            
-            // <<< LOGIC PHÂN BỔ TIỀN VÀO CÁC NGÀY NỢ CŨ >>>
-            // (giữ nguyên logic từ hàm confirmRemittance cũ)
-            // Tìm các ngày còn nợ, trừ dần từ cũ đến mới...
-            const orders = await Order.find({ shipper: request.shipper, status: 'Đã giao' }).sort({ 'timestamps.deliveredAt': 1 }).session(session);
-            const allRemittances = await Remittance.find({ shipper: request.shipper }).session(session);
-            // ...
-            for (const day of sortedDebtDays) {
-                // ...
+            // Nếu yêu cầu này là để trả NỢ CŨ
+            if (request.isForOldDebt) {
+                let amountToApply = request.amount;
+                const orders = await Order.find({ shipper: request.shipper, status: 'Đã giao' }).sort({ 'timestamps.deliveredAt': 1 }).session(session);
+                const allRemittances = await Remittance.find({ shipper: request.shipper, status: 'completed' }).session(session);
+
+                const remittedMap = new Map();
+                allRemittances.forEach(r => { remittedMap.set(moment(r.remittanceDate).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD'), r.amount || 0); });
+
+                const debtByDay = {};
+                orders.forEach(o => {
+                    const day = moment(o.timestamps.deliveredAt).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
+                    debtByDay[day] = (debtByDay[day] || 0) + (o.total || 0);
+                });
+
+                const sortedDebtDays = Object.keys(debtByDay).sort();
+                const todayString = moment().tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
+
+                for (const day of sortedDebtDays) {
+                    if (amountToApply <= 0) break;
+                    if (day >= todayString) continue;
+
+                    const debtOfDay = (debtByDay[day] || 0) - (remittedMap.get(day) || 0);
+                    if (debtOfDay > 0) {
+                        const payment = Math.min(debtOfDay, amountToApply);
+                        await Remittance.findOneAndUpdate(
+                            { shipper: request.shipper, remittanceDate: moment.tz(day, 'YYYY-MM-DD', 'Asia/Ho_Chi_Minh').startOf('day').toDate() },
+                            { $inc: { amount: payment }, $set: { status: 'completed' }, $push: { transactions: { amount: payment, confirmedAt: new Date(), notes: `Admin duyệt trả nợ cũ (Req: ${requestId})` } } },
+                            { upsert: true, new: true, session: session }
+                        );
+                        amountToApply -= payment;
+                    }
+                }
+            } else { // Yêu cầu này là để trả NỢ HÔM NAY
+                const today = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
                 await Remittance.findOneAndUpdate(
-                    { shipper: request.shipper, remittanceDate: ... },
-                    { $inc: { amount: payment }, ... },
-                    { upsert: true, session: session }
+                    { shipper: request.shipper, remittanceDate: today },
+                    { $inc: { amount: request.amount }, $set: { status: 'completed' }, $push: { transactions: { amount: request.amount, confirmedAt: new Date(), notes: `Admin duyệt (Req: ${requestId})` } } },
+                    { upsert: true, new: true, session: session }
                 );
-                amountToApply -= payment;
             }
-            
             request.status = 'approved';
-            
         } else if (action === 'reject') {
             request.status = 'rejected';
         } else {
@@ -125,7 +152,7 @@ exports.processRemittanceRequest = async (req, res) => {
         await request.save({ session });
         
         await session.commitTransaction();
-        res.status(200).json({ message: `Đã ${action} yêu cầu thành công.` });
+        res.status(200).json({ message: `Đã ${action === 'approve' ? 'xác nhận' : 'từ chối'} yêu cầu thành công.` });
     } catch (error) {
         await session.abortTransaction();
         console.error("[processRemittanceRequest] Lỗi:", error);
@@ -135,7 +162,11 @@ exports.processRemittanceRequest = async (req, res) => {
     }
 };
 
+// ==========================================================
+// ===          CÁC HÀM MỚI ĐỂ QUẢN LÝ LƯƠNG            ===
+// ==========================================================
 
+// API để admin trả lương
 exports.payShipperSalary = async (req, res) => {
     try {
         const { shipperId } = req.params;
@@ -149,7 +180,7 @@ exports.payShipperSalary = async (req, res) => {
             return res.status(400).json({ message: "Vui lòng cung cấp tháng và năm trả lương." });
         }
 
-        const paymentDate = moment.tz(`${year}-${month}-01`, "YYYY-MM-DD", "Asia/Ho_Chi_Minh").startOf('month').toDate();
+        const paymentDate = moment.tz(`${year}-${month}-01`, "YYYY-M-DD", "Asia/Ho_Chi_Minh").startOf('month').toDate();
 
         const newPayment = new SalaryPayment({
             shipper: shipperId,
@@ -160,8 +191,6 @@ exports.payShipperSalary = async (req, res) => {
         });
 
         await newPayment.save();
-
-        // (Tùy chọn) Gửi thông báo cho shipper rằng họ đã nhận được lương
         
         res.status(201).json({ message: 'Thanh toán lương thành công!', payment: newPayment });
 
@@ -175,7 +204,7 @@ exports.payShipperSalary = async (req, res) => {
 exports.getShipperFinancialDetails = async (req, res) => {
     try {
         const { shipperId } = req.params;
-        const { month, year } = req.query; // Lấy tháng/năm từ query params
+        const { month, year } = req.query;
 
         if (!month || !year) {
             return res.status(400).json({ message: "Vui lòng cung cấp tháng và năm." });
@@ -185,7 +214,6 @@ exports.getShipperFinancialDetails = async (req, res) => {
         const endDate = moment(startDate).endOf('month').toDate();
 
         const [incomeResult, paymentResult, remittances] = await Promise.all([
-            // 1. Tính tổng thu nhập (shipperIncome) trong tháng
             Order.aggregate([
                 {
                     $match: {
@@ -196,7 +224,6 @@ exports.getShipperFinancialDetails = async (req, res) => {
                 },
                 { $group: { _id: null, totalIncome: { $sum: '$shipperIncome' } } }
             ]),
-            // 2. Tính tổng lương đã trả cho tháng đó
             SalaryPayment.aggregate([
                 {
                     $match: {
@@ -206,8 +233,7 @@ exports.getShipperFinancialDetails = async (req, res) => {
                 },
                 { $group: { _id: null, totalPaid: { $sum: '$amount' } } }
             ]),
-            // 3. Lấy lịch sử nộp tiền COD (giữ lại chức năng cũ)
-            Remittance.find({ shipper: shipperId, status: 'completed' }).sort({ remittanceDate: -1 })
+            Remittance.find({ shipper: shipperId, remittanceDate: { $gte: startDate, $lte: endDate }, status: 'completed' }).sort({ remittanceDate: -1 }).lean()
         ]);
         
         const totalIncome = incomeResult[0]?.totalIncome || 0;
@@ -216,7 +242,7 @@ exports.getShipperFinancialDetails = async (req, res) => {
         res.status(200).json({
             totalIncome: totalIncome,
             totalSalaryPaid: totalSalaryPaid,
-            remittances: remittances // Lịch sử nộp tiền COD
+            remittances: remittances
         });
 
     } catch (error) {
