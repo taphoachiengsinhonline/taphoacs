@@ -152,18 +152,26 @@ exports.changePassword = async (req, res) => {
 exports.getDashboardSummary = async (req, res) => {
     try {
         const shipperId = req.user._id;
-        const todayString = moment().tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
-        const todayStart = moment(todayString).startOf('day').toDate();
+        const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
+        const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
 
-        const [deliveredOrdersToday, remittanceToday, processingOrders, notifications, pendingRequest] = await Promise.all([
-            // Lấy tất cả đơn đã giao để lọc ra đơn của hôm nay, đảm bảo tính đúng
+        // Query song song để tối ưu
+        const [
+            todayDeliveredOrders, 
+            remittanceTodayResult, 
+            processingOrders, 
+            notifications, 
+            pendingRequest
+        ] = await Promise.all([
             Order.find({
                 shipper: shipperId,
-                status: 'Đã giao'
+                status: 'Đã giao',
+                'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd }
             }).lean(),
-            Remittance.findOne({
+            // SỬA LỖI TẠI ĐÂY: Tìm trong khoảng thời gian thay vì một ngày chính xác
+            Remittance.find({
                 shipper: shipperId,
-                remittanceDate: todayStart,
+                remittanceDate: { $gte: todayStart, $lte: todayEnd },
                 status: 'completed'
             }).lean(),
             Order.countDocuments({
@@ -174,31 +182,29 @@ exports.getDashboardSummary = async (req, res) => {
             RemittanceRequest.findOne({ shipper: shipperId, status: 'pending' }).lean()
         ]);
         
+        // Tính tổng dữ liệu từ các đơn hàng hôm nay
         let todayCOD = 0;
         let todayIncome = 0;
-        let completedOrdersTodayCount = 0;
+        todayDeliveredOrders.forEach(order => {
+            todayCOD += order.total || 0;
+            todayIncome += order.shipperIncome || 0;
+        });
 
-        // Lọc và tính toán trên server, giống hệt cách API báo cáo làm
-        for (const order of deliveredOrdersToday) {
-            const deliveredDay = moment(order.timestamps.deliveredAt).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
-            if (deliveredDay === todayString) {
-                todayCOD += order.total || 0;
-                todayIncome += order.shipperIncome || 0;
-                completedOrdersTodayCount++;
-            }
-        }
+        // Tính tổng số tiền đã nộp cho ngày hôm nay (đã được duyệt)
+        const amountRemittedToday = remittanceTodayResult.reduce((sum, remit) => sum + (remit.amount || 0), 0);
         
-        const amountRemittedToday = remittanceToday ? remittanceToday.amount : 0;
+        // Công nợ cần nộp = Tổng COD thu được - Tổng đã nộp
         const amountToRemitToday = todayCOD - amountRemittedToday;
 
         res.status(200).json({
             remittance: {
                 amountToRemit: amountToRemitToday > 0 ? amountToRemitToday : 0,
-                completedOrders: completedOrdersTodayCount,
+                completedOrders: todayDeliveredOrders.length,
                 totalShipperIncome: todayIncome
             },
             notifications,
             processingOrderCount: processingOrders,
+            // Sửa lại logic khóa nút: Nút chỉ được mở khi không có yêu cầu nào đang chờ
             hasPendingRequest: !!pendingRequest
         });
 
