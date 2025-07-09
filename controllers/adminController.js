@@ -1,4 +1,5 @@
 // controllers/adminController.js
+// controllers/adminController.js
 
 const User = require('../models/User');
 const Remittance = require('../models/Remittance');
@@ -186,7 +187,7 @@ exports.payShipperSalary = async (req, res) => {
             return res.status(400).json({ message: "Vui lòng cung cấp tháng và năm trả lương." });
         }
 
-        const paymentDate = moment.tz(`${year}-${month}-01`, "YYYY-M-DD", "Asia/Ho_Chi_Minh").startOf('month').toDate();
+        const paymentDate = moment.tz(`${year}-${month}-01`, "YYYY-MM-DD", "Asia/Ho_Chi_Minh").startOf('month').toDate();
 
         const newPayment = new SalaryPayment({
             shipper: shipperId,
@@ -207,6 +208,7 @@ exports.payShipperSalary = async (req, res) => {
 };
 
 // API để lấy toàn bộ thông tin tài chính của shipper trong tháng
+// <<< SỬA LỖI LOGIC TẠI ĐÂY >>>
 exports.getShipperFinancialDetails = async (req, res) => {
     try {
         const { shipperId } = req.params;
@@ -216,7 +218,8 @@ exports.getShipperFinancialDetails = async (req, res) => {
             return res.status(400).json({ message: "Vui lòng cung cấp tháng và năm." });
         }
         
-        const startDate = moment.tz(`${year}-${month}-01`, "YYYY-M-DD", "Asia/Ho_Chi_Minh").startOf('month').toDate();
+        // Cách tạo ngày an toàn hơn
+        const startDate = moment({ year: year, month: parseInt(month) - 1 }).tz("Asia/Ho_Chi_Minh").startOf('month').toDate();
         const endDate = moment(startDate).endOf('month').toDate();
 
         const [incomeResult, paymentResult, remittances] = await Promise.all([
@@ -239,7 +242,11 @@ exports.getShipperFinancialDetails = async (req, res) => {
                 },
                 { $group: { _id: null, totalPaid: { $sum: '$amount' } } }
             ]),
-            Remittance.find({ shipper: shipperId, remittanceDate: { $gte: startDate, $lte: endDate }, status: 'completed' }).sort({ remittanceDate: -1 }).lean()
+            Remittance.find({ 
+                shipper: new mongoose.Types.ObjectId(shipperId),
+                remittanceDate: { $gte: startDate, $lte: endDate }, 
+                status: 'completed' 
+            }).sort({ remittanceDate: -1 }).lean()
         ]);
         
         const totalIncome = incomeResult[0]?.totalIncome || 0;
