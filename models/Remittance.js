@@ -7,7 +7,7 @@ const remittanceSchema = new mongoose.Schema({
         ref: 'User',
         required: true
     },
-    remittanceDate: { // Ngày cần đối soát, ví dụ 2023-10-27
+    remittanceDate: { // Ngày cần đối soát
         type: Date,
         required: true
     },
@@ -16,6 +16,12 @@ const remittanceSchema = new mongoose.Schema({
         required: true,
         default: 0
     },
+    // <<< THÊM TRƯỜNG STATUS >>>
+    status: {
+        type: String,
+        enum: ['pending', 'completed'], // pending: shipper yêu cầu, completed: admin đã duyệt
+        default: 'pending'
+    },
     transactions: [{ // Ghi lại mỗi lần nộp tiền
         amount: Number,
         confirmedAt: { type: Date, default: Date.now },
@@ -23,7 +29,6 @@ const remittanceSchema = new mongoose.Schema({
     }]
 }, { timestamps: true });
 
-// Tạo index để tìm kiếm nhanh
 remittanceSchema.index({ shipper: 1, remittanceDate: 1 }, { unique: true });
 
 module.exports = mongoose.model('Remittance', remittanceSchema);
