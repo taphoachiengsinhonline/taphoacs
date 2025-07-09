@@ -2,6 +2,9 @@ const User = require('../models/User');
 const Remittance = require('../models/Remittance');
 const Order = require('../models/Order');
 const moment = require('moment-timezone');
+const Order = require('../models/Order');
+const SalaryPayment = require('../models/SalaryPayment');
+const mongoose = require('mongoose');
 
 // API để lấy danh sách tất cả các shipper và công nợ của họ
 
@@ -130,5 +133,95 @@ exports.processRemittanceRequest = async (req, res) => {
         res.status(500).json({ message: error.message });
     } finally {
         session.endSession();
+    }
+};
+
+
+exports.payShipperSalary = async (req, res) => {
+    try {
+        const { shipperId } = req.params;
+        const { amount, notes, month, year } = req.body;
+        const adminId = req.user._id;
+
+        if (!amount || amount <= 0) {
+            return res.status(400).json({ message: "Số tiền thanh toán không hợp lệ." });
+        }
+        if (!month || !year) {
+            return res.status(400).json({ message: "Vui lòng cung cấp tháng và năm trả lương." });
+        }
+
+        const paymentDate = moment.tz(`${year}-${month}-01`, "YYYY-MM-DD", "Asia/Ho_Chi_Minh").startOf('month').toDate();
+
+        const newPayment = new SalaryPayment({
+            shipper: shipperId,
+            amount: amount,
+            paymentDate: paymentDate,
+            paidBy: adminId,
+            notes: notes
+        });
+
+        await newPayment.save();
+
+        // (Tùy chọn) Gửi thông báo cho shipper rằng họ đã nhận được lương
+        
+        res.status(201).json({ message: 'Thanh toán lương thành công!', payment: newPayment });
+
+    } catch (error) {
+        console.error('[payShipperSalary] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server khi thanh toán lương.' });
+    }
+};
+
+// API để lấy toàn bộ thông tin tài chính của shipper trong tháng
+exports.getShipperFinancialDetails = async (req, res) => {
+    try {
+        const { shipperId } = req.params;
+        const { month, year } = req.query; // Lấy tháng/năm từ query params
+
+        if (!month || !year) {
+            return res.status(400).json({ message: "Vui lòng cung cấp tháng và năm." });
+        }
+        
+        const startDate = moment.tz(`${year}-${month}-01`, "YYYY-M-DD", "Asia/Ho_Chi_Minh").startOf('month').toDate();
+        const endDate = moment(startDate).endOf('month').toDate();
+
+        const [incomeResult, paymentResult, remittances] = await Promise.all([
+            // 1. Tính tổng thu nhập (shipperIncome) trong tháng
+            Order.aggregate([
+                {
+                    $match: {
+                        shipper: new mongoose.Types.ObjectId(shipperId),
+                        status: 'Đã giao',
+                        'timestamps.deliveredAt': { $gte: startDate, $lte: endDate }
+                    }
+                },
+                { $group: { _id: null, totalIncome: { $sum: '$shipperIncome' } } }
+            ]),
+            // 2. Tính tổng lương đã trả cho tháng đó
+            SalaryPayment.aggregate([
+                {
+                    $match: {
+                        shipper: new mongoose.Types.ObjectId(shipperId),
+                        paymentDate: { $gte: startDate, $lte: endDate }
+                    }
+                },
+                { $group: { _id: null, totalPaid: { $sum: '$amount' } } }
+            ]),
+            // 3. Lấy lịch sử nộp tiền COD (giữ lại chức năng cũ)
+            Remittance.find({ shipper: shipperId, status: 'completed' }).sort({ remittanceDate: -1 })
+        ]);
+        
+        const totalIncome = incomeResult[0]?.totalIncome || 0;
+        const totalSalaryPaid = paymentResult[0]?.totalPaid || 0;
+
+        res.status(200).json({
+            totalIncome: totalIncome,
+            totalSalaryPaid: totalSalaryPaid,
+            remittances: remittances // Lịch sử nộp tiền COD
+        });
+
+    } catch (error) {
+        console.error('[getShipperFinancialDetails] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server.' });
     }
 };
