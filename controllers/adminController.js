@@ -1,10 +1,16 @@
+// controllers/adminController.js
+
 const User = require('../models/User');
 const Remittance = require('../models/Remittance');
 const Order = require('../models/Order');
 const moment = require('moment-timezone');
-const mongoose = require('mongoose'); // THÊM DÒNG NÀY
-const RemittanceRequest = require('../models/RemittanceRequest'); // THÊM DÒNG NÀY
-const SalaryPayment = require('../models/SalaryPayment'); // THÊM DÒNG NÀY
+const mongoose = require('mongoose');
+const RemittanceRequest = require('../models/RemittanceRequest');
+const SalaryPayment = require('../models/SalaryPayment');
+
+// ==============================================================
+// === CÁC HÀM CŨ CỦA BẠN - GIỮ NGUYÊN HOÀN TOÀN              ===
+// ==============================================================
 
 // API để lấy danh sách tất cả các shipper và công nợ của họ
 exports.getShipperDebtOverview = async (req, res) => {
@@ -98,7 +104,6 @@ exports.processRemittanceRequest = async (req, res) => {
         }
 
         if (action === 'approve') {
-            // Nếu yêu cầu này là để trả NỢ CŨ
             if (request.isForOldDebt) {
                 let amountToApply = request.amount;
                 const orders = await Order.find({ shipper: request.shipper, status: 'Đã giao' }).sort({ 'timestamps.deliveredAt': 1 }).session(session);
@@ -131,7 +136,7 @@ exports.processRemittanceRequest = async (req, res) => {
                         amountToApply -= payment;
                     }
                 }
-            } else { // Yêu cầu này là để trả NỢ HÔM NAY
+            } else {
                 const today = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
                 await Remittance.findOneAndUpdate(
                     { shipper: request.shipper, remittanceDate: today },
@@ -161,6 +166,7 @@ exports.processRemittanceRequest = async (req, res) => {
         session.endSession();
     }
 };
+
 
 // ==========================================================
 // ===          CÁC HÀM MỚI ĐỂ QUẢN LÝ LƯƠNG            ===
@@ -251,6 +257,7 @@ exports.getShipperFinancialDetails = async (req, res) => {
     }
 };
 
+// API MỚI: LẤY TỔNG QUAN TÀI CHÍNH CỦA TẤT CẢ SHIPPER
 exports.getShipperFinancialOverview = async (req, res) => {
     try {
         const shippers = await User.find({ role: 'shipper' }).select('name phone').lean();
@@ -259,22 +266,18 @@ exports.getShipperFinancialOverview = async (req, res) => {
         const shipperIds = shippers.map(s => s._id);
 
         const [codResults, remittedResults, incomeResults, salaryPaidResults] = await Promise.all([
-            // 1. Tổng COD thu được (từ trước đến nay)
             Order.aggregate([
                 { $match: { shipper: { $in: shipperIds }, status: 'Đã giao' } },
                 { $group: { _id: '$shipper', total: { $sum: '$total' } } }
             ]),
-            // 2. Tổng COD đã nộp
             Remittance.aggregate([
                 { $match: { shipper: { $in: shipperIds }, status: 'completed' } },
                 { $group: { _id: '$shipper', total: { $sum: '$amount' } } }
             ]),
-            // 3. Tổng thu nhập (lương) kiếm được
             Order.aggregate([
                 { $match: { shipper: { $in: shipperIds }, status: 'Đã giao' } },
                 { $group: { _id: '$shipper', total: { $sum: '$shipperIncome' } } }
             ]),
-            // 4. Tổng lương đã được thanh toán
             SalaryPayment.aggregate([
                 { $match: { shipper: { $in: shipperIds } } },
                 { $group: { _id: '$shipper', total: { $sum: '$amount' } } }
@@ -289,12 +292,10 @@ exports.getShipperFinancialOverview = async (req, res) => {
         const financialData = shippers.map(shipper => {
             const shipperIdStr = shipper._id.toString();
             
-            // Tính công nợ COD
             const totalCOD = codMap.get(shipperIdStr) || 0;
             const totalRemitted = remittedMap.get(shipperIdStr) || 0;
             const codDebt = totalCOD - totalRemitted;
 
-            // Tính lương cần trả
             const totalIncome = incomeMap.get(shipperIdStr) || 0;
             const totalSalaryPaid = salaryPaidMap.get(shipperIdStr) || 0;
             const salaryToPay = totalIncome - totalSalaryPaid;
@@ -306,7 +307,6 @@ exports.getShipperFinancialOverview = async (req, res) => {
             };
         });
 
-        // Sắp xếp ưu tiên shipper có lương cần trả cao nhất, hoặc công nợ cao nhất
         financialData.sort((a, b) => {
             if (b.salaryToPay > a.salaryToPay) return 1;
             if (a.salaryToPay > b.salaryToPay) return -1;
