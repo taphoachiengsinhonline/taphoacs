@@ -1,5 +1,4 @@
 // controllers/sellerController.js
-
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const User = require('../models/User');
@@ -9,8 +8,8 @@ const crypto = require('crypto');
 const moment = require('moment-timezone');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
-const Payout = require('../models/PayoutRequest'); // <<< THÊM IMPORT PAYOUT
-const mongoose = require('mongoose'); // <<< THÊM IMPORT MONGOOSE
+const Payout = require('../models/Payout'); // <<< SỬA LẠI TÊN MODEL CHO ĐÚNG
+const mongoose = require('mongoose');
 
 // ==============================================================================
 // ===                  API CHO DASHBOARD - ĐÃ NÂNG CẤP                       ===
@@ -123,8 +122,8 @@ exports.getSellerConversations = async (req, res) => {
         const conversationsWithLastMessage = await Promise.all(
             conversations.map(async (conv) => {
                 const lastMessage = await Message.findOne({ conversationId: conv._id })
-                    .sort ({ 'timestamps.createdAt': -1 });
-                                    
+                    .sort({ createdAt: -1 });
+                
                 return {
                     ...conv.toObject(),
                     lastMessage: lastMessage ? lastMessage.toObject() : null
@@ -145,9 +144,8 @@ exports.getSellerConversations = async (req, res) => {
 // ===                      CÁC HÀM KHÁC GIỮ NGUYÊN                             ===
 // ==============================================================================
 exports.getSellerProducts = async (req, res) => {
-    // ... code giữ nguyên ...
     try {
-        const products = await Product.find({ seller: req.user._id }).sort ({ 'timestamps.createdAt': -1 });
+        const products = await Product.find({ seller: req.user._id }).sort({ createdAt: -1 });
         res.json(products);
     } catch (error) {
         res.status(500).json({ message: 'Lỗi server' });
@@ -156,12 +154,15 @@ exports.getSellerProducts = async (req, res) => {
 
 
 exports.getSellerOrders = async (req, res) => {
-    // ... code giữ nguyên ...
     try {
         const sellerId = req.user._id;
+        // <<< SỬA LẠI SẮP XẾP VÀ TỐI ƯU QUERY >>>
         const orders = await Order.find({ 'items.sellerId': sellerId })
+            .select('customerName total status createdAt items.name items.price items.quantity') // Chỉ lấy các trường cần thiết
             .populate('user', 'name')
-            .sort ({ 'timestamps.createdAt': -1 }
+            .sort({ createdAt: -1 }) // Sắp xếp theo ngày tạo đơn mới nhất
+            .lean(); // Dùng lean() để tăng tốc độ query
+            
         res.json(orders);
     } catch (error) {
         res.status(500).json({ message: 'Lỗi server' });
@@ -169,7 +170,6 @@ exports.getSellerOrders = async (req, res) => {
 };
 
 exports.updateFcmToken = async (req, res) => {
-    // ... code giữ nguyên ...
     try {
         const { fcmToken } = req.body;
         if (!fcmToken) return res.status(400).json({ message: "Thiếu fcmToken" });
@@ -181,7 +181,6 @@ exports.updateFcmToken = async (req, res) => {
 };
 
 exports.requestUpdatePaymentInfo = async (req, res) => {
-    // ... code giữ nguyên ...
     try {
         const { bankName, accountHolderName, accountNumber } = req.body;
         if (!bankName || !accountHolderName || !accountNumber) {
@@ -204,7 +203,6 @@ exports.requestUpdatePaymentInfo = async (req, res) => {
 };
 
 exports.verifyUpdatePaymentInfo = async (req, res) => {
-    // ... code giữ nguyên ...
     try {
         const { otp } = req.body;
         if (!otp || otp.length !== 6) return res.status(400).json({ message: 'Vui lòng nhập mã OTP gồm 6 chữ số.' });
@@ -247,14 +245,12 @@ exports.getMonthlyRemittanceDetails = async (req, res) => {
         const startDate = moment.tz(`${year}-${month}-01`, "YYYY-M-DD", "Asia/Ho_Chi_Minh").startOf('month').toDate();
         const endDate = moment(startDate).endOf('month').toDate();
 
-        // 1. Lấy tất cả các đơn hàng đã giao trong tháng của seller
         const deliveredOrders = await Order.find({
             'items.sellerId': sellerId,
             status: 'Đã giao',
             'timestamps.deliveredAt': { $gte: startDate, $lte: endDate }
-        }).sort ({ 'timestamps.createdAt': -1 } }).lean();
+        }).sort({ 'timestamps.deliveredAt': -1 }).lean();
 
-        // 2. Tính toán các chỉ số tổng hợp
         let totalRevenue = 0;
         let totalCommission = 0;
 
@@ -275,7 +271,6 @@ exports.getMonthlyRemittanceDetails = async (req, res) => {
             };
         });
 
-        // 3. Lấy tất cả các giao dịch rút tiền đã hoàn thành trong tháng
         const payouts = await Payout.find({
             seller: sellerId,
             status: 'completed',
