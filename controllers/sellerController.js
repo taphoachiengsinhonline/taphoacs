@@ -152,12 +152,11 @@ exports.getSellerOrders = async (req, res) => {
     try {
         const sellerId = req.user._id;
         
-        // <<< SỬA LẠI DÒNG .select() Ở ĐÂY >>>
         const orders = await Order.find({ 'items.sellerId': sellerId })
-            // Yêu cầu lấy thêm 'timestamps.createdAt'
-            .select('customerName total status timestamps.createdAt items.name items.price items.quantity') 
+            .select('customerName total status timestamps.createdAt items.name items.price items.quantity')
             .populate('user', 'name')
-            .sort({ createdAt: -1 })
+            // <<< SỬA LẠI SẮP XẾP TẠI ĐÂY >>>
+            .sort({ _id: -1 }) // Sắp xếp theo _id giảm dần (mới nhất lên đầu)
             .lean();
             
         res.json(orders);
