@@ -21,6 +21,6 @@
     "twilio": "^5.2.2",
     "expo-background-fetch": "~11.10.1",
     "expo-notifications": "~0.28.1",
-    "expo-task-manager": "~11.9.1",
+    "expo-task-manager": "~11.9.1"
   }
 }
