@@ -226,7 +226,7 @@ exports.createRemittanceRequest = async (req, res) => {
     } finally {
         session.endSession();
     }
-
+};
 
 exports.getMonthlyFinancialReport = async (req, res) => {
     try {
