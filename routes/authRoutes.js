@@ -83,9 +83,9 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
     }
 
-    // <<< SỬA LẠI DÒNG .select() Ở ĐÂY >>>
+    // <<< SỬA LẠI .select() ĐỂ LẤY commissionRate >>>
     const user = await User.findOne({ email: email.toLowerCase().trim() })
-        .select('+password +role +phone +address +name +email +shipperProfile'); // Thêm +shipperProfile
+        .select('+password +role +phone +address +name +email +shipperProfile +commissionRate'); // Thêm +commissionRate
 
     if (!user) {
       return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
@@ -108,7 +108,7 @@ router.post('/login', async (req, res) => {
 
     const { accessToken, refreshToken } = generateTokens(user._id);
     
-    // <<< SỬA LẠI ĐỂ TRẢ VỀ ĐẦY ĐỦ THÔNG TIN >>>
+    // <<< SỬA LẠI userResponse ĐỂ TRẢ VỀ commissionRate >>>
     const userResponse = {
         _id: user._id,
         name: user.name,
@@ -116,9 +116,9 @@ router.post('/login', async (req, res) => {
         phone: user.phone,
         address: user.address,
         role: user.role,
-        isAdmin: user.role === 'admin'
+        isAdmin: user.role === 'admin',
+        commissionRate: user.commissionRate // Thêm dòng này
     };
-    // Chỉ thêm shipperProfile nếu user là shipper
     if (user.role === 'shipper') {
         userResponse.shipperProfile = user.shipperProfile;
     }
