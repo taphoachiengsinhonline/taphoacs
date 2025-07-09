@@ -415,44 +415,57 @@ exports.getSellerFinancialDetails = async (req, res) => {
         const targetMonth = parseInt(month);
         const targetYear = parseInt(year);
 
-        const startDate = moment.tz(`${year}-${month}-01`, "YYYY-M-DD", "Asia/Ho_Chi_Minh").startOf('month').toDate();
-        const endDate = moment(startDate).endOf('month').toDate();
+        const [ordersInMonth, payoutsInMonth] = await Promise.all([
+            // 1. Lấy tất cả các đơn hàng đã giao trong tháng của seller bằng aggregation
+            Order.aggregate([
+                {
+                    $match: {
+                        'items.sellerId': new mongoose.Types.ObjectId(sellerId),
+                        status: 'Đã giao',
+                        'timestamps.deliveredAt': { $exists: true, $ne: null }
+                    }
+                },
+                // Unwind để xử lý từng item riêng lẻ
+                { $unwind: '$items' },
+                // Match lại một lần nữa để chắc chắn chỉ lấy item của seller này
+                { $match: { 'items.sellerId': new mongoose.Types.ObjectId(sellerId) } },
+                // Project để tạo các trường cần thiết, đặc biệt là year và month
+                {
+                    $project: {
+                        orderId: '$_id',
+                        orderDate: '$timestamps.deliveredAt',
+                        revenue: { $multiply: ['$items.price', '$items.quantity'] },
+                        commission: '$items.commissionAmount',
+                        netRevenue: { $subtract: [{ $multiply: ['$items.price', '$items.quantity'] }, '$items.commissionAmount'] },
+                        year: { $year: { date: "$timestamps.deliveredAt", timezone: "Asia/Ho_Chi_Minh" } },
+                        month: { $month: { date: "$timestamps.deliveredAt", timezone: "Asia/Ho_Chi_Minh" } }
+                    }
+                },
+                // Lọc theo tháng và năm mục tiêu
+                { $match: { year: targetYear, month: targetMonth } }
+            ]),
+            
+            // 2. Lấy tất cả các giao dịch rút tiền đã hoàn thành trong tháng
+            Payout.find({
+                seller: new mongoose.Types.ObjectId(sellerId),
+                status: 'completed',
+                processedAt: { 
+                    $gte: moment({ year: targetYear, month: targetMonth - 1 }).startOf('month').toDate(),
+                    $lte: moment({ year: targetYear, month: targetMonth - 1 }).endOf('month').toDate()
+                }
+            }).sort({ processedAt: -1 }).lean()
+        ]);
 
-        // Lấy tất cả các đơn hàng đã giao trong tháng của seller
-        const deliveredOrders = await Order.find({
-            'items.sellerId': new mongoose.Types.ObjectId(sellerId),
-            status: 'Đã giao',
-            'timestamps.deliveredAt': { $gte: startDate, $lte: endDate }
-        }).sort({ 'timestamps.deliveredAt': -1 }).lean();
-
-        // Tính toán các chỉ số tổng hợp
+        // 3. Tính toán các chỉ số tổng hợp từ kết quả query
         let totalRevenue = 0;
         let totalCommission = 0;
 
-        const detailedOrders = deliveredOrders.map(order => {
-            const sellerItems = order.items.filter(item => item.sellerId.equals(sellerId));
-            const orderRevenue = sellerItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const orderCommission = sellerItems.reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
-            
-            totalRevenue += orderRevenue;
-            totalCommission += orderCommission;
-            
-            return {
-                _id: order._id,
-                orderDate: order.timestamps.deliveredAt,
-                revenue: orderRevenue,
-                commission: orderCommission,
-                netRevenue: orderRevenue - orderCommission
-            };
+        ordersInMonth.forEach(orderItem => {
+            totalRevenue += orderItem.revenue || 0;
+            totalCommission += orderItem.commission || 0;
         });
-
-        const payouts = await Payout.find({
-            seller: new mongoose.Types.ObjectId(sellerId),
-            status: 'completed',
-            'processedAt': { $gte: startDate, $lte: endDate }
-        }).sort({ processedAt: -1 }).lean();
-
-        const totalPayout = payouts.reduce((sum, payout) => sum + payout.amount, 0);
+        
+        const totalPayout = payoutsInMonth.reduce((sum, payout) => sum + payout.amount, 0);
 
         res.status(200).json({
             overview: {
@@ -462,8 +475,18 @@ exports.getSellerFinancialDetails = async (req, res) => {
                 totalPayout,
                 finalBalance: (totalRevenue - totalCommission) - totalPayout
             },
-            orders: detailedOrders,
-            payouts: payouts.map(p => ({
+            // Nhóm các item lại theo orderId để hiển thị cho gọn
+            orders: Object.values(ordersInMonth.reduce((acc, item) => {
+                const { orderId, orderDate, revenue, commission, netRevenue } = item;
+                if (!acc[orderId]) {
+                    acc[orderId] = { _id: orderId, orderDate, revenue: 0, commission: 0, netRevenue: 0 };
+                }
+                acc[orderId].revenue += revenue;
+                acc[orderId].commission += commission;
+                acc[orderId].netRevenue += netRevenue;
+                return acc;
+            }, {})).sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate)),
+            payouts: payoutsInMonth.map(p => ({
                 _id: p._id,
                 date: p.processedAt,
                 amount: p.amount
