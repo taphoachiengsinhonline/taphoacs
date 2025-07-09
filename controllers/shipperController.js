@@ -145,9 +145,6 @@ exports.changePassword = async (req, res) => {
     }
 };
 
-// ==========================================================
-// === SỬA LỖI VÀ TỐI ƯU HÀM NÀY ===
-// ==========================================================
 exports.getDashboardSummary = async (req, res) => {
     try {
         const shipperId = req.user._id;
@@ -155,12 +152,12 @@ exports.getDashboardSummary = async (req, res) => {
         const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
         const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
 
-        // Tối ưu query: dùng aggregate để tính toán trên DB
         const [dailyStats, processingOrders, notifications, pendingRequest] = await Promise.all([
             Order.aggregate([
                 {
                     $match: {
-                        shipper: mongoose.Types.ObjectId(shipperId),
+                        // SỬA LỖI Ở ĐÂY: DÙNG new mongoose.Types.ObjectId()
+                        shipper: new mongoose.Types.ObjectId(shipperId),
                         status: 'Đã giao',
                         'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd }
                     }
@@ -184,7 +181,6 @@ exports.getDashboardSummary = async (req, res) => {
 
         const stats = dailyStats[0] || { totalCOD: 0, totalIncome: 0, completedOrders: 0 };
         
-        // Query riêng số tiền đã nộp (đã được duyệt) cho ngày hôm nay
         const remittanceToday = await Remittance.findOne({
             shipper: shipperId,
             remittanceDate: todayStart,
@@ -193,7 +189,6 @@ exports.getDashboardSummary = async (req, res) => {
 
         const amountRemittedToday = remittanceToday ? remittanceToday.amount : 0;
         
-        // Công nợ cần nộp = Tổng COD thu được - Số tiền đã nộp
         const amountToRemitToday = stats.totalCOD - amountRemittedToday;
 
         res.status(200).json({
