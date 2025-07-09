@@ -1,4 +1,6 @@
 // controllers/sellerController.js
+// controllers/sellerController.js
+
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const User = require('../models/User');
@@ -8,14 +10,14 @@ const crypto = require('crypto');
 const moment = require('moment-timezone');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
-const Payout = require('../models/PayoutRequest'); // <<< SỬA LẠI TÊN MODEL CHO ĐÚNG
+// <<< SỬA LẠI TÊN MODEL CHO ĐÚNG >>>
+const PayoutRequest = require('../models/PayoutRequest'); 
 const mongoose = require('mongoose');
 
 // ==============================================================================
 // ===                  API CHO DASHBOARD - ĐÃ NÂNG CẤP                       ===
 // ==============================================================================
 exports.getDashboardStats = async (req, res) => {
-    // ... code giữ nguyên ...
     try {
         const sellerId = req.user._id;
 
@@ -110,7 +112,6 @@ exports.getDashboardStats = async (req, res) => {
 };
 
 exports.getSellerConversations = async (req, res) => {
-    // ... code giữ nguyên ...
     try {
         const sellerId = req.user._id;
 
@@ -139,10 +140,6 @@ exports.getSellerConversations = async (req, res) => {
     }
 };
 
-
-// ==============================================================================
-// ===                      CÁC HÀM KHÁC GIỮ NGUYÊN                             ===
-// ==============================================================================
 exports.getSellerProducts = async (req, res) => {
     try {
         const products = await Product.find({ seller: req.user._id }).sort({ createdAt: -1 });
@@ -152,16 +149,14 @@ exports.getSellerProducts = async (req, res) => {
     }
 };
 
-
 exports.getSellerOrders = async (req, res) => {
     try {
         const sellerId = req.user._id;
-        // <<< SỬA LẠI SẮP XẾP VÀ TỐI ƯU QUERY >>>
         const orders = await Order.find({ 'items.sellerId': sellerId })
-            .select('customerName total status createdAt items.name items.price items.quantity') // Chỉ lấy các trường cần thiết
+            .select('customerName total status createdAt items.name items.price items.quantity') 
             .populate('user', 'name')
-            .sort({ createdAt: -1 }) // Sắp xếp theo ngày tạo đơn mới nhất
-            .lean(); // Dùng lean() để tăng tốc độ query
+            .sort({ createdAt: -1 })
+            .lean(); 
             
         res.json(orders);
     } catch (error) {
@@ -271,7 +266,8 @@ exports.getMonthlyRemittanceDetails = async (req, res) => {
             };
         });
 
-        const payouts = await Payout.find({
+        // <<< SỬA LẠI TÊN MODEL Ở ĐÂY >>>
+        const payouts = await PayoutRequest.find({
             seller: sellerId,
             status: 'completed',
             'processedAt': { $gte: startDate, $lte: endDate }
