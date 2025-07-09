@@ -231,4 +231,6 @@ router.get('/seller-financial-overview', adminController.getSellerFinancialOverv
 // Lấy chi tiết đối soát của 1 Seller theo tháng
 router.get('/sellers/:sellerId/financial-details', adminController.getSellerFinancialDetails);
 
+router.get('/all-pending-counts', adminController.getAllPendingCounts);
+
 module.exports = router;
