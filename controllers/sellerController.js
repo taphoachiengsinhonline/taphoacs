@@ -123,7 +123,7 @@ exports.getSellerConversations = async (req, res) => {
         const conversationsWithLastMessage = await Promise.all(
             conversations.map(async (conv) => {
                 const lastMessage = await Message.findOne({ conversationId: conv._id })
-                    .sort({ createdAt: -1 });
+                    .sort: { 'timestamps.createdAt': -1 });
                 
                 return {
                     ...conv.toObject(),
@@ -147,7 +147,7 @@ exports.getSellerConversations = async (req, res) => {
 exports.getSellerProducts = async (req, res) => {
     // ... code giữ nguyên ...
     try {
-        const products = await Product.find({ seller: req.user._id }).sort({ createdAt: -1 });
+        const products = await Product.find({ seller: req.user._id }).sort: { 'timestamps.createdAt': -1 });
         res.json(products);
     } catch (error) {
         res.status(500).json({ message: 'Lỗi server' });
@@ -161,7 +161,7 @@ exports.getSellerOrders = async (req, res) => {
         const sellerId = req.user._id;
         const orders = await Order.find({ 'items.sellerId': sellerId })
             .populate('user', 'name')
-            .sort({ updatedAt: -1 });
+            .sort: { 'timestamps.createdAt': -1 }
         res.json(orders);
     } catch (error) {
         res.status(500).json({ message: 'Lỗi server' });
@@ -252,7 +252,7 @@ exports.getMonthlyRemittanceDetails = async (req, res) => {
             'items.sellerId': sellerId,
             status: 'Đã giao',
             'timestamps.deliveredAt': { $gte: startDate, $lte: endDate }
-        }).sort({ 'timestamps.deliveredAt': -1 }).lean();
+        }).sort: { 'timestamps.createdAt': -1 } }).lean();
 
         // 2. Tính toán các chỉ số tổng hợp
         let totalRevenue = 0;
