@@ -337,5 +337,6 @@ router.patch('/remittance-request/:requestId/process', async (req, res) => {
 
 router.post('/shippers/:shipperId/pay-salary', adminController.payShipperSalary);
 router.get('/shippers/:shipperId/financial-details', adminController.getShipperFinancialDetails);
+router.get('/shipper-financial-overview', adminController.getShipperFinancialOverview);
 
 module.exports = router;
