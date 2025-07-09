@@ -12,7 +12,8 @@ const remittanceRequestSchema = new mongoose.Schema({
     shipperNotes: String, // Ghi chú của shipper nếu có
     adminNotes: String,
     approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    processedAt: Date
+    processedAt: Date,
+    isForOldDebt: { type: Boolean, default: false }
 }, { timestamps: true });
 
 module.exports = mongoose.model('RemittanceRequest', remittanceRequestSchema);
