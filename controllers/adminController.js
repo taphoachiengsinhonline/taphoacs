@@ -219,8 +219,8 @@ exports.getShipperFinancialDetails = async (req, res) => {
         const targetMonth = parseInt(month);
         const targetYear = parseInt(year);
 
-        const [incomeAggregation, paymentAggregation, remittanceResult] = await Promise.all([
-            // 1. Tính thu nhập bằng aggregation pipeline chuẩn
+        const [incomeAggregation, paymentResult, remittances] = await Promise.all([
+            // 1. Tính thu nhập bằng aggregation pipeline chuẩn (copy từ shipperController)
             Order.aggregate([
                 {
                     $match: {
@@ -232,11 +232,13 @@ exports.getShipperFinancialDetails = async (req, res) => {
                 {
                     $project: {
                         income: "$shipperIncome",
+                        // Dùng toán tử của MongoDB để lấy năm/tháng theo timezone
                         year: { $year: { date: "$timestamps.deliveredAt", timezone: "Asia/Ho_Chi_Minh" } },
                         month: { $month: { date: "$timestamps.deliveredAt", timezone: "Asia/Ho_Chi_Minh" } }
                     }
                 },
                 {
+                    // Match lại sau khi đã có year/month chuẩn
                     $match: {
                         year: targetYear,
                         month: targetMonth
@@ -249,7 +251,8 @@ exports.getShipperFinancialDetails = async (req, res) => {
                     }
                 }
             ]),
-            // 2. Tính lương đã trả
+            
+            // 2. Tính lương đã trả (giữ nguyên, logic này đã đúng)
             SalaryPayment.aggregate([
                 {
                     $match: {
@@ -260,14 +263,10 @@ exports.getShipperFinancialDetails = async (req, res) => {
                         }
                     }
                 },
-                {
-                    $group: {
-                        _id: null,
-                        totalPaid: { $sum: "$amount" }
-                    }
-                }
+                { $group: { _id: null, totalPaid: { $sum: "$amount" } } }
             ]),
-            // 3. Lấy lịch sử nộp COD
+            
+            // 3. Lấy lịch sử nộp COD (giữ nguyên, logic này đã đúng)
             Remittance.find({
                 shipper: new mongoose.Types.ObjectId(shipperId),
                 remittanceDate: {
@@ -279,12 +278,12 @@ exports.getShipperFinancialDetails = async (req, res) => {
         ]);
         
         const totalIncome = incomeAggregation[0]?.totalIncome || 0;
-        const totalSalaryPaid = paymentAggregation[0]?.totalPaid || 0;
+        const totalSalaryPaid = paymentResult[0]?.totalPaid || 0;
 
         res.status(200).json({
             totalIncome: totalIncome,
             totalSalaryPaid: totalSalaryPaid,
-            remittances: remittanceResult
+            remittances: remittances
         });
 
     } catch (error) {
