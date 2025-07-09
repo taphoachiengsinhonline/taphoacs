@@ -169,7 +169,8 @@ exports.getDashboardSummary = async (req, res) => {
                 shipper: shipperId,
                 status: { $in: ['Đang xử lý', 'Đang giao'] }
             }),
-            Notification.find({ user: shipperId }).sort('-createdAt').limit(3)
+            Notification.find({ user: shipperId }).sort('-createdAt').limit(3),
+            RemittanceRequest.findOne({ shipper: shipperId, status: 'pending' }) 
         ]);
 
         const todayCOD = todayDeliveredOrders.reduce((sum, order) => sum + (order.total || 0), 0);
@@ -184,7 +185,8 @@ exports.getDashboardSummary = async (req, res) => {
                 totalShipperIncome: todayIncome
             },
             notifications,
-            processingOrderCount: processingOrders
+            processingOrderCount: processingOrders,
+            hasPendingRequest: !!pendingRequest // <<< THÊM TRƯỜNG NÀY (!!) để chuyển object thành boolean
         });
 
     } catch (error) {
