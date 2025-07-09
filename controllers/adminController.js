@@ -4,6 +4,7 @@
 const User = require('../models/User');
 const Remittance = require('../models/Remittance');
 const Order = require('../models/Order');
+const Payout = require('../models/PayoutRequest'); // <<< THÊM IMPORT
 const moment = require('moment-timezone');
 const mongoose = require('mongoose');
 const RemittanceRequest = require('../models/RemittanceRequest');
