@@ -41,7 +41,7 @@ exports.getAssignedOrders = async (req, res) => {
         const result = await Order.paginate(filter, {
             page: parseInt(page, 10),
             limit: parseInt(limit, 10),
-            sort: { 'timestamps.createdAt': -1 } // Sắp xếp theo ngày tạo đơn
+            sort: { 'timestamps.createdAt': -1 }
         });
 
         return res.json({
@@ -145,32 +145,27 @@ exports.changePassword = async (req, res) => {
     }
 };
 
+
+// ==========================================================
+// === SỬA LỖI LẦN CUỐI: ĐỒNG BỘ LOGIC TÍNH TOÁN VỚI BÁO CÁO ===
+// ==========================================================
 exports.getDashboardSummary = async (req, res) => {
     try {
         const shipperId = req.user._id;
-        
-        const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
-        const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
+        const todayString = moment().tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
+        const todayStart = moment(todayString).startOf('day').toDate();
 
-        const [dailyStats, processingOrders, notifications, pendingRequest] = await Promise.all([
-            Order.aggregate([
-                {
-                    $match: {
-                        // SỬA LỖI Ở ĐÂY: DÙNG new mongoose.Types.ObjectId()
-                        shipper: new mongoose.Types.ObjectId(shipperId),
-                        status: 'Đã giao',
-                        'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd }
-                    }
-                },
-                {
-                    $group: {
-                        _id: null,
-                        totalCOD: { $sum: '$total' },
-                        totalIncome: { $sum: '$shipperIncome' },
-                        completedOrders: { $sum: 1 }
-                    }
-                }
-            ]),
+        const [deliveredOrdersToday, remittanceToday, processingOrders, notifications, pendingRequest] = await Promise.all([
+            // Lấy tất cả đơn đã giao để lọc ra đơn của hôm nay, đảm bảo tính đúng
+            Order.find({
+                shipper: shipperId,
+                status: 'Đã giao'
+            }).lean(),
+            Remittance.findOne({
+                shipper: shipperId,
+                remittanceDate: todayStart,
+                status: 'completed'
+            }).lean(),
             Order.countDocuments({
                 shipper: shipperId,
                 status: { $in: ['Đang xử lý', 'Đang giao'] }
@@ -178,24 +173,29 @@ exports.getDashboardSummary = async (req, res) => {
             Notification.find({ user: shipperId }).sort('-createdAt').limit(3).lean(),
             RemittanceRequest.findOne({ shipper: shipperId, status: 'pending' }).lean()
         ]);
-
-        const stats = dailyStats[0] || { totalCOD: 0, totalIncome: 0, completedOrders: 0 };
         
-        const remittanceToday = await Remittance.findOne({
-            shipper: shipperId,
-            remittanceDate: todayStart,
-            status: 'completed'
-        }).lean();
+        let todayCOD = 0;
+        let todayIncome = 0;
+        let completedOrdersTodayCount = 0;
 
+        // Lọc và tính toán trên server, giống hệt cách API báo cáo làm
+        for (const order of deliveredOrdersToday) {
+            const deliveredDay = moment(order.timestamps.deliveredAt).tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
+            if (deliveredDay === todayString) {
+                todayCOD += order.total || 0;
+                todayIncome += order.shipperIncome || 0;
+                completedOrdersTodayCount++;
+            }
+        }
+        
         const amountRemittedToday = remittanceToday ? remittanceToday.amount : 0;
-        
-        const amountToRemitToday = stats.totalCOD - amountRemittedToday;
+        const amountToRemitToday = todayCOD - amountRemittedToday;
 
         res.status(200).json({
             remittance: {
                 amountToRemit: amountToRemitToday > 0 ? amountToRemitToday : 0,
-                completedOrders: stats.completedOrders,
-                totalShipperIncome: stats.totalIncome
+                completedOrders: completedOrdersTodayCount,
+                totalShipperIncome: todayIncome
             },
             notifications,
             processingOrderCount: processingOrders,
@@ -324,6 +324,7 @@ exports.getMonthlyFinancialReport = async (req, res) => {
 
 
 exports.confirmRemittance = async (req, res) => {
+    // This function is deprecated
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
