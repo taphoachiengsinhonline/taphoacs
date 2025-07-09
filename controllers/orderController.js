@@ -281,7 +281,7 @@ exports.updateOrderStatusByShipper = async (req, res) => {
 exports.getShipperOrders = async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
-    const result = await Order.paginate({ shipper: req.user._id, ...(status && { status }) }, { page: parseInt(page), limit: parseInt(limit), sort: { createdAt: -1 } });
+    const result = await Order.paginate({ shipper: req.user._id, ...(status && { status }) }, { page: parseInt(page), limit: parseInt(limit), sort: { 'timestamps.createdAt': -1 } });
     res.json({ orders: result.docs.map(doc => ({ ...doc.toObject(), timestamps: doc.timestamps })), totalPages: result.totalPages, currentPage: result.page, totalOrders: result.totalDocs });
   } catch (error) {
     res.status(500).json({ message: 'Lỗi server' });
@@ -291,7 +291,7 @@ exports.getShipperOrders = async (req, res) => {
 exports.getMyOrders = async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
-    const result = await Order.paginate({ user: req.user._id, ...(status && { status }) }, { page, limit, sort: { createdAt: -1 } });
+    const result = await Order.paginate({ user: req.user._id, ...(status && { status }) }, { page, limit, sort: { 'timestamps.createdAt': -1 } });
     res.json({ docs: result.docs.map(doc => ({ ...doc.toObject(), timestamps: doc.timestamps })), totalPages: result.totalPages, page: result.page });
   } catch (err) {
     res.status(500).json({ message: 'Lỗi server' });
