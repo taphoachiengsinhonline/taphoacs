@@ -76,8 +76,7 @@ router.post('/register', async (req, res) => {
     }
 
     const { accessToken, refreshToken } = generateTokens(user._id);
-    
-    // Tạo đối tượng user trả về
+
     const userResponse = {
         _id: user._id,
         name: user.name,
@@ -88,12 +87,12 @@ router.post('/register', async (req, res) => {
         isAdmin: user.role === 'admin'
     };
     
-    // Thêm các trường đặc thù theo role
     if (user.role === 'shipper') {
         userResponse.shipperProfile = user.shipperProfile;
     }
     if (user.role === 'seller') {
         userResponse.commissionRate = user.commissionRate;
+        userResponse.paymentInfo = user.paymentInfo;
     }
 
     res.status(201).json({
@@ -120,9 +119,8 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
     }
 
-    // SỬA LẠI .select() ĐỂ LẤY THÊM TRƯỜNG CẦN THIẾT
     const user = await User.findOne({ email: email.toLowerCase().trim() })
-        .select('+password +role +phone +address +name +email +shipperProfile +commissionRate');
+        .select('+password +role +phone +address +name +email +shipperProfile +commissionRate +paymentInfo');
     
     console.log('[DEBUG] User found:', user ? user.email : 'Không tồn tại');
 
@@ -152,8 +150,7 @@ router.post('/login', async (req, res) => {
     }
 
     const { accessToken, refreshToken } = generateTokens(user._id);
-
-    // SỬA LẠI userResponse ĐỂ TRẢ VỀ ĐẦY ĐỦ DỮ LIỆU
+    
     const userResponse = {
         _id: user._id,
         name: user.name,
@@ -164,14 +161,14 @@ router.post('/login', async (req, res) => {
         isAdmin: user.role === 'admin',
     };
     
-    // Thêm các trường đặc thù theo role
     if (user.role === 'shipper') {
         userResponse.shipperProfile = user.shipperProfile;
     }
     if (user.role === 'seller') {
         userResponse.commissionRate = user.commissionRate;
+        userResponse.paymentInfo = user.paymentInfo;
     }
-
+    
     res.status(200).json({
       status: 'success',
       data: {
@@ -230,8 +227,8 @@ router.post('/refresh-token', async (req, res) => {
 // Lấy thông tin người dùng hiện tại
 router.get('/me', verifyToken, async (req, res) => {
     try {
-        // Query lại DB để đảm bảo lấy dữ liệu mới và đầy đủ nhất
-        const user = await User.findById(req.user._id).select('+role +phone +address +name +email +shipperProfile +commissionRate');
+        const user = await User.findById(req.user._id)
+            .select('+role +phone +address +name +email +shipperProfile +commissionRate +paymentInfo');
         
         if (!user) {
             return res.status(404).json({ status: 'error', message: 'Không tìm thấy người dùng' });
@@ -252,6 +249,7 @@ router.get('/me', verifyToken, async (req, res) => {
         }
         if (user.role === 'seller') {
             userResponse.commissionRate = user.commissionRate;
+            userResponse.paymentInfo = user.paymentInfo;
         }
 
         res.status(200).json({
