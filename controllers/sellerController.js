@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const moment = require('moment-timezone');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
-const Payout = require('../models/Payout'); // <<< SỬA LẠI TÊN MODEL CHO ĐÚNG
+const Payout = require('../models/PayoutRequest'); // <<< SỬA LẠI TÊN MODEL CHO ĐÚNG
 const mongoose = require('mongoose');
 
 // ==============================================================================
