@@ -254,7 +254,7 @@ exports.getMonthlyFinancialReport = async (req, res) => {
         endDate.setUTCMilliseconds(endDate.getUTCMilliseconds() - 1);
         
         // Lấy tất cả dữ liệu cần thiết trong một lần gọi để tối ưu
-        const [deliveredOrders, remittances] = await Promise.all([
+        const [deliveredOrders, remittances, pendingRequest] = await Promise.all([
             Order.find({
                 shipper: shipperId, 
                 status: 'Đã giao',
@@ -263,7 +263,8 @@ exports.getMonthlyFinancialReport = async (req, res) => {
             Remittance.find({
                 shipper: shipperId,
                 remittanceDate: { $gte: startDate, $lte: endDate }
-            }).lean()
+            }).lean(),
+            RemittanceRequest.findOne({ shipper: req.user._id, status: 'pending' }) // <<< THÊM DÒNG NÀY
         ]);
         
         // Tạo một object rỗng để chứa dữ liệu của mỗi ngày trong tháng
@@ -336,7 +337,8 @@ exports.getMonthlyFinancialReport = async (req, res) => {
             dailyBreakdown: Object.entries(dailyData).map(([day, data]) => ({ 
                 day, 
                 ...data 
-            })).reverse() // Đảo ngược để ngày mới nhất lên đầu
+            })).reverse(), // Đảo ngược để ngày mới nhất lên đầu
+            hasPendingRequest: !!pendingRequest // <<< THÊM TRƯỜNG NÀY
         });
     } catch (error) {
         console.error('[getMonthlyFinancialReport] Lỗi:', error);
