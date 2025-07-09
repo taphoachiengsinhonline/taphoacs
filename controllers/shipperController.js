@@ -145,6 +145,9 @@ exports.changePassword = async (req, res) => {
     }
 };
 
+// ==========================================================
+// === SỬA LỖI VÀ TỐI ƯU HÀM NÀY ===
+// ==========================================================
 exports.getDashboardSummary = async (req, res) => {
     try {
         const shipperId = req.user._id;
@@ -152,39 +155,56 @@ exports.getDashboardSummary = async (req, res) => {
         const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
         const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
 
-        const [todayDeliveredOrders, todayRemittance, processingOrders, notifications, pendingRequest] = await Promise.all([
-            Order.find({
-                shipper: shipperId,
-                status: 'Đã giao',
-                'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd }
-            }),
-            Remittance.findOne({
-                shipper: shipperId,
-                remittanceDate: todayStart,
-                status: 'completed' // Chỉ tính các khoản đã được duyệt
-            }),
+        // Tối ưu query: dùng aggregate để tính toán trên DB
+        const [dailyStats, processingOrders, notifications, pendingRequest] = await Promise.all([
+            Order.aggregate([
+                {
+                    $match: {
+                        shipper: mongoose.Types.ObjectId(shipperId),
+                        status: 'Đã giao',
+                        'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd }
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalCOD: { $sum: '$total' },
+                        totalIncome: { $sum: '$shipperIncome' },
+                        completedOrders: { $sum: 1 }
+                    }
+                }
+            ]),
             Order.countDocuments({
                 shipper: shipperId,
                 status: { $in: ['Đang xử lý', 'Đang giao'] }
             }),
-            Notification.find({ user: shipperId }).sort('-createdAt').limit(3),
-            RemittanceRequest.findOne({ shipper: shipperId, status: 'pending' }) // Lấy yêu cầu đang chờ
+            Notification.find({ user: shipperId }).sort('-createdAt').limit(3).lean(),
+            RemittanceRequest.findOne({ shipper: shipperId, status: 'pending' }).lean()
         ]);
 
-        const todayCOD = todayDeliveredOrders.reduce((sum, order) => sum + (order.total || 0), 0);
-        const todayIncome = todayDeliveredOrders.reduce((sum, order) => sum + (order.shipperIncome || 0), 0);
-        const amountRemittedToday = todayRemittance ? todayRemittance.amount : 0;
-        const amountToRemitToday = todayCOD - amountRemittedToday;
+        const stats = dailyStats[0] || { totalCOD: 0, totalIncome: 0, completedOrders: 0 };
+        
+        // Query riêng số tiền đã nộp (đã được duyệt) cho ngày hôm nay
+        const remittanceToday = await Remittance.findOne({
+            shipper: shipperId,
+            remittanceDate: todayStart,
+            status: 'completed'
+        }).lean();
+
+        const amountRemittedToday = remittanceToday ? remittanceToday.amount : 0;
+        
+        // Công nợ cần nộp = Tổng COD thu được - Số tiền đã nộp
+        const amountToRemitToday = stats.totalCOD - amountRemittedToday;
 
         res.status(200).json({
             remittance: {
                 amountToRemit: amountToRemitToday > 0 ? amountToRemitToday : 0,
-                completedOrders: todayDeliveredOrders.length,
-                totalShipperIncome: todayIncome
+                completedOrders: stats.completedOrders,
+                totalShipperIncome: stats.totalIncome
             },
             notifications,
             processingOrderCount: processingOrders,
-            hasPendingRequest: !!pendingRequest // Chuyển object thành boolean
+            hasPendingRequest: !!pendingRequest
         });
 
     } catch (error) {
@@ -203,7 +223,6 @@ exports.createRemittanceRequest = async (req, res) => {
             return res.status(400).json({ message: "Số tiền yêu cầu không hợp lệ." });
         }
         
-        // Kiểm tra xem có yêu cầu nào của shipper này đang 'pending' hay không.
         const existingPending = await RemittanceRequest.findOne({ shipper: shipperId, status: 'pending' });
         if (existingPending) {
             return res.status(400).json({ message: "Bạn đã có một yêu cầu đang chờ xử lý. Vui lòng đợi Admin xác nhận trước khi tạo yêu cầu mới." });
@@ -218,8 +237,6 @@ exports.createRemittanceRequest = async (req, res) => {
 
         await newRequest.save();
         
-        // (Tùy chọn) Gửi thông báo cho tất cả admin ở đây
-
         res.status(201).json({ message: "Yêu cầu đã được gửi. Vui lòng chờ admin xác nhận." });
     } catch (error) {
         console.error('[createRemittanceRequest] Lỗi:', error);
@@ -244,12 +261,12 @@ exports.getMonthlyFinancialReport = async (req, res) => {
             Order.find({
                 shipper: shipperId, 
                 status: 'Đã giao'
-            }).lean(), // Lấy TẤT CẢ đơn hàng để tính nợ cũ chính xác
+            }).lean(),
             Remittance.find({
                 shipper: shipperId,
-                status: 'completed' // Chỉ tính các khoản đã được duyệt
+                status: 'completed'
             }).lean(),
-            RemittanceRequest.findOne({ shipper: req.user._id, status: 'pending' }) // Lấy yêu cầu đang chờ
+            RemittanceRequest.findOne({ shipper: req.user._id, status: 'pending' }).lean()
         ]);
         
         const dailyData = {};
@@ -311,15 +328,11 @@ exports.getMonthlyFinancialReport = async (req, res) => {
 };
 
 
-// ======================================================================
-// ===          API MỚI: SHIPPER XÁC NHẬN ĐÃ NỘP TIỀN                ===
-// ======================================================================
 exports.confirmRemittance = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
         const shipperId = req.user._id;
-        // isForOldDebt: một cờ để biết đây là nộp nợ cũ hay nộp cho ngày cụ thể
         const { amount, transactionDate, isForOldDebt } = req.body;
 
         if (!amount || amount <= 0) {
@@ -327,10 +340,8 @@ exports.confirmRemittance = async (req, res) => {
         }
 
         if (isForOldDebt) {
-            // === LOGIC NỘP CÔNG NỢ CŨ ===
             let amountToApply = amount;
             
-            // Tìm tất cả các ngày có công nợ (COD > đã nộp)
             const orders = await Order.find({ shipper: shipperId, status: 'Đã giao' }).sort({ 'timestamps.deliveredAt': 1 }).session(session);
             const remittances = await Remittance.find({ shipper: shipperId }).session(session);
 
@@ -348,7 +359,7 @@ exports.confirmRemittance = async (req, res) => {
 
             for (const day of sortedDebtDays) {
                 if (amountToApply <= 0) break;
-                if (day >= todayString) continue; // Bỏ qua ngày hôm nay
+                if (day >= todayString) continue;
 
                 const debtOfDay = (debtByDay[day] || 0) - (remittedMap.get(day) || 0);
                 if (debtOfDay > 0) {
@@ -362,7 +373,6 @@ exports.confirmRemittance = async (req, res) => {
                 }
             }
         } else {
-            // === LOGIC NỘP CHO NGÀY CỤ THỂ (HÔM NAY) ===
             if (!transactionDate) {
                  return res.status(400).json({ message: "Thiếu ngày giao dịch." });
             }
@@ -389,16 +399,12 @@ exports.confirmRemittance = async (req, res) => {
     }
 };
 
-// ======================================================================
-// ===       HÀM MỚI: Gửi thông báo nhắc nợ COD (dùng cho Cron Job)    ===
-// ======================================================================
 exports.sendCODRemittanceReminder = async () => {
     console.log("CRON JOB: Bắt đầu gửi thông báo nhắc nộp tiền COD...");
     try {
         const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
         const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
 
-        // Lấy tất cả shipper có hoạt động giao hàng hôm nay
         const activeShippers = await Order.distinct('shipper', {
             status: 'Đã giao',
             'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd }
@@ -413,7 +419,6 @@ exports.sendCODRemittanceReminder = async () => {
             const shipper = await User.findById(shipperId);
             if (!shipper || !shipper.fcmToken) continue;
 
-            // Tính toán số tiền cần nộp của shipper này
             const orders = await Order.find({ shipper: shipperId, status: 'Đã giao', 'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd } });
             const totalCOD = orders.reduce((sum, order) => sum + order.total, 0);
 
@@ -424,14 +429,12 @@ exports.sendCODRemittanceReminder = async () => {
             if (amountToRemit > 0) {
                 const message = `Bạn cần nộp ${amountToRemit.toLocaleString()}đ tiền thu hộ (COD) cho ngày hôm nay. Vui lòng hoàn thành trước khi bắt đầu ca làm việc tiếp theo.`;
                 
-                // Gửi thông báo đẩy
                 await safeNotify(shipper.fcmToken, {
                     title: '📢 Nhắc nhở nộp tiền COD',
                     body: message,
                     data: { type: 'remittance_reminder' }
                 });
 
-                // Lưu vào DB Notification
                 await Notification.create({
                     user: shipperId,
                     title: 'Nhắc nhở nộp tiền COD',
