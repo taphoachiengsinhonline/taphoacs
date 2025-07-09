@@ -225,4 +225,10 @@ router.get('/shippers/:shipperId/financial-details', adminController.getShipperF
 router.post('/shippers/:shipperId/pay-salary', adminController.payShipperSalary);
 
 
+// Lấy tổng quan tài chính của tất cả Seller
+router.get('/seller-financial-overview', adminController.getSellerFinancialOverview);
+
+// Lấy chi tiết đối soát của 1 Seller theo tháng
+router.get('/sellers/:sellerId/financial-details', adminController.getSellerFinancialDetails);
+
 module.exports = router;
