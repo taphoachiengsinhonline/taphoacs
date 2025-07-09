@@ -347,3 +347,130 @@ exports.getShipperFinancialOverview = async (req, res) => {
         res.status(500).json({ message: "Lỗi server" });
     }
 };
+
+
+// API MỚI: LẤY TỔNG QUAN TÀI CHÍNH CỦA TẤT CẢ SELLER
+exports.getSellerFinancialOverview = async (req, res) => {
+    try {
+        const sellers = await User.find({ role: 'seller' }).select('name phone commissionRate').lean();
+        if (sellers.length === 0) return res.status(200).json([]);
+
+        const sellerIds = sellers.map(s => s._id);
+
+        const [ledgerEntries, payoutEntries] = await Promise.all([
+            // Tính tổng số dư từ sổ cái
+            Order.aggregate([
+                { $match: { 'items.sellerId': { $in: sellerIds }, status: 'Đã giao' } },
+                { $unwind: '$items' },
+                { $match: { 'items.sellerId': { $in: sellerIds } } },
+                { 
+                    $group: { 
+                        _id: '$items.sellerId', 
+                        netRevenue: { $sum: { $subtract: [{ $multiply: ['$items.price', '$items.quantity'] }, '$items.commissionAmount'] } }
+                    }
+                }
+            ]),
+            // Tính tổng tiền đã rút
+            Payout.aggregate([
+                { $match: { seller: { $in: sellerIds }, status: 'completed' } },
+                { $group: { _id: '$seller', totalPaidOut: { $sum: '$amount' } } }
+            ])
+        ]);
+
+        const netRevenueMap = new Map(ledgerEntries.map(item => [item._id.toString(), item.netRevenue]));
+        const payoutMap = new Map(payoutEntries.map(item => [item._id.toString(), item.totalPaidOut]));
+
+        const financialData = sellers.map(seller => {
+            const sellerIdStr = seller._id.toString();
+            const totalNetRevenue = netRevenueMap.get(sellerIdStr) || 0;
+            const totalPaidOut = payoutMap.get(sellerIdStr) || 0;
+            const availableBalance = totalNetRevenue - totalPaidOut;
+
+            return {
+                ...seller,
+                availableBalance: availableBalance > 0 ? availableBalance : 0,
+            };
+        });
+
+        financialData.sort((a, b) => b.availableBalance - a.availableBalance);
+
+        res.status(200).json(financialData);
+    } catch (error) {
+        console.error("[getSellerFinancialOverview] Lỗi:", error);
+        res.status(500).json({ message: "Lỗi server" });
+    }
+};
+
+// API MỚI: LẤY CHI TIẾT ĐỐI SOÁT CỦA 1 SELLER THEO THÁNG
+exports.getSellerFinancialDetails = async (req, res) => {
+    try {
+        const { sellerId } = req.params;
+        const { month, year } = req.query;
+
+        if (!month || !year) {
+            return res.status(400).json({ message: "Vui lòng cung cấp tháng và năm." });
+        }
+        
+        const targetMonth = parseInt(month);
+        const targetYear = parseInt(year);
+
+        const startDate = moment.tz(`${year}-${month}-01`, "YYYY-M-DD", "Asia/Ho_Chi_Minh").startOf('month').toDate();
+        const endDate = moment(startDate).endOf('month').toDate();
+
+        // Lấy tất cả các đơn hàng đã giao trong tháng của seller
+        const deliveredOrders = await Order.find({
+            'items.sellerId': new mongoose.Types.ObjectId(sellerId),
+            status: 'Đã giao',
+            'timestamps.deliveredAt': { $gte: startDate, $lte: endDate }
+        }).sort({ 'timestamps.deliveredAt': -1 }).lean();
+
+        // Tính toán các chỉ số tổng hợp
+        let totalRevenue = 0;
+        let totalCommission = 0;
+
+        const detailedOrders = deliveredOrders.map(order => {
+            const sellerItems = order.items.filter(item => item.sellerId.equals(sellerId));
+            const orderRevenue = sellerItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const orderCommission = sellerItems.reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
+            
+            totalRevenue += orderRevenue;
+            totalCommission += orderCommission;
+            
+            return {
+                _id: order._id,
+                orderDate: order.timestamps.deliveredAt,
+                revenue: orderRevenue,
+                commission: orderCommission,
+                netRevenue: orderRevenue - orderCommission
+            };
+        });
+
+        const payouts = await Payout.find({
+            seller: new mongoose.Types.ObjectId(sellerId),
+            status: 'completed',
+            'processedAt': { $gte: startDate, $lte: endDate }
+        }).sort({ processedAt: -1 }).lean();
+
+        const totalPayout = payouts.reduce((sum, payout) => sum + payout.amount, 0);
+
+        res.status(200).json({
+            overview: {
+                totalRevenue,
+                totalCommission,
+                netRevenue: totalRevenue - totalCommission,
+                totalPayout,
+                finalBalance: (totalRevenue - totalCommission) - totalPayout
+            },
+            orders: detailedOrders,
+            payouts: payouts.map(p => ({
+                _id: p._id,
+                date: p.processedAt,
+                amount: p.amount
+            }))
+        });
+
+    } catch (error) {
+        console.error("Lỗi getSellerFinancialDetails:", error);
+        res.status(500).json({ message: 'Lỗi server khi lấy dữ liệu đối soát.' });
+    }
+};
