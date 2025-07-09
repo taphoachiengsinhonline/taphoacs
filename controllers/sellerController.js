@@ -9,7 +9,7 @@ const crypto = require('crypto');
 const moment = require('moment-timezone');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
-const Payout = require('../models/Payout'); // <<< THÊM IMPORT PAYOUT
+const Payout = require('../models/PayoutRequest'); // <<< THÊM IMPORT PAYOUT
 const mongoose = require('mongoose'); // <<< THÊM IMPORT MONGOOSE
 
 // ==============================================================================
