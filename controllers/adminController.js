@@ -498,3 +498,22 @@ exports.getSellerFinancialDetails = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server khi lấy dữ liệu đối soát.' });
     }
 };
+
+exports.getAllPendingCounts = async (req, res) => {
+    try {
+        const [productCount, payoutCount, remittanceCount] = await Promise.all([
+            Product.countDocuments({ approvalStatus: 'pending_approval' }),
+            PayoutRequest.countDocuments({ status: 'pending' }),
+            RemittanceRequest.countDocuments({ status: 'pending' })
+        ]);
+
+        res.status(200).json({
+            pendingProducts: productCount,
+            pendingPayouts: payoutCount,
+            pendingRemittances: remittanceCount
+        });
+    } catch (error) {
+        console.error('[getAllPendingCounts] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+};
