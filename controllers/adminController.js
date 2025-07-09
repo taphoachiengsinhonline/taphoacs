@@ -250,3 +250,72 @@ exports.getShipperFinancialDetails = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server.' });
     }
 };
+
+exports.getShipperFinancialOverview = async (req, res) => {
+    try {
+        const shippers = await User.find({ role: 'shipper' }).select('name phone').lean();
+        if (shippers.length === 0) return res.status(200).json([]);
+
+        const shipperIds = shippers.map(s => s._id);
+
+        const [codResults, remittedResults, incomeResults, salaryPaidResults] = await Promise.all([
+            // 1. Tổng COD thu được (từ trước đến nay)
+            Order.aggregate([
+                { $match: { shipper: { $in: shipperIds }, status: 'Đã giao' } },
+                { $group: { _id: '$shipper', total: { $sum: '$total' } } }
+            ]),
+            // 2. Tổng COD đã nộp
+            Remittance.aggregate([
+                { $match: { shipper: { $in: shipperIds }, status: 'completed' } },
+                { $group: { _id: '$shipper', total: { $sum: '$amount' } } }
+            ]),
+            // 3. Tổng thu nhập (lương) kiếm được
+            Order.aggregate([
+                { $match: { shipper: { $in: shipperIds }, status: 'Đã giao' } },
+                { $group: { _id: '$shipper', total: { $sum: '$shipperIncome' } } }
+            ]),
+            // 4. Tổng lương đã được thanh toán
+            SalaryPayment.aggregate([
+                { $match: { shipper: { $in: shipperIds } } },
+                { $group: { _id: '$shipper', total: { $sum: '$amount' } } }
+            ])
+        ]);
+
+        const codMap = new Map(codResults.map(item => [item._id.toString(), item.total]));
+        const remittedMap = new Map(remittedResults.map(item => [item._id.toString(), item.total]));
+        const incomeMap = new Map(incomeResults.map(item => [item._id.toString(), item.total]));
+        const salaryPaidMap = new Map(salaryPaidResults.map(item => [item._id.toString(), item.total]));
+
+        const financialData = shippers.map(shipper => {
+            const shipperIdStr = shipper._id.toString();
+            
+            // Tính công nợ COD
+            const totalCOD = codMap.get(shipperIdStr) || 0;
+            const totalRemitted = remittedMap.get(shipperIdStr) || 0;
+            const codDebt = totalCOD - totalRemitted;
+
+            // Tính lương cần trả
+            const totalIncome = incomeMap.get(shipperIdStr) || 0;
+            const totalSalaryPaid = salaryPaidMap.get(shipperIdStr) || 0;
+            const salaryToPay = totalIncome - totalSalaryPaid;
+
+            return {
+                ...shipper,
+                codDebt: codDebt > 0 ? codDebt : 0,
+                salaryToPay: salaryToPay > 0 ? salaryToPay : 0
+            };
+        });
+
+        // Sắp xếp ưu tiên shipper có lương cần trả cao nhất, hoặc công nợ cao nhất
+        financialData.sort((a, b) => {
+            if (b.salaryToPay > a.salaryToPay) return 1;
+            if (a.salaryToPay > b.salaryToPay) return -1;
+            return b.codDebt - a.codDebt;
+        });
+
+        res.status(200).json(financialData);
+    } catch (error) {
+        console.error("[getShipperFinancialOverview] Lỗi:", error);
+        res.status(500).json({ message: "Lỗi server" });
+    }
+};
