@@ -195,37 +195,37 @@ exports.getDashboardSummary = async (req, res) => {
 
 
 exports.createRemittanceRequest = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
     try {
         const shipperId = req.user._id;
-        const { amount, notes } = req.body;
+        const { amount, notes, isForOldDebt = false } = req.body; // Thêm cờ isForOldDebt
 
         if (!amount || amount <= 0) {
-            return res.status(400).json({ message: "Số tiền yêu cầu không hợp lệ." });
-        }
-        
-        // Kiểm tra xem có yêu cầu nào đang chờ không để tránh spam
-        const existingPending = await RemittanceRequest.findOne({ shipper: shipperId, status: 'pending' });
-        if (existingPending) {
-            return res.status(400).json({ message: "Bạn đã có một yêu cầu đang chờ xử lý. Vui lòng đợi admin xác nhận." });
+            throw new Error("Số tiền yêu cầu không hợp lệ.");
         }
 
+        // Tạo một yêu cầu nộp tiền mới
         const newRequest = new RemittanceRequest({
             shipper: shipperId,
             amount: amount,
-            shipperNotes: notes || `Tự xác nhận đã nộp tiền lúc ${new Date().toLocaleString('vi-VN')}`
+            shipperNotes: notes || `Yêu cầu nộp tiền lúc ${new Date().toLocaleString('vi-VN')}`,
+            isForOldDebt: isForOldDebt // Lưu lại mục đích của lần nộp tiền
         });
 
-        await newRequest.save();
+        await newRequest.save({ session });
         
-        // Gửi thông báo cho tất cả admin
-        // ... (logic notifyAdmins)
-
+        // (Tùy chọn) Gửi thông báo cho Admin ở đây...
+        
+        await session.commitTransaction();
         res.status(201).json({ message: "Yêu cầu đã được gửi. Vui lòng chờ admin xác nhận." });
     } catch (error) {
+        await session.abortTransaction();
         console.error('[createRemittanceRequest] Lỗi:', error);
-        res.status(500).json({ message: 'Lỗi server.' });
+        res.status(500).json({ message: error.message || 'Lỗi server.' });
+    } finally {
+        session.endSession();
     }
-};
 
 
 exports.getMonthlyFinancialReport = async (req, res) => {
