@@ -1,5 +1,4 @@
 // controllers/sellerController.js
-// controllers/sellerController.js
 
 const Product = require('../models/Product');
 const Order = require('../models/Order');
@@ -155,7 +154,7 @@ exports.getSellerOrders = async (req, res) => {
         const orders = await Order.find({ 'items.sellerId': sellerId })
             .select('customerName total status createdAt items.name items.price items.quantity') 
             .populate('user', 'name')
-            .sort({ createdAt: -1 })
+            .sort({ createdAt: -1 });
             .lean(); 
             
         res.json(orders);
