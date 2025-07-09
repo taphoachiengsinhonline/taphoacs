@@ -207,8 +207,6 @@ exports.payShipperSalary = async (req, res) => {
     }
 };
 
-// API để lấy toàn bộ thông tin tài chính của shipper trong tháng
-// <<< SỬA LỖI LOGIC TẠI ĐÂY >>>
 exports.getShipperFinancialDetails = async (req, res) => {
     try {
         const { shipperId } = req.params;
@@ -217,45 +215,76 @@ exports.getShipperFinancialDetails = async (req, res) => {
         if (!month || !year) {
             return res.status(400).json({ message: "Vui lòng cung cấp tháng và năm." });
         }
-        
-        // Cách tạo ngày an toàn hơn
-        const startDate = moment({ year: year, month: parseInt(month) - 1 }).tz("Asia/Ho_Chi_Minh").startOf('month').toDate();
-        const endDate = moment(startDate).endOf('month').toDate();
 
-        const [incomeResult, paymentResult, remittances] = await Promise.all([
+        const targetMonth = parseInt(month);
+        const targetYear = parseInt(year);
+
+        const [incomeAggregation, paymentAggregation, remittanceResult] = await Promise.all([
+            // 1. Tính thu nhập bằng aggregation pipeline chuẩn
             Order.aggregate([
                 {
                     $match: {
                         shipper: new mongoose.Types.ObjectId(shipperId),
                         status: 'Đã giao',
-                        'timestamps.deliveredAt': { $gte: startDate, $lte: endDate }
+                        'timestamps.deliveredAt': { $exists: true, $ne: null }
                     }
                 },
-                { $group: { _id: null, totalIncome: { $sum: '$shipperIncome' } } }
+                {
+                    $project: {
+                        income: "$shipperIncome",
+                        year: { $year: { date: "$timestamps.deliveredAt", timezone: "Asia/Ho_Chi_Minh" } },
+                        month: { $month: { date: "$timestamps.deliveredAt", timezone: "Asia/Ho_Chi_Minh" } }
+                    }
+                },
+                {
+                    $match: {
+                        year: targetYear,
+                        month: targetMonth
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalIncome: { $sum: "$income" }
+                    }
+                }
             ]),
+            // 2. Tính lương đã trả
             SalaryPayment.aggregate([
                 {
                     $match: {
                         shipper: new mongoose.Types.ObjectId(shipperId),
-                        paymentDate: { $gte: startDate, $lte: endDate }
+                        paymentDate: {
+                            $gte: moment({ year: targetYear, month: targetMonth - 1 }).startOf('month').toDate(),
+                            $lte: moment({ year: targetYear, month: targetMonth - 1 }).endOf('month').toDate()
+                        }
                     }
                 },
-                { $group: { _id: null, totalPaid: { $sum: '$amount' } } }
+                {
+                    $group: {
+                        _id: null,
+                        totalPaid: { $sum: "$amount" }
+                    }
+                }
             ]),
-            Remittance.find({ 
+            // 3. Lấy lịch sử nộp COD
+            Remittance.find({
                 shipper: new mongoose.Types.ObjectId(shipperId),
-                remittanceDate: { $gte: startDate, $lte: endDate }, 
-                status: 'completed' 
+                remittanceDate: {
+                    $gte: moment({ year: targetYear, month: targetMonth - 1 }).startOf('month').toDate(),
+                    $lte: moment({ year: targetYear, month: targetMonth - 1 }).endOf('month').toDate()
+                },
+                status: 'completed'
             }).sort({ remittanceDate: -1 }).lean()
         ]);
         
-        const totalIncome = incomeResult[0]?.totalIncome || 0;
-        const totalSalaryPaid = paymentResult[0]?.totalPaid || 0;
+        const totalIncome = incomeAggregation[0]?.totalIncome || 0;
+        const totalSalaryPaid = paymentAggregation[0]?.totalPaid || 0;
 
         res.status(200).json({
             totalIncome: totalIncome,
             totalSalaryPaid: totalSalaryPaid,
-            remittances: remittances
+            remittances: remittanceResult
         });
 
     } catch (error) {
