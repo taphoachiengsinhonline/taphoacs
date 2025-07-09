@@ -18,6 +18,9 @@
     "mongoose-paginate-v2": "^1.8.0",
     "@react-native-community/datetimepicker": "^6.7.0",
     "moment-timezone": "^0.6.0",
-    "twilio": "^5.2.2"
+    "twilio": "^5.2.2",
+    "expo-background-fetch": "~11.10.1",
+    "expo-notifications": "~0.28.1",
+    "expo-task-manager": "~11.9.1",
   }
 }
