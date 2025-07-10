@@ -2,7 +2,8 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const { verifyToken } = require('../middlewares/authMiddleware');
+const { verifyToken, protect } = require('../middlewares/authMiddleware');
+const bcrypt = require('bcryptjs');
 
 // PUT /api/v1/users/:id
 // Cập nhật thông tin cơ bản (name, address, phone)
@@ -26,6 +27,41 @@ router.put('/:id', verifyToken, async (req, res) => {
     console.error('[BACKEND] update-user error:', err);
     return res.status(500).json({ message: 'Lỗi server khi cập nhật user', error: err.message });
   }
+});
+
+router.post('/change-password', async (req, res) => {
+    try {
+        const { currentPassword, newPassword, confirmPassword } = req.body;
+
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            return res.status(400).json({ message: 'Vui lòng điền đầy đủ các trường.' });
+        }
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({ message: 'Mật khẩu mới không khớp.' });
+        }
+        if (newPassword.length < 6) { // Kiểm tra độ dài
+            return res.status(400).json({ message: 'Mật khẩu mới phải có ít nhất 6 ký tự.' });
+        }
+
+        const user = await User.findById(req.user.id).select('+password'); // Lấy user, bao gồm password
+        if (!user) { // Trường hợp không tìm thấy user, mặc dù đã protect
+            return res.status(404).json({ message: 'Người dùng không tồn tại.' });
+        }
+
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ message: 'Mật khẩu hiện tại không chính xác.' });
+        }
+
+        user.password = newPassword; // Gán mật khẩu mới, middleware pre('save') sẽ tự hash
+        await user.save();
+
+        res.status(200).json({ message: 'Đổi mật khẩu thành công!' });
+        
+    } catch (error) {
+        console.error('[User Change Password] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server, vui lòng thử lại.' });
+    }
 });
 
 // POST /api/v1/users/update-location
