@@ -297,3 +297,37 @@ exports.getMonthlyRemittanceDetails = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server khi lấy dữ liệu đối soát.' });
     }
 };
+
+exports.changePassword = async (req, res) => {
+    try {
+        const { currentPassword, newPassword, confirmPassword } = req.body;
+
+        // 1. Validation cơ bản
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            return res.status(400).json({ message: 'Vui lòng điền đầy đủ các trường.' });
+        }
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({ message: 'Mật khẩu mới không khớp.' });
+        }
+
+        // 2. Lấy user từ DB (bao gồm cả password)
+        const user = await User.findById(req.user.id).select('+password');
+
+        // 3. Kiểm tra mật khẩu hiện tại có đúng không
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ message: 'Mật khẩu hiện tại không chính xác.' });
+        }
+
+        // 4. Cập nhật mật khẩu mới và lưu
+        user.password = newPassword;
+        await user.save(); // Middleware pre('save') trong model User sẽ tự động hash mật khẩu mới
+
+        // 5. Trả về thành công
+        res.status(200).json({ message: 'Đổi mật khẩu thành công!' });
+        
+    } catch (error) {
+        console.error('[changePassword Seller] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server, vui lòng thử lại.' });
+    }
+};
