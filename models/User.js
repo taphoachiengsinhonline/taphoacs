@@ -48,6 +48,12 @@ commissionRate: { // <-- THÊM MỚI Ở ĐÂY
     min: 0,
     max: 100
 },
+approvalStatus: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: 'approved' // Mặc định là 'approved' cho các tài khoản cũ và shipper/admin
+    },
+rejectionReason: String,
   
   fcmToken: String,
   expoPushToken: { type: String },
