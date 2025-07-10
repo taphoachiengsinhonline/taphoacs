@@ -263,5 +263,41 @@ router.get('/me', verifyToken, async (req, res) => {
     }
 });
 
+router.post('/register/seller', async (req, res) => {
+    try {
+        const { email, password, name, phone, address } = req.body;
+        
+        if (!email || !password || !name || !phone) {
+            return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin bắt buộc.' });
+        }
+        
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ message: 'Email này đã được sử dụng.' });
+        }
+        
+        const hashedPassword = await bcrypt.hash(password, 10);
+        
+        const newSeller = new User({
+            email: email.trim().toLowerCase(),
+            password: hashedPassword,
+            name,
+            phone,
+            address: address || '',
+            role: 'seller',
+            approvalStatus: 'pending' // << QUAN TRỌNG: Tài khoản mới sẽ ở trạng thái chờ duyệt
+        });
+        
+        await newSeller.save();
+        
+        // (Tùy chọn) Gửi thông báo cho tất cả Admin về việc có tài khoản mới cần duyệt
+        
+        res.status(201).json({ message: 'Đăng ký thành công! Tài khoản của bạn đang chờ quản trị viên phê duyệt.' });
+        
+    } catch (error) {
+        console.error("Lỗi khi đăng ký seller:", error);
+        res.status(500).json({ message: "Đã có lỗi xảy ra, vui lòng thử lại." });
+    }
+});
 
 module.exports = router;
