@@ -12,6 +12,7 @@ const Message = require('../models/Message');
 // <<< SỬA LẠI TÊN MODEL CHO ĐÚNG >>>
 const PayoutRequest = require('../models/PayoutRequest'); 
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs'); 
 
 // ==============================================================================
 // ===                  API CHO DASHBOARD - ĐÃ NÂNG CẤP                       ===
