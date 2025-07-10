@@ -65,6 +65,35 @@ router.post('/change-password', async (req, res) => {
     }
 });
 
+router.put('/me', async (req, res) => { // Hoặc PATCH tùy bạn
+    try {
+        const { name, phone, address } = req.body;
+        const userId = req.user.id; // ID của user từ token xác thực
+
+        // Basic validation
+        if (!name || !phone || !address) {
+            return res.status(400).json({ message: 'Tên, số điện thoại và địa chỉ là bắt buộc.' });
+        }
+
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            { $set: { name, phone, address } }, // Chỉ cập nhật các trường này
+            { new: true, runValidators: true } // Trả về user mới, chạy validator
+        ).select('-password'); // Không trả về password
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: 'Người dùng không tồn tại.' });
+        }
+
+        res.status(200).json({ message: 'Cập nhật thông tin thành công!', user: updatedUser });
+
+    } catch (error) {
+        console.error('[Update Profile] Lỗi:', error);
+        res.status(500).json({ message: error.message || 'Lỗi server khi cập nhật thông tin.' });
+    }
+});
+
+
 // POST /api/v1/users/update-location
 // Body: { latitude, longitude }
 router.post('/update-location', verifyToken, async (req, res) => {
