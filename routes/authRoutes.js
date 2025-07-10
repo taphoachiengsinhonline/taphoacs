@@ -267,7 +267,7 @@ router.post('/register/seller', async (req, res) => {
     try {
         const { email, password, name, phone, address } = req.body;
         
-        if (!email || !password || !name || !phone) {
+        if (!name || !email || !password || !address || !phone) {
             return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin bắt buộc.' });
         }
         
@@ -276,14 +276,13 @@ router.post('/register/seller', async (req, res) => {
             return res.status(400).json({ message: 'Email này đã được sử dụng.' });
         }
         
-        const hashedPassword = await bcrypt.hash(password, 10);
-        
+                
         const newSeller = new User({
-            email: email.trim().toLowerCase(),
-            password: hashedPassword,
             name,
+            email: email.toLowerCase().trim(),
+            password,
+            address,
             phone,
-            address: address || '',
             role: 'seller',
             approvalStatus: 'pending' // << QUAN TRỌNG: Tài khoản mới sẽ ở trạng thái chờ duyệt
         });
