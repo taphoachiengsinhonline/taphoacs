@@ -232,5 +232,8 @@ router.get('/seller-financial-overview', adminController.getSellerFinancialOverv
 router.get('/sellers/:sellerId/financial-details', adminController.getSellerFinancialDetails);
 
 router.get('/all-pending-counts', adminController.getAllPendingCounts);
+router.get('/sellers/pending', adminController.getPendingSellers);
+router.post('/sellers/:sellerId/approve', adminController.approveSeller);
+router.post('/sellers/:sellerId/reject', adminController.rejectSeller);
 
 module.exports = router;
