@@ -5,6 +5,52 @@ const User = require('../models/User');
 const { verifyToken, protect } = require('../middlewares/authMiddleware');
 const bcrypt = require('bcryptjs');
 
+// routes/userRoutes.js
+router.put('/me', async (req, res) => {
+    console.log('[DEBUG] --- START UPDATE PROFILE ---');
+    console.log('[DEBUG] User ID from token:', req.user.id);
+    console.log('[DEBUG] Request body:', req.body);
+
+    try {
+        const { name, phone, address } = req.body;
+        const userId = req.user.id;
+
+        // VÀ HƠN NỮA, HÃY KIỂM TRA LẠI DÒNG NÀY:
+        // ĐẢM BẢO KHÔNG CÓ LOGIC KIỂM TRA QUYỀN VÔ LÝ
+        // Ví dụ: Không được có:
+        // if (userId !== req.params.id) { return res.status(403).json({ message: 'Bạn không có quyền...' }); }
+        // (Bạn đang dùng /me, nên không cần req.params.id)
+
+        // Hoặc kiểm tra:
+        // if (!req.user.isAdmin && req.user.id.toString() !== userId.toString()) { ... }
+        // (Bạn đang cập nhật chính mình, nên không cần kiểm tra này)
+
+
+        // HÃY TẠM THỜI CHUYỂN DÒNG NÀY SANG CHẾ ĐỘ ĐƠN GIẢN NHẤT ĐỂ TEST:
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            { $set: { name, phone, address } }, // Chỉ cập nhật các trường này
+            { new: true, runValidators: true } 
+        ).select('-password'); 
+
+        console.log('[DEBUG] updatedUser:', updatedUser ? 'Found' : 'Not Found');
+
+        if (!updatedUser) {
+            console.log('[DEBUG] User not found during update, this should not happen if token is valid.');
+            return res.status(404).json({ message: 'Người dùng không tồn tại.' }); // Lỗi 404 này khác với lỗi bạn đang gặp
+        }
+
+        console.log('[DEBUG] Profile updated successfully.');
+        res.status(200).json({ message: 'Cập nhật thông tin thành công!', user: updatedUser });
+
+    } catch (error) {
+        console.error('[User Update Profile ERROR]:', error); // Dòng này sẽ in ra lỗi gốc
+        res.status(500).json({ message: error.message || 'Lỗi server khi cập nhật thông tin.' }); // Lỗi này sẽ được gửi về frontend
+    } finally {
+        console.log('[DEBUG] --- END UPDATE PROFILE ---');
+    }
+});
+
 // PUT /api/v1/users/:id
 // Cập nhật thông tin cơ bản (name, address, phone)
 router.use(protect); 
@@ -65,51 +111,6 @@ router.post('/change-password', async (req, res) => {
     }
 });
 
-// routes/userRoutes.js
-router.put('/me', async (req, res) => {
-    console.log('[DEBUG] --- START UPDATE PROFILE ---');
-    console.log('[DEBUG] User ID from token:', req.user.id);
-    console.log('[DEBUG] Request body:', req.body);
-
-    try {
-        const { name, phone, address } = req.body;
-        const userId = req.user.id;
-
-        // VÀ HƠN NỮA, HÃY KIỂM TRA LẠI DÒNG NÀY:
-        // ĐẢM BẢO KHÔNG CÓ LOGIC KIỂM TRA QUYỀN VÔ LÝ
-        // Ví dụ: Không được có:
-        // if (userId !== req.params.id) { return res.status(403).json({ message: 'Bạn không có quyền...' }); }
-        // (Bạn đang dùng /me, nên không cần req.params.id)
-
-        // Hoặc kiểm tra:
-        // if (!req.user.isAdmin && req.user.id.toString() !== userId.toString()) { ... }
-        // (Bạn đang cập nhật chính mình, nên không cần kiểm tra này)
-
-
-        // HÃY TẠM THỜI CHUYỂN DÒNG NÀY SANG CHẾ ĐỘ ĐƠN GIẢN NHẤT ĐỂ TEST:
-        const updatedUser = await User.findByIdAndUpdate(
-            userId,
-            { $set: { name, phone, address } }, // Chỉ cập nhật các trường này
-            { new: true, runValidators: true } 
-        ).select('-password'); 
-
-        console.log('[DEBUG] updatedUser:', updatedUser ? 'Found' : 'Not Found');
-
-        if (!updatedUser) {
-            console.log('[DEBUG] User not found during update, this should not happen if token is valid.');
-            return res.status(404).json({ message: 'Người dùng không tồn tại.' }); // Lỗi 404 này khác với lỗi bạn đang gặp
-        }
-
-        console.log('[DEBUG] Profile updated successfully.');
-        res.status(200).json({ message: 'Cập nhật thông tin thành công!', user: updatedUser });
-
-    } catch (error) {
-        console.error('[User Update Profile ERROR]:', error); // Dòng này sẽ in ra lỗi gốc
-        res.status(500).json({ message: error.message || 'Lỗi server khi cập nhật thông tin.' }); // Lỗi này sẽ được gửi về frontend
-    } finally {
-        console.log('[DEBUG] --- END UPDATE PROFILE ---');
-    }
-});
 
 
 // POST /api/v1/users/update-location
