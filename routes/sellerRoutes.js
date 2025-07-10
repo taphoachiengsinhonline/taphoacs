@@ -29,7 +29,7 @@ router.post('/payout-request', financeController.createPayoutRequest);
 router.get('/payout-history', verifyToken, financeController.getPayoutHistory);
 router.post('/payment-info/request-update', verifyToken, sellerController.requestUpdatePaymentInfo);
 router.post('/payment-info/verify-update', verifyToken, sellerController.verifyUpdatePaymentInfo);
-
+router.post('/change-password', sellerController.changePassword);
 
 // --- ROUTE MỚI CHO MÀN HÌNH ĐỐI SOÁT ---
 router.get('/monthly-remittance', sellerController.getMonthlyRemittanceDetails);
