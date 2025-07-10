@@ -66,37 +66,6 @@ router.post('/change-password', async (req, res) => {
     }
 });
 
-router.put('/me', async (req, res) => {
-    console.log('[DEBUG] --- START UPDATE PROFILE ---'); // Log này sẽ xuất hiện
-    console.log('[DEBUG] User ID from token:', req.user.id); // Log này sẽ xuất hiện
-    console.log('[DEBUG] Request body:', req.body);
-
-    try {
-        const { name, phone, address } = req.body;
-        const userId = req.user.id; // Lấy ID từ req.user đã được gán bởi middleware protect
-
-        const updatedUser = await User.findByIdAndUpdate(
-            userId, // Cập nhật user với ID từ token
-            { $set: { name, phone, address } },
-            { new: true, runValidators: true }
-        ).select('-password'); 
-
-        console.log('[DEBUG] updatedUser:', updatedUser ? 'Found' : 'Not Found');
-
-        if (!updatedUser) {
-            return res.status(404).json({ message: 'Người dùng không tồn tại.' });
-        }
-
-        console.log('[DEBUG] Profile updated successfully.');
-        res.status(200).json({ message: 'Cập nhật thông tin thành công!', user: updatedUser });
-
-    } catch (error) {
-        console.error('[User Update Profile ERROR]:', error); // Dòng này sẽ in ra lỗi gốc nếu có
-        res.status(500).json({ message: error.message || 'Lỗi server khi cập nhật thông tin.' });
-    } finally {
-        console.log('[DEBUG] --- END UPDATE PROFILE ---');
-    }
-});
 
 
 
