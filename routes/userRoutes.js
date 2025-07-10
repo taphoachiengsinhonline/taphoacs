@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 
 // PUT /api/v1/users/:id
 // Cập nhật thông tin cơ bản (name, address, phone)
+router.use(protect); 
 router.put('/:id', verifyToken, async (req, res) => {
   try {
     const { name, address, phone } = req.body;
