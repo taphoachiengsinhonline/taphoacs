@@ -75,7 +75,6 @@ app.use('/api/v1/conversations', conversationRoutes);
 app.use('/api/v1/messages', messageRoutes);
 app.use('/api/v1/sellers', sellerRoutes);
 app.use('/api/v1/payouts', payoutRoutes); 
-app.use('/api/v1/change-password', authRoutes); 
 
 // 404 Handler
 app.use((req, res, next) => {
