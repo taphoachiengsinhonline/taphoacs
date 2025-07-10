@@ -1,5 +1,4 @@
 // controllers/adminController.js
-// controllers/adminController.js
 
 const User = require('../models/User');
 const Remittance = require('../models/Remittance');
@@ -515,5 +514,70 @@ exports.getAllPendingCounts = async (req, res) => {
     } catch (error) {
         console.error('[getAllPendingCounts] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server' });
+    }
+};
+
+exports.getPendingSellers = async (req, res) => {
+    try {
+        const pendingSellers = await User.find({ role: 'seller', approvalStatus: 'pending' })
+            .select('name email phone createdAt') // Chỉ lấy các trường cần thiết
+            .sort({ createdAt: -1 }); // Sắp xếp theo ngày tạo mới nhất
+
+        res.status(200).json(pendingSellers);
+    } catch (error) {
+        console.error("[getPendingSellers] Lỗi:", error);
+        res.status(500).json({ message: "Lỗi server khi lấy danh sách seller." });
+    }
+};
+
+// Phê duyệt một tài khoản Seller
+exports.approveSeller = async (req, res) => {
+    try {
+        const { sellerId } = req.params;
+        const seller = await User.findOneAndUpdate(
+            { _id: sellerId, role: 'seller', approvalStatus: 'pending' },
+            { $set: { approvalStatus: 'approved' } },
+            { new: true }
+        );
+
+        if (!seller) {
+            return res.status(404).json({ message: 'Không tìm thấy Seller đang chờ duyệt với ID này.' });
+        }
+
+        // (Tùy chọn) Gửi thông báo cho Seller rằng tài khoản của họ đã được duyệt
+
+        res.status(200).json({ message: 'Đã phê duyệt Seller thành công.', seller });
+    } catch (error) {
+        console.error("[approveSeller] Lỗi:", error);
+        res.status(500).json({ message: "Lỗi server khi phê duyệt seller." });
+    }
+};
+
+// Từ chối một tài khoản Seller
+exports.rejectSeller = async (req, res) => {
+    try {
+        const { sellerId } = req.params;
+        const { reason } = req.body;
+
+        if (!reason || reason.trim() === '') {
+            return res.status(400).json({ message: 'Vui lòng cung cấp lý do từ chối.' });
+        }
+
+        const seller = await User.findOneAndUpdate(
+            { _id: sellerId, role: 'seller', approvalStatus: 'pending' },
+            { $set: { approvalStatus: 'rejected', rejectionReason: reason } },
+            { new: true }
+        );
+
+        if (!seller) {
+            return res.status(404).json({ message: 'Không tìm thấy Seller đang chờ duyệt với ID này.' });
+        }
+
+        // (Tùy chọn) Gửi thông báo cho Seller rằng tài khoản của họ đã bị từ chối kèm lý do
+
+        res.status(200).json({ message: 'Đã từ chối Seller.', seller });
+    } catch (error) {
+        console.error("[rejectSeller] Lỗi:", error);
+        res.status(500).json({ message: "Lỗi server khi từ chối seller." });
     }
 };
