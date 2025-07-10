@@ -31,9 +31,9 @@ router.post('/shippers', async (req, res) => {
         if (existingUser) {
             return res.status(400).json({ status: 'error', message: 'Email đã tồn tại' });
         }
-        const hashedPassword = await bcrypt.hash(password, 10);
+        //const hashedPassword = await bcrypt.hash(password, 10);
         const shipper = new User({
-            email, password: hashedPassword, name, address, phone, role: 'shipper',
+            email, password: password, name, address, phone, role: 'shipper',
             shipperProfile: { vehicleType, licensePlate, shippingFeeShareRate, profitShareRate }
         });
         await shipper.save();
