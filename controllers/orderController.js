@@ -458,3 +458,73 @@ exports.adminCountByStatus = async (req, res) => {
     res.status(500).json({ message: 'Lỗi server khi đếm đơn hàng' });
   }
 };
+
+exports.requestOrderTransfer = async (req, res) => {
+    const { orderId } = req.params;
+    const shipperId = req.user._id; // Shipper đang gửi yêu cầu
+
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const order = await Order.findById(orderId).session(session);
+
+        if (!order) {
+            throw new Error('Đơn hàng không tồn tại.');
+        }
+        if (!order.shipper || order.shipper.toString() !== shipperId.toString()) {
+            throw new Error('Bạn không phải shipper của đơn hàng này.');
+        }
+        // Chỉ cho phép chuyển đơn hàng đang xử lý hoặc đang giao
+        if (!['Đang xử lý', 'Đang giao'].includes(order.status)) {
+            throw new Error('Chỉ có thể chuyển đơn hàng đang xử lý hoặc đang giao.');
+        }
+
+        // --- CÁC BƯỚC ĐẶT LẠI TRẠNG THÁI VÀ XÓA DỮ LIỆU SHIPPER CŨ ---
+        order.shipper = null; // Đặt shipper về null để đơn hàng có thể được gán lại
+        order.status = 'Chờ xác nhận'; // Đặt lại trạng thái để đơn hàng có thể được gán lại
+        order.shipperIncome = 0; // Xóa thu nhập đã tính cho shipper cũ (nếu có)
+        order.timestamps.acceptedAt = null; // Xóa thời gian shipper cũ chấp nhận đơn
+        order.timestamps.deliveringAt = null; // Xóa thời gian shipper cũ bắt đầu giao
+        // Không xóa financialDetails, vì đó là chi tiết tài chính của bản thân đơn hàng,
+        // không phải của riêng shipper.
+
+        await order.save({ session });
+        await session.commitTransaction();
+
+        // --- GỌI HÀM TÁI GÁN (ngoài transaction để tránh block DB) ---
+        // Hàm này sẽ tìm shipper khác gần nhất và gán lại đơn hàng
+        assignOrderToNearestShipper(order._id)
+            .then(() => console.log(`[Order Transfer] Đã chuyển đơn ${order._id} và tái gán thành công.`))
+            .catch(err => console.error(`[Order Transfer] Lỗi khi tái gán đơn ${order._id}:`, err));
+
+        // --- GỬI THÔNG BÁO CHO CÁC BÊN LIÊN QUAN ---
+        // 1. Cho khách hàng
+        const customer = await User.findById(order.user);
+        if (customer && customer.fcmToken) {
+            await safeNotify(customer.fcmToken, {
+                title: 'Thông báo đơn hàng',
+                body: `Shipper cũ của bạn không thể tiếp tục giao đơn hàng #${order._id.toString().slice(-6)}. Chúng tôi đang tìm shipper mới cho bạn.`,
+                data: { orderId: order._id.toString(), type: 'order_transfer_customer' }
+            });
+        }
+        // 2. Cho Admin
+        const admins = await User.find({ role: 'admin', fcmToken: { $exists: true } });
+        for (const admin of admins) {
+            await safeNotify(admin.fcmToken, {
+                title: 'Chuyển đơn hàng',
+                body: `Shipper ${req.user.name} đã yêu cầu chuyển đơn hàng #${order._id.toString().slice(-6)}.`,
+                data: { orderId: order._id.toString(), type: 'order_transfer_admin' }
+            });
+        }
+
+        res.status(200).json({ message: 'Yêu cầu chuyển đơn thành công. Đơn hàng đang được tìm shipper mới.' });
+
+    } catch (error) {
+        await session.abortTransaction(); // Đảm bảo rollback nếu có lỗi
+        console.error('[requestOrderTransfer] Lỗi:', error);
+        res.status(500).json({ message: error.message || 'Lỗi server khi yêu cầu chuyển đơn.' });
+    } finally {
+        session.endSession();
+    }
+};
