@@ -63,5 +63,6 @@ router.get('/dashboard-summary', shipperController.getDashboardSummary);
 router.get('/monthly-report', shipperController.getMonthlyFinancialReport);
 // Route để shipper xác nhận đã nộp tiền
 router.post('/remittance-request', shipperController.createRemittanceRequest);
+router.post('/orders/:id/request-transfer', orderController.requestOrderTransfer);
 
 module.exports = router;
