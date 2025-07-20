@@ -177,22 +177,21 @@ exports.processRemittanceRequest = async (req, res) => {
 exports.payShipperSalary = async (req, res) => {
     try {
         const { shipperId } = req.params;
-        const { amount, notes, month, year } = req.body;
+        // <<< SỬA: Chỉ cần amount và notes từ body >>>
+        const { amount, notes } = req.body;
         const adminId = req.user._id;
 
         if (!amount || amount <= 0) {
             return res.status(400).json({ message: "Số tiền thanh toán không hợp lệ." });
         }
-        if (!month || !year) {
-            return res.status(400).json({ message: "Vui lòng cung cấp tháng và năm trả lương." });
-        }
-
-        const paymentDate = moment.tz(`${year}-${month}-01`, "YYYY-MM-DD", "Asia/Ho_Chi_Minh").startOf('month').toDate();
+        
+        // <<< SỬA: paymentDate sẽ là ngày hiện tại >>>
+        const paymentDate = new Date();
 
         const newPayment = new SalaryPayment({
             shipper: shipperId,
             amount: amount,
-            paymentDate: paymentDate,
+            paymentDate: paymentDate, // Ngày trả lương là ngày admin bấm nút
             paidBy: adminId,
             notes: notes
         });
@@ -579,5 +578,93 @@ exports.rejectSeller = async (req, res) => {
     } catch (error) {
         console.error("[rejectSeller] Lỗi:", error);
         res.status(500).json({ message: "Lỗi server khi từ chối seller." });
+    }
+};
+
+
+exports.getShipperComprehensiveFinancials = async (req, res) => {
+    try {
+        const { shipperId } = req.params;
+        const shipperObjectId = new mongoose.Types.ObjectId(shipperId);
+
+        // Lấy thông tin cơ bản của shipper, bao gồm cả thông tin ngân hàng
+        const shipper = await User.findById(shipperId).select('name phone paymentInfo').lean();
+        if (!shipper) {
+            return res.status(404).json({ message: "Không tìm thấy shipper." });
+        }
+
+        const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
+        const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
+        const monthStart = moment().tz('Asia/Ho_Chi_Minh').startOf('month').toDate();
+        const monthEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('month').toDate();
+
+        const [
+            allTimeStats,
+            todayIncome,
+            thisMonthIncome,
+            totalSalaryPaid,
+        ] = await Promise.all([
+            // 1. Thống kê toàn bộ thời gian (COD và Thu nhập)
+            Order.aggregate([
+                { $match: { shipper: shipperObjectId, status: 'Đã giao' } },
+                { 
+                    $group: { 
+                        _id: null, 
+                        totalCodCollected: { $sum: '$total' },
+                        totalIncome: { $sum: '$shipperIncome' }
+                    } 
+                }
+            ]),
+            // 2. Thu nhập ngày hôm nay
+            Order.aggregate([
+                { $match: { shipper: shipperObjectId, status: 'Đã giao', 'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd } } },
+                { $group: { _id: null, income: { $sum: '$shipperIncome' } } }
+            ]),
+            // 3. Thu nhập tháng này
+            Order.aggregate([
+                { $match: { shipper: shipperObjectId, status: 'Đã giao', 'timestamps.deliveredAt': { $gte: monthStart, $lte: monthEnd } } },
+                { $group: { _id: null, income: { $sum: '$shipperIncome' } } }
+            ]),
+            // 4. Tổng lương đã trả (toàn bộ thời gian)
+            SalaryPayment.aggregate([
+                { $match: { shipper: shipperObjectId } },
+                { $group: { _id: null, total: { $sum: '$amount' } } }
+            ]),
+        ]);
+
+        // 5. Tổng COD đã nộp (toàn bộ thời gian)
+        const totalCodPaidResult = await Remittance.aggregate([
+            { $match: { shipper: shipperObjectId, status: 'completed' } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+
+        const totalCodCollected = allTimeStats[0]?.totalCodCollected || 0;
+        const totalShipperIncome = allTimeStats[0]?.totalIncome || 0;
+        const totalCodPaid = totalCodPaidResult[0]?.total || 0;
+        const totalSalaryPaidAmount = totalSalaryPaid[0]?.total || 0;
+        
+        const finalData = {
+            shipperInfo: shipper,
+            allTime: {
+                totalCodCollected,
+                totalCodPaid,
+                totalDebt: totalCodCollected - totalCodPaid,
+                totalShipperIncome,
+                totalSalaryPaid: totalSalaryPaidAmount,
+                remainingSalary: totalShipperIncome - totalSalaryPaidAmount,
+            },
+            today: {
+                income: todayIncome[0]?.income || 0,
+            },
+            thisMonth: {
+                income: thisMonthIncome[0]?.income || 0,
+            }
+        };
+
+        res.status(200).json(finalData);
+
+    } catch (error) {
+        console.error('[getShipperComprehensiveFinancials] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server khi lấy dữ liệu tài chính.' });
     }
 };
