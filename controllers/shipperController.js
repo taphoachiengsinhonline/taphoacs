@@ -145,13 +145,66 @@ exports.changePassword = async (req, res) => {
     }
 };
 
+
+exports.getAllNotifications = async (req, res) => {
+    try {
+        const shipperId = req.user._id;
+        const notifications = await Notification.find({ user: shipperId })
+            .sort({ createdAt: -1 }) // Mới nhất lên đầu
+            .limit(100); // Giới hạn 100 thông báo gần nhất
+
+        res.status(200).json(notifications);
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server khi lấy danh sách thông báo.' });
+    }
+};
+
+// --- API MỚI: Đánh dấu một thông báo là đã đọc ---
+exports.markNotificationAsRead = async (req, res) => {
+    try {
+        const { id: notificationId } = req.params;
+        const shipperId = req.user._id;
+
+        const notification = await Notification.findOneAndUpdate(
+            { _id: notificationId, user: shipperId },
+            { $set: { isRead: true } },
+            { new: true } // Trả về document sau khi đã cập nhật
+        );
+
+        if (!notification) {
+            return res.status(404).json({ message: 'Không tìm thấy thông báo.' });
+        }
+        res.status(200).json({ message: 'Đã đánh dấu đã đọc.', notification });
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server khi cập nhật thông báo.' });
+    }
+};
+
+// --- API MỚI: Xóa một thông báo ---
+exports.deleteNotification = async (req, res) => {
+    try {
+        const { id: notificationId } = req.params;
+        const shipperId = req.user._id;
+
+        const result = await Notification.deleteOne({ _id: notificationId, user: shipperId });
+
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ message: 'Không tìm thấy thông báo để xóa.' });
+        }
+        res.status(200).json({ message: 'Đã xóa thông báo thành công.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server khi xóa thông báo.' });
+    }
+};
+
+
 exports.getDashboardSummary = async (req, res) => {
     try {
         const shipperId = req.user._id;
         const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
         const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
 
-        const [dailyStats, remittanceTodayResult, processingOrders, notifications, pendingRequest] = await Promise.all([
+        const [dailyStats, remittanceTodayResult, processingOrders, unreadCount, latestNotification, notifications, pendingRequest] = await Promise.all([
             Order.aggregate([
                 {
                     $match: {
@@ -178,7 +231,12 @@ exports.getDashboardSummary = async (req, res) => {
                 shipper: shipperId,
                 status: { $in: ['Đang xử lý', 'Đang giao'] }
             }).lean(),
-            Notification.find({ user: shipperId }).sort({ createdAt: -1 }).limit(5).lean(), 
+            // Đếm số thông báo chưa đọc
+            Notification.countDocuments({ user: shipperId, isRead: false }),
+
+            // Lấy 1 thông báo mới nhất (dù đã đọc hay chưa)
+            Notification.findOne({ user: shipperId }).sort({ createdAt: -1 }).lean(),
+            
             RemittanceRequest.findOne({ shipper: shipperId, status: 'pending' }).lean()
         ]);
 
@@ -186,14 +244,13 @@ exports.getDashboardSummary = async (req, res) => {
         const amountRemittedToday = remittanceTodayResult.reduce((sum, remit) => sum + (remit.amount || 0), 0);
         const amountToRemitToday = stats.totalCOD - amountRemittedToday;
 
-        res.status(200).json({
-            remittance: {
-                amountToRemit: amountToRemitToday > 0 ? amountToRemitToday : 0,
-                completedOrders: stats.completedOrders,
-                totalShipperIncome: stats.totalIncome
+         res.status(200).json({
+            remittance: { /* ... */ },
+            // <<< TRẢ VỀ DỮ LIỆU MỚI CHO TRANG CHỦ >>>
+            notificationSummary: {
+                unreadCount: unreadCount,
+                latestNotification: latestNotification
             },
-            // <<< TRẢ VỀ ĐÚNG DỮ LIỆU NOTIFICATIONS >>>
-            notifications: notifications, // Dữ liệu giờ đã có ở đây
             processingOrderCount: processingOrders,
             hasPendingRequest: !!pendingRequest
         });
@@ -366,3 +423,4 @@ exports.sendCODRemittanceReminder = async () => {
         console.error("CRON JOB ERROR: Lỗi khi gửi thông báo nhắc nợ:", error);
     }
 };
+
