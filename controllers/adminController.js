@@ -668,3 +668,30 @@ exports.getShipperComprehensiveFinancials = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server khi lấy dữ liệu tài chính.' });
     }
 };
+
+
+exports.getAdminDashboardCounts = async (req, res) => {
+    try {
+        const [
+            pendingSellers,
+            pendingProducts,
+            pendingPayouts,
+            pendingRemittances
+        ] = await Promise.all([
+            User.countDocuments({ role: 'seller', approvalStatus: 'pending' }),
+            Product.countDocuments({ approvalStatus: 'pending_approval' }),
+            Payout.countDocuments({ status: 'pending' }),
+            RemittanceRequest.countDocuments({ status: 'pending' })
+        ]);
+
+        res.status(200).json({
+            pendingSellers,
+            pendingProducts,
+            pendingPayouts,
+            pendingRemittances
+        });
+    } catch (error) {
+        console.error('[getAdminDashboardCounts] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server khi lấy số liệu dashboard' });
+    }
+};
