@@ -198,67 +198,9 @@ exports.deleteNotification = async (req, res) => {
 };
 
 
-exports.getDashboardSummary = async (req, res) => {
-    try {
-        const shipperId = req.user._id;
+const shipperId = req.user._id;
         const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
         const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
-
-        const [dailyStats, remittanceTodayResult, processingOrders, unreadCount, latestNotification, notifications, pendingRequest] = await Promise.all([
-            Order.aggregate([
-                {
-                    $match: {
-                        shipper: new mongoose.Types.ObjectId(shipperId),
-                        status: 'Đã giao',
-                        'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd }
-                    }
-                },
-                {
-                    $group: {
-                        _id: null,
-                        totalCOD: { $sum: '$total' },
-                        totalIncome: { $sum: '$shipperIncome' },
-                        completedOrders: { $sum: 1 }
-                    }
-                }
-            ]),
-            Remittance.find({
-                shipper: shipperId,
-                remittanceDate: { $gte: todayStart, $lte: todayEnd },
-                status: 'completed'
-            }).lean(),
-            Order.countDocuments({
-                shipper: shipperId,
-                status: { $in: ['Đang xử lý', 'Đang giao'] }
-            }).lean(),
-            // Đếm số thông báo chưa đọc
-            Notification.countDocuments({ user: shipperId, isRead: false }),
-
-            // Lấy 1 thông báo mới nhất (dù đã đọc hay chưa)
-            Notification.findOne({ user: shipperId }).sort({ createdAt: -1 }).lean(),
-            
-            RemittanceRequest.findOne({ shipper: shipperId, status: 'pending' }).lean()
-        ]);
-
-        const stats = dailyStats[0] || { totalCOD: 0, totalIncome: 0, completedOrders: 0 };
-        const amountRemittedToday = remittanceTodayResult.reduce((sum, remit) => sum + (remit.amount || 0), 0);
-        const amountToRemitToday = stats.totalCOD - amountRemittedToday;
-
-         res.status(200).json({
-            remittance: { /* ... */ },
-            // <<< TRẢ VỀ DỮ LIỆU MỚI CHO TRANG CHỦ >>>
-            notificationSummary: {
-                unreadCount: unreadCount,
-                latestNotification: latestNotification
-            },
-            processingOrderCount: processingOrders,
-            hasPendingRequest: !!pendingRequest
-        });
-    } catch (error) {
-        console.error('[getDashboardSummary] Lỗi:', error);
-        res.status(500).json({ message: 'Lỗi server khi lấy dữ liệu dashboard.' });
-    }
-};
 
 exports.createRemittanceRequest = async (req, res) => {
     try {
