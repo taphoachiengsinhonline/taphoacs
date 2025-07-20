@@ -177,8 +177,8 @@ exports.getDashboardSummary = async (req, res) => {
             Order.countDocuments({
                 shipper: shipperId,
                 status: { $in: ['Đang xử lý', 'Đang giao'] }
-            }),
-            Notification.find({ user: shipperId }).sort('-createdAt').limit(3).lean(),
+            }).lean(),
+            Notification.find({ user: shipperId }).sort({ createdAt: -1 }).limit(5).lean(), 
             RemittanceRequest.findOne({ shipper: shipperId, status: 'pending' }).lean()
         ]);
 
@@ -192,7 +192,8 @@ exports.getDashboardSummary = async (req, res) => {
                 completedOrders: stats.completedOrders,
                 totalShipperIncome: stats.totalIncome
             },
-            notifications,
+            // <<< TRẢ VỀ ĐÚNG DỮ LIỆU NOTIFICATIONS >>>
+            notifications: notifications, // Dữ liệu giờ đã có ở đây
             processingOrderCount: processingOrders,
             hasPendingRequest: !!pendingRequest
         });
