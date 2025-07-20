@@ -2,12 +2,12 @@ const Order = require('../models/Order');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const Remittance = require('../models/Remittance');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs'); // Sửa lại import
 const moment = require('moment-timezone');
 const mongoose = require('mongoose');
 const { safeNotify } = require('../utils/notificationMiddleware');
 const RemittanceRequest = require('../models/RemittanceRequest');
-const SalaryPayment = require('../models/SalaryPayment'); // THÊM DÒNG NÀY
+const SalaryPayment = require('../models/SalaryPayment');
 
 exports.updateLocation = async (req, res) => {
     try {
@@ -110,15 +110,6 @@ exports.addSurcharge = async (req, res) => {
     }
 };
 
-exports.getShipperNotifications = async (req, res) => {
-    try {
-        const notifications = await Notification.find({ user: req.user._id }).sort('-createdAt').limit(20);
-        res.json(notifications);
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi khi lấy thông báo: ' + error.message });
-    }
-};
-
 exports.updateFcmToken = async (req, res) => {
     try {
         const { fcmToken } = req.body;
@@ -145,32 +136,27 @@ exports.changePassword = async (req, res) => {
     }
 };
 
-
 exports.getAllNotifications = async (req, res) => {
     try {
         const shipperId = req.user._id;
         const notifications = await Notification.find({ user: shipperId })
-            .sort({ createdAt: -1 }) // Mới nhất lên đầu
-            .limit(100); // Giới hạn 100 thông báo gần nhất
-
+            .sort({ createdAt: -1 })
+            .limit(100);
         res.status(200).json(notifications);
     } catch (error) {
         res.status(500).json({ message: 'Lỗi server khi lấy danh sách thông báo.' });
     }
 };
 
-// --- API MỚI: Đánh dấu một thông báo là đã đọc ---
 exports.markNotificationAsRead = async (req, res) => {
     try {
         const { id: notificationId } = req.params;
         const shipperId = req.user._id;
-
         const notification = await Notification.findOneAndUpdate(
             { _id: notificationId, user: shipperId },
             { $set: { isRead: true } },
-            { new: true } // Trả về document sau khi đã cập nhật
+            { new: true }
         );
-
         if (!notification) {
             return res.status(404).json({ message: 'Không tìm thấy thông báo.' });
         }
@@ -180,14 +166,11 @@ exports.markNotificationAsRead = async (req, res) => {
     }
 };
 
-// --- API MỚI: Xóa một thông báo ---
 exports.deleteNotification = async (req, res) => {
     try {
         const { id: notificationId } = req.params;
         const shipperId = req.user._id;
-
         const result = await Notification.deleteOne({ _id: notificationId, user: shipperId });
-
         if (result.deletedCount === 0) {
             return res.status(404).json({ message: 'Không tìm thấy thông báo để xóa.' });
         }
@@ -197,10 +180,88 @@ exports.deleteNotification = async (req, res) => {
     }
 };
 
-
-const shipperId = req.user._id;
+exports.getDashboardSummary = async (req, res) => {
+    try {
+        const shipperId = req.user._id;
         const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
         const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
+        const todayString = moment().tz('Asia/Ho_Chi_Minh').format('YYYY-MM-DD');
+
+        const [
+            dailyStatsResult,
+            remittanceTodayResult,
+            processingOrders,
+            unreadCount,
+            latestNotification,
+            pendingRequest
+        ] = await Promise.all([
+            Order.aggregate([
+                {
+                    $match: {
+                        shipper: new mongoose.Types.ObjectId(shipperId),
+                        status: 'Đã giao',
+                        'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd }
+                    }
+                },
+                {
+                    $project: {
+                        day: { $dateToString: { format: "%Y-%m-%d", date: "$timestamps.deliveredAt", timezone: "Asia/Ho_Chi_Minh" } },
+                        total: 1,
+                        shipperIncome: 1
+                    }
+                },
+                { $match: { day: todayString } },
+                {
+                    $group: {
+                        _id: null,
+                        totalCOD: { $sum: '$total' },
+                        totalIncome: { $sum: '$shipperIncome' },
+                        completedOrders: { $sum: 1 }
+                    }
+                }
+            ]),
+            Remittance.find({
+                shipper: shipperId,
+                remittanceDate: { $gte: todayStart, $lte: todayEnd },
+                status: 'completed'
+            }).lean(),
+            Order.countDocuments({
+                shipper: shipperId,
+                status: { $in: ['Đang xử lý', 'Đang giao'] }
+            }),
+            Notification.countDocuments({ user: shipperId, isRead: false }),
+            Notification.findOne({ user: shipperId }).sort({ createdAt: -1 }).lean(),
+            RemittanceRequest.findOne({ shipper: shipperId, status: 'pending' }).lean()
+        ]);
+
+        const stats = dailyStatsResult[0] || { totalCOD: 0, totalIncome: 0, completedOrders: 0 };
+        const amountRemittedToday = remittanceTodayResult.reduce((sum, remit) => sum + (remit.amount || 0), 0);
+        const amountToRemitToday = stats.totalCOD - amountRemittedToday;
+
+        res.status(200).json({
+            remittance: {
+                amountToRemit: amountToRemitToday > 0 ? amountToRemitToday : 0,
+                completedOrders: stats.completedOrders,
+                totalShipperIncome: stats.totalIncome
+            },
+            notificationSummary: {
+                unreadCount: unreadCount,
+                latestNotification: latestNotification
+            },
+            processingOrderCount: processingOrders,
+            hasPendingRequest: !!pendingRequest
+        });
+    } catch (error) {
+        console.error('[getDashboardSummary] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server khi lấy dữ liệu dashboard.' });
+    }
+};
+
+// <<< BẮT ĐẦU SỬA LỖI >>>
+// XÓA ĐOẠN CODE BỊ LẠC KHỎI ĐÂY
+// const shipperId = req.user._id;
+// const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
+// const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
 
 exports.createRemittanceRequest = async (req, res) => {
     try {
@@ -218,9 +279,6 @@ exports.createRemittanceRequest = async (req, res) => {
     }
 };
 
-// ==========================================================
-// === GET MONTHLY REPORT - SỬA LẠI ĐỂ THÊM DỮ LIỆU LƯƠNG ===
-// ==========================================================
 exports.getMonthlyFinancialReport = async (req, res) => {
     try {
         const shipperId = req.user._id;
@@ -230,7 +288,6 @@ exports.getMonthlyFinancialReport = async (req, res) => {
         const targetMonth = parseInt(month);
         const targetYear = parseInt(year);
         
-        // <<< SỬA ĐỔI PROMISE.ALL TẠI ĐÂY >>>
         const [dailyBreakdown, remittances, salaryPayments, pendingRequest] = await Promise.all([
             Order.aggregate([
                 {
@@ -266,7 +323,6 @@ exports.getMonthlyFinancialReport = async (req, res) => {
                 }
             ]),
             Remittance.find({ shipper: shipperId, status: 'completed' }).lean(),
-            // Thêm query lấy lương đã trả
             SalaryPayment.find({ 
                 shipper: shipperId, 
                 paymentDate: {
@@ -303,7 +359,6 @@ exports.getMonthlyFinancialReport = async (req, res) => {
         const todayData = dailyBreakdown.find(item => item.day === todayString) || { codCollected: 0, amountRemitted: 0 };
         const todayDebt = todayData.codCollected - todayData.amountRemitted;
         
-        // <<< TÍNH TOÁN LƯƠNG ĐÃ NHẬN >>>
         const totalSalaryPaid = salaryPayments.reduce((sum, payment) => sum + payment.amount, 0);
 
         const filteredBreakdown = dailyBreakdown
@@ -318,7 +373,7 @@ exports.getMonthlyFinancialReport = async (req, res) => {
                 totalDebt: accumulatedDebt > 0 ? accumulatedDebt : 0,
                 todayDebt: todayDebt > 0 ? todayDebt : 0,
                 totalIncome: totalIncomeThisMonth,
-                totalSalaryPaid: totalSalaryPaid // <<< THÊM TRƯỜNG NÀY VÀO RESPONSE
+                totalSalaryPaid: totalSalaryPaid
             },
             dailyBreakdown: filteredBreakdown,
             hasPendingRequest: !!pendingRequest
@@ -327,11 +382,6 @@ exports.getMonthlyFinancialReport = async (req, res) => {
         console.error('[getMonthlyFinancialReport] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server khi lấy báo cáo.' });
     }
-};
-
-exports.confirmRemittance = async (req, res) => {
-    // This function is deprecated
-    return res.status(410).json({ message: "This endpoint is deprecated." });
 };
 
 exports.sendCODRemittanceReminder = async () => {
@@ -366,3 +416,7 @@ exports.sendCODRemittanceReminder = async () => {
     }
 };
 
+// Hàm confirmRemittance không còn dùng đến, có thể xóa hoặc giữ lại để báo lỗi
+exports.confirmRemittance = async (req, res) => {
+    return res.status(410).json({ message: "This endpoint is deprecated." });
+};
