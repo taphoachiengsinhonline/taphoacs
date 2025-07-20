@@ -219,11 +219,12 @@ router.get('/shipper-financial-overview', adminController.getShipperFinancialOve
 // Admin lấy chi tiết tài chính của 1 shipper theo tháng
 // **MÀN HÌNH "Đối soát tài chính Shipper" SẼ GỌI ROUTE NÀY**
 router.get('/shippers/:shipperId/financial-details', adminController.getShipperFinancialDetails);
+router.get('/shippers/:shipperId/comprehensive-financials', adminController.getShipperComprehensiveFinancials);
 
 // Admin trả lương cho shipper
 // **NÚT "TRẢ LƯƠNG" TRONG MODAL SẼ GỌI ROUTE NÀY**
 router.post('/shippers/:shipperId/pay-salary', adminController.payShipperSalary);
-
+router.get('/shipper-financial-overview', adminController.getShipperFinancialOverview);
 
 // Lấy tổng quan tài chính của tất cả Seller
 router.get('/seller-financial-overview', adminController.getSellerFinancialOverview);
