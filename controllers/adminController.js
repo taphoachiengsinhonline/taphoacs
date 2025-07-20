@@ -9,6 +9,8 @@ const mongoose = require('mongoose');
 const RemittanceRequest = require('../models/RemittanceRequest');
 const SalaryPayment = require('../models/SalaryPayment');
 const Product = require('../models/Product');
+const Notification = require('../models/Notification'); // Đảm bảo đã import Notification Model
+const { safeNotify } = require('../utils/notificationMiddleware');
 // ==============================================================
 // === CÁC HÀM CŨ CỦA BẠN - GIỮ NGUYÊN HOÀN TOÀN              ===
 // ==============================================================
@@ -693,5 +695,53 @@ exports.getAdminDashboardCounts = async (req, res) => {
     } catch (error) {
         console.error('[getAdminDashboardCounts] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server khi lấy số liệu dashboard' });
+    }
+};
+
+
+// <<< HÀM MỚI: ADMIN NHẮC SHIPPER NỘP TIỀN COD >>>
+exports.remindShipperToPayDebt = async (req, res) => {
+    try {
+        const { shipperId } = req.params;
+        const { amount, message } = req.body; // Nhận số tiền và nội dung tin nhắn từ client
+
+        if (!amount || amount <= 0) {
+            return res.status(400).json({ message: "Công nợ không hợp lệ để nhắc." });
+        }
+
+        const shipper = await User.findById(shipperId).select('fcmToken');
+        if (!shipper) {
+            return res.status(404).json({ message: "Không tìm thấy shipper." });
+        }
+
+        const notificationTitle = "Yêu cầu nộp tiền COD";
+        // Nội dung tin nhắn có thể tùy chỉnh hoặc dùng mặc định
+        const notificationBody = message || `Admin yêu cầu bạn nộp khoản công nợ COD còn lại là ${amount.toLocaleString('vi-VN')}đ. Vui lòng hoàn tất sớm.`;
+
+        // 1. Gửi thông báo đẩy (Push Notification)
+        if (shipper.fcmToken) {
+            await safeNotify(shipper.fcmToken, {
+                title: notificationTitle,
+                body: notificationBody,
+                data: { 
+                    type: 'finance_reminder', // Một type để app shipper có thể xử lý đặc biệt nếu cần
+                    screen: 'Report' // Gợi ý app shipper mở màn hình Báo cáo
+                }
+            });
+        }
+
+        // 2. Lưu thông báo vào cơ sở dữ liệu để shipper xem lại
+        await Notification.create({
+            user: shipperId,
+            title: notificationTitle,
+            message: notificationBody,
+            type: 'finance' // Phân loại thông báo là tài chính
+        });
+
+        res.status(200).json({ message: "Đã gửi nhắc nhở thành công!" });
+
+    } catch (error) {
+        console.error('[remindShipperToPayDebt] Lỗi:', error);
+        res.status(500).json({ message: "Lỗi server khi gửi nhắc nhở." });
     }
 };
