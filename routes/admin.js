@@ -236,5 +236,5 @@ router.get('/all-pending-counts', adminController.getAllPendingCounts);
 router.get('/sellers/pending', adminController.getPendingSellers);
 router.post('/sellers/:sellerId/approve', adminController.approveSeller);
 router.post('/sellers/:sellerId/reject', adminController.rejectSeller);
-
+router.get('/dashboard-counts', adminController.getAdminDashboardCounts);
 module.exports = router;
