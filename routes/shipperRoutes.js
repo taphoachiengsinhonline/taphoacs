@@ -55,6 +55,9 @@ router.get('/order-counts', shipperController.getOrderCounts);
 router.get('/notifications', shipperController.getShipperNotifications);
 router.post('/update-fcm-token', shipperController.updateFcmToken);
 router.post('/change-password', shipperController.changePassword);
+router.get('/notifications', shipperController.getAllNotifications);
+router.patch('/notifications/:id/read', shipperController.markNotificationAsRead);
+router.delete('/notifications/:id', shipperController.deleteNotification);
 
 // --- Các route báo cáo và tài chính ---
 // Route cho HomeScreen để lấy dữ liệu nhanh trong ngày
