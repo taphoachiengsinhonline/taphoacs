@@ -8,7 +8,7 @@ const moment = require('moment-timezone');
 const mongoose = require('mongoose');
 const RemittanceRequest = require('../models/RemittanceRequest');
 const SalaryPayment = require('../models/SalaryPayment');
-
+const Product = require('../models/Product');
 // ==============================================================
 // === CÁC HÀM CŨ CỦA BẠN - GIỮ NGUYÊN HOÀN TOÀN              ===
 // ==============================================================
