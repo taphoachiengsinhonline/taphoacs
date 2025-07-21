@@ -226,11 +226,16 @@ router.get('/shippers/:shipperId/comprehensive-financials', adminController.getS
 router.post('/shippers/:shipperId/pay-salary', adminController.payShipperSalary);
 router.get('/shipper-financial-overview', adminController.getShipperFinancialOverview);
 
-// Lấy tổng quan tài chính của tất cả Seller
+// Lấy tổng quan tài chính của tất cả Seller (cho màn hình danh sách)
 router.get('/seller-financial-overview', adminController.getSellerFinancialOverview);
 
-// Lấy chi tiết đối soát của 1 Seller theo tháng
-router.get('/sellers/:sellerId/financial-details', adminController.getSellerFinancialDetails);
+// Lấy chi tiết tài chính của 1 Seller (cho màn hình chi tiết)
+router.get('/sellers/:sellerId/comprehensive-financials', adminController.getSellerComprehensiveFinancials);
+
+// Admin thanh toán cho Seller
+router.post('/sellers/:sellerId/pay', adminController.payToSeller);
+
+
 
 router.get('/all-pending-counts', adminController.getAllPendingCounts);
 router.get('/sellers/pending', adminController.getPendingSellers);
