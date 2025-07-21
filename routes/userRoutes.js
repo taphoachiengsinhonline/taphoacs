@@ -94,7 +94,18 @@ router.post('/update-location', verifyToken, async (req, res) => {
     return res.status(500).json({ message: 'Lỗi server khi cập nhật vị trí' });
   }
 });
+router.get('/notifications', verifyToken, async (req, res) => {
+    try {
+        const notifications = await Notification.find({ user: req.user._id })
+            .sort({ createdAt: -1 }) // Sắp xếp mới nhất lên đầu
+            .limit(50); // Giới hạn 50 thông báo gần nhất
 
+        res.status(200).json(notifications);
+    } catch (error) {
+        console.error("Lỗi lấy thông báo người dùng:", error);
+        res.status(500).json({ message: "Lỗi server." });
+    }
+});
 
 router.post('/update-fcm-token', verifyToken, async (req, res) => {
   try {
