@@ -4,6 +4,7 @@ const User = require('../models/User');
 const Remittance = require('../models/Remittance');
 const Order = require('../models/Order');
 const Payout = require('../models/PayoutRequest'); // <<< THÊM IMPORT
+const LedgerEntry = require('../models/LedgerEntry'); 
 const moment = require('moment-timezone');
 const mongoose = require('mongoose');
 const RemittanceRequest = require('../models/RemittanceRequest');
@@ -350,42 +351,35 @@ exports.getShipperFinancialOverview = async (req, res) => {
 };
 
 
-// API MỚI: LẤY TỔNG QUAN TÀI CHÍNH CỦA TẤT CẢ SELLER
+// <<< ========================================================= >>>
+// <<< === CÁC HÀM MỚI ĐỂ QUẢN LÝ TÀI CHÍNH CỦA SELLER         === >>>
+// <<< ========================================================= >>>
+
+// API LẤY TỔNG QUAN TÀI CHÍNH CỦA TẤT CẢ SELLER (cho màn hình danh sách)
 exports.getSellerFinancialOverview = async (req, res) => {
     try {
-        const sellers = await User.find({ role: 'seller' }).select('name phone commissionRate').lean();
+        const sellers = await User.find({ role: 'seller', approvalStatus: 'approved' }).select('name phone commissionRate').lean();
         if (sellers.length === 0) return res.status(200).json([]);
 
         const sellerIds = sellers.map(s => s._id);
 
-        const [ledgerEntries, payoutEntries] = await Promise.all([
-            // Tính tổng số dư từ sổ cái
-            Order.aggregate([
-                { $match: { 'items.sellerId': { $in: sellerIds }, status: 'Đã giao' } },
-                { $unwind: '$items' },
-                { $match: { 'items.sellerId': { $in: sellerIds } } },
-                { 
-                    $group: { 
-                        _id: '$items.sellerId', 
-                        netRevenue: { $sum: { $subtract: [{ $multiply: ['$items.price', '$items.quantity'] }, '$items.commissionAmount'] } }
-                    }
+        // Lấy bút toán cuối cùng của mỗi seller để biết số dư hiện tại
+        const lastLedgerEntries = await LedgerEntry.aggregate([
+            { $match: { seller: { $in: sellerIds } } },
+            { $sort: { createdAt: -1 } },
+            {
+                $group: {
+                    _id: '$seller',
+                    lastBalance: { $first: '$balanceAfter' }
                 }
-            ]),
-            // Tính tổng tiền đã rút
-            Payout.aggregate([
-                { $match: { seller: { $in: sellerIds }, status: 'completed' } },
-                { $group: { _id: '$seller', totalPaidOut: { $sum: '$amount' } } }
-            ])
+            }
         ]);
 
-        const netRevenueMap = new Map(ledgerEntries.map(item => [item._id.toString(), item.netRevenue]));
-        const payoutMap = new Map(payoutEntries.map(item => [item._id.toString(), item.totalPaidOut]));
+        const balanceMap = new Map(lastLedgerEntries.map(item => [item._id.toString(), item.lastBalance]));
 
         const financialData = sellers.map(seller => {
             const sellerIdStr = seller._id.toString();
-            const totalNetRevenue = netRevenueMap.get(sellerIdStr) || 0;
-            const totalPaidOut = payoutMap.get(sellerIdStr) || 0;
-            const availableBalance = totalNetRevenue - totalPaidOut;
+            const availableBalance = balanceMap.get(sellerIdStr) || 0;
 
             return {
                 ...seller,
@@ -402,100 +396,108 @@ exports.getSellerFinancialOverview = async (req, res) => {
     }
 };
 
-// API MỚI: LẤY CHI TIẾT ĐỐI SOÁT CỦA 1 SELLER THEO THÁNG
-exports.getSellerFinancialDetails = async (req, res) => {
+
+// API LẤY DỮ LIỆU TÀI CHÍNH TOÀN DIỆN CỦA 1 SELLER (cho màn hình chi tiết)
+exports.getSellerComprehensiveFinancials = async (req, res) => {
     try {
         const { sellerId } = req.params;
-        const { month, year } = req.query;
+        const sellerObjectId = new mongoose.Types.ObjectId(sellerId);
 
-        if (!month || !year) {
-            return res.status(400).json({ message: "Vui lòng cung cấp tháng và năm." });
+        const seller = await User.findById(sellerId).select('name phone paymentInfo commissionRate').lean();
+        if (!seller) {
+            return res.status(404).json({ message: "Không tìm thấy seller." });
         }
-        
-        const targetMonth = parseInt(month);
-        const targetYear = parseInt(year);
 
-        const [ordersInMonth, payoutsInMonth] = await Promise.all([
-            // 1. Lấy tất cả các đơn hàng đã giao trong tháng của seller bằng aggregation
-            Order.aggregate([
-                {
-                    $match: {
-                        'items.sellerId': new mongoose.Types.ObjectId(sellerId),
-                        status: 'Đã giao',
-                        'timestamps.deliveredAt': { $exists: true, $ne: null }
-                    }
-                },
-                // Unwind để xử lý từng item riêng lẻ
-                { $unwind: '$items' },
-                // Match lại một lần nữa để chắc chắn chỉ lấy item của seller này
-                { $match: { 'items.sellerId': new mongoose.Types.ObjectId(sellerId) } },
-                // Project để tạo các trường cần thiết, đặc biệt là year và month
-                {
-                    $project: {
-                        orderId: '$_id',
-                        orderDate: '$timestamps.deliveredAt',
-                        revenue: { $multiply: ['$items.price', '$items.quantity'] },
-                        commission: '$items.commissionAmount',
-                        netRevenue: { $subtract: [{ $multiply: ['$items.price', '$items.quantity'] }, '$items.commissionAmount'] },
-                        year: { $year: { date: "$timestamps.deliveredAt", timezone: "Asia/Ho_Chi_Minh" } },
-                        month: { $month: { date: "$timestamps.deliveredAt", timezone: "Asia/Ho_Chi_Minh" } }
-                    }
-                },
-                // Lọc theo tháng và năm mục tiêu
-                { $match: { year: targetYear, month: targetMonth } }
+        const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
+        const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
+        const monthStart = moment().tz('Asia/Ho_Chi_Minh').startOf('month').toDate();
+        const monthEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('month').toDate();
+
+        const [
+            allTimeRevenue,
+            todayRevenue,
+            thisMonthRevenue,
+            lastLedgerEntry
+        ] = await Promise.all([
+            // Tổng doanh thu (credit) từ trước đến nay
+            LedgerEntry.aggregate([
+                { $match: { seller: sellerObjectId, type: 'credit' } },
+                { $group: { _id: null, total: { $sum: '$amount' } } }
             ]),
-            
-            // 2. Lấy tất cả các giao dịch rút tiền đã hoàn thành trong tháng
-            Payout.find({
-                seller: new mongoose.Types.ObjectId(sellerId),
-                status: 'completed',
-                processedAt: { 
-                    $gte: moment({ year: targetYear, month: targetMonth - 1 }).startOf('month').toDate(),
-                    $lte: moment({ year: targetYear, month: targetMonth - 1 }).endOf('month').toDate()
-                }
-            }).sort({ processedAt: -1 }).lean()
+            // Doanh thu hôm nay
+            LedgerEntry.aggregate([
+                { $match: { seller: sellerObjectId, type: 'credit', createdAt: { $gte: todayStart, $lte: todayEnd } } },
+                { $group: { _id: null, total: { $sum: '$amount' } } }
+            ]),
+            // Doanh thu tháng này
+            LedgerEntry.aggregate([
+                { $match: { seller: sellerObjectId, type: 'credit', createdAt: { $gte: monthStart, $lte: monthEnd } } },
+                { $group: { _id: null, total: { $sum: '$amount' } } }
+            ]),
+            // Lấy bút toán cuối cùng để biết số dư
+            LedgerEntry.findOne({ seller: sellerObjectId }).sort({ createdAt: -1 }).lean()
         ]);
 
-        // 3. Tính toán các chỉ số tổng hợp từ kết quả query
-        let totalRevenue = 0;
-        let totalCommission = 0;
-
-        ordersInMonth.forEach(orderItem => {
-            totalRevenue += orderItem.revenue || 0;
-            totalCommission += orderItem.commission || 0;
-        });
+        const totalRevenue = allTimeRevenue[0]?.total || 0;
+        const availableBalance = lastLedgerEntry?.balanceAfter || 0;
+        const totalPaidOut = totalRevenue - availableBalance;
         
-        const totalPayout = payoutsInMonth.reduce((sum, payout) => sum + payout.amount, 0);
-
-        res.status(200).json({
-            overview: {
+        const finalData = {
+            sellerInfo: seller,
+            allTime: {
                 totalRevenue,
-                totalCommission,
-                netRevenue: totalRevenue - totalCommission,
-                totalPayout,
-                finalBalance: (totalRevenue - totalCommission) - totalPayout
+                totalPaidOut,
+                availableBalance
             },
-            // Nhóm các item lại theo orderId để hiển thị cho gọn
-            orders: Object.values(ordersInMonth.reduce((acc, item) => {
-                const { orderId, orderDate, revenue, commission, netRevenue } = item;
-                if (!acc[orderId]) {
-                    acc[orderId] = { _id: orderId, orderDate, revenue: 0, commission: 0, netRevenue: 0 };
-                }
-                acc[orderId].revenue += revenue;
-                acc[orderId].commission += commission;
-                acc[orderId].netRevenue += netRevenue;
-                return acc;
-            }, {})).sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate)),
-            payouts: payoutsInMonth.map(p => ({
-                _id: p._id,
-                date: p.processedAt,
-                amount: p.amount
-            }))
-        });
+            today: {
+                revenue: todayRevenue[0]?.total || 0,
+            },
+            thisMonth: {
+                revenue: thisMonthRevenue[0]?.total || 0,
+            }
+        };
+
+        res.status(200).json(finalData);
 
     } catch (error) {
-        console.error("Lỗi getSellerFinancialDetails:", error);
-        res.status(500).json({ message: 'Lỗi server khi lấy dữ liệu đối soát.' });
+        console.error('[getSellerComprehensiveFinancials] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server khi lấy dữ liệu tài chính seller.' });
+    }
+};
+
+// API ĐỂ ADMIN THANH TOÁN CHO SELLER
+exports.payToSeller = async (req, res) => {
+    try {
+        const { sellerId } = req.params;
+        const { amount, notes } = req.body;
+        
+        if (!amount || amount <= 0) {
+            return res.status(400).json({ message: "Số tiền thanh toán không hợp lệ." });
+        }
+
+        const lastEntry = await LedgerEntry.findOne({ seller: sellerId }).sort({ createdAt: -1 });
+        const currentBalance = lastEntry ? lastEntry.balanceAfter : 0;
+
+        if (amount > currentBalance) {
+            return res.status(400).json({ message: "Số tiền thanh toán không được lớn hơn số dư hiện có của seller." });
+        }
+
+        const newBalance = currentBalance - amount;
+
+        // Tạo bút toán Ghi nợ (debit)
+        await LedgerEntry.create({
+            seller: sellerId,
+            type: 'debit',
+            amount,
+            description: notes || `Admin thanh toán cho seller`,
+            balanceAfter: newBalance,
+        });
+
+        res.status(201).json({ message: 'Đã ghi nhận thanh toán cho seller thành công!' });
+
+    } catch (error) {
+        console.error('[payToSeller] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server khi thanh toán cho seller.' });
     }
 };
 
