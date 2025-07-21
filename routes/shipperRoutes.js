@@ -52,7 +52,7 @@ router.post('/orders/:id/accept', orderController.acceptOrder);
 router.post('/orders/:id/add-surcharge', shipperController.addSurcharge);
 router.get('/stats', shipperController.getShipperStats);
 router.get('/order-counts', shipperController.getOrderCounts);
-router.get('/notifications', shipperController.getShipperNotifications);
+
 router.post('/update-fcm-token', shipperController.updateFcmToken);
 router.post('/change-password', shipperController.changePassword);
 router.get('/notifications', shipperController.getAllNotifications);
