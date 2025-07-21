@@ -96,19 +96,27 @@ const orderSchema = new mongoose.Schema({
     ref: 'User',
     default: null
   },
-  shippingFee: {
-    type: Number,
-    required: true,
-    min: 0,
-    default: 0
+  shippingFeeActual: {
+      type: Number,
+      default: 0
+  },
+  
+  // Phí ship mà KHÁCH HÀNG phải trả (có thể là 0 nếu được free ship).
+  // Dùng để tính tổng tiền cuối cùng của đơn hàng.
+  shippingFeeCustomerPaid: {
+      type: Number,
+      default: 0
   },
 
- shipperIncome: { type: Number, default: 0 },
- financialDetails: {
-    shippingFee: Number,
-    extraSurcharge: Number,
-    shippingFeeShareRate: Number, // % shipper hưởng phí ship
-  },
+  shipperIncome: { type: Number, default: 0 },
+  financialDetails: {
+     // Lưu lại chi tiết để dễ đối soát sau này
+     shippingFeeActual: Number,
+     shippingFeeCustomerPaid: Number,
+     extraSurcharge: Number,
+     shippingFeeShareRate: Number,
+     profitShareRate: Number
+   },
   
   extraSurcharge: {
     type: Number,
@@ -139,6 +147,7 @@ const orderSchema = new mongoose.Schema({
     canceledAt: Date
   }
 }, {
+  timestamps: true, // <<< SỬA LẠI: Dùng timestamps: true cho tiện lợi và chuẩn hơn
   versionKey: false
 });
 
