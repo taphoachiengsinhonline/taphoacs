@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const Notification = require('../models/Notification');
 const { verifyToken, protect } = require('../middlewares/authMiddleware');
 const bcrypt = require('bcryptjs');
 
