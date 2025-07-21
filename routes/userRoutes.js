@@ -2,15 +2,17 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const Notification = require('../models/Notification');
+const Notification = require('../models/Notification'); // <<< DÒNG BỊ THIẾU LÀ ĐÂY
 const { verifyToken, protect } = require('../middlewares/authMiddleware');
 const bcrypt = require('bcryptjs');
 
 
+// Middleware: Áp dụng cho tất cả các route bên dưới, yêu cầu phải đăng nhập
+router.use(protect); 
+
 // PUT /api/v1/users/:id
 // Cập nhật thông tin cơ bản (name, address, phone)
-router.use(protect); 
-router.put('/:id', verifyToken, async (req, res) => {
+router.put('/:id', async (req, res) => { // Không cần verifyToken nữa vì đã có protect
   try {
     const { name, address, phone } = req.body;
     // Chỉ cho phép user tự cập nhật chính họ hoặc admin
@@ -42,12 +44,12 @@ router.post('/change-password', async (req, res) => {
         if (newPassword !== confirmPassword) {
             return res.status(400).json({ message: 'Mật khẩu mới không khớp.' });
         }
-        if (newPassword.length < 6) { // Kiểm tra độ dài
+        if (newPassword.length < 6) {
             return res.status(400).json({ message: 'Mật khẩu mới phải có ít nhất 6 ký tự.' });
         }
 
-        const user = await User.findById(req.user.id).select('+password'); // Lấy user, bao gồm password
-        if (!user) { // Trường hợp không tìm thấy user, mặc dù đã protect
+        const user = await User.findById(req.user.id).select('+password');
+        if (!user) {
             return res.status(404).json({ message: 'Người dùng không tồn tại.' });
         }
 
@@ -56,7 +58,7 @@ router.post('/change-password', async (req, res) => {
             return res.status(401).json({ message: 'Mật khẩu hiện tại không chính xác.' });
         }
 
-        user.password = newPassword; // Gán mật khẩu mới, middleware pre('save') sẽ tự hash
+        user.password = newPassword;
         await user.save();
 
         res.status(200).json({ message: 'Đổi mật khẩu thành công!' });
@@ -67,19 +69,13 @@ router.post('/change-password', async (req, res) => {
     }
 });
 
-
-
-
 // POST /api/v1/users/update-location
-// Body: { latitude, longitude }
-router.post('/update-location', verifyToken, async (req, res) => {
+router.post('/update-location', async (req, res) => { // Không cần verifyToken nữa
   try {
     const { latitude, longitude } = req.body;
-    // Validate
     if (typeof latitude !== 'number' || typeof longitude !== 'number') {
       return res.status(400).json({ message: 'Thiếu hoặc sai định dạng latitude/longitude' });
     }
-    // Tìm và cập nhật
     const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({ message: 'Không tìm thấy user' });
@@ -95,11 +91,13 @@ router.post('/update-location', verifyToken, async (req, res) => {
     return res.status(500).json({ message: 'Lỗi server khi cập nhật vị trí' });
   }
 });
-router.get('/notifications', verifyToken, async (req, res) => {
+
+// GET /api/v1/users/notifications
+router.get('/notifications', async (req, res) => { // Không cần verifyToken nữa
     try {
         const notifications = await Notification.find({ user: req.user._id })
-            .sort({ createdAt: -1 }) // Sắp xếp mới nhất lên đầu
-            .limit(50); // Giới hạn 50 thông báo gần nhất
+            .sort({ createdAt: -1 })
+            .limit(50);
 
         res.status(200).json(notifications);
     } catch (error) {
@@ -108,14 +106,14 @@ router.get('/notifications', verifyToken, async (req, res) => {
     }
 });
 
-router.post('/update-fcm-token', verifyToken, async (req, res) => {
+// POST /api/v1/users/update-fcm-token
+router.post('/update-fcm-token', async (req, res) => { // Không cần verifyToken nữa
   try {
     const { fcmToken } = req.body;
     if (!fcmToken) {
       return res.status(400).json({ message: 'Thiếu fcmToken' });
     }
     
-    // Cập nhật token cho user đang đăng nhập
     const updatedUser = await User.findByIdAndUpdate(
       req.user._id,
       { fcmToken },
