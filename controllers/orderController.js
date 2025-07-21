@@ -501,7 +501,15 @@ exports.requestOrderTransfer = async (req, res) => {
                 data: { orderId: order._id.toString(), type: 'order_transfer_customer' }
             });
         }
-        
+        // <<< THÊM ĐOẠN NÀY: LƯU THÔNG BÁO VÀO CSDL >>>
+        await Notification.create({
+            user: customer._id,
+            title: title,
+            message: message,
+            type: 'order',
+            data: { orderId: order._id.toString() }
+        });
+    
         const admins = await User.find({ role: 'admin', fcmToken: { $exists: true } });
         for (const admin of admins) {
             await safeNotify(admin.fcmToken, {
