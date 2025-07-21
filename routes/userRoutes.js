@@ -105,6 +105,38 @@ router.get('/notifications', async (req, res) => { // Không cần verifyToken n
         res.status(500).json({ message: "Lỗi server." });
     }
 });
+// Đếm số thông báo CHƯA ĐỌC của user
+router.get('/notifications/unread-count', async (req, res) => {
+    try {
+        const count = await Notification.countDocuments({ user: req.user._id, isRead: false });
+        res.status(200).json({ count });
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server.' });
+    }
+});
+
+// Đánh dấu một thông báo là đã đọc
+router.patch('/notifications/:id/read', async (req, res) => {
+    try {
+        await Notification.findOneAndUpdate(
+            { _id: req.params.id, user: req.user._id },
+            { isRead: true }
+        );
+        res.status(200).json({ message: 'Đã đánh dấu đã đọc.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server.' });
+    }
+});
+
+// Xóa một thông báo
+router.delete('/notifications/:id', async (req, res) => {
+    try {
+        await Notification.deleteOne({ _id: req.params.id, user: req.user._id });
+        res.status(200).json({ message: 'Đã xóa thông báo.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server.' });
+    }
+});
 
 // POST /api/v1/users/update-fcm-token
 router.post('/update-fcm-token', async (req, res) => { // Không cần verifyToken nữa
