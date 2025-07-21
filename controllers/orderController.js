@@ -1,4 +1,3 @@
-// controllers/orderController.js
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
@@ -8,6 +7,8 @@ const { processOrderCompletionForFinance, reverseFinancialEntryForOrder } = requ
 const UserVoucher = require('../models/UserVoucher');
 const Voucher = require('../models/Voucher');
 const mongoose = require('mongoose');
+// Import hàm tiện ích tính phí ship từ shippingController
+const shippingController = require('./shippingController'); 
 
 // Hàm kiểm tra giờ bán
 const validateSaleTime = (product, nowMin) => {
@@ -42,9 +43,9 @@ exports.createOrder = async (req, res) => {
     session.startTransaction();
     try {
         const {
-            items, total, phone, shippingAddress, shippingLocation, customerName,
-            paymentMethod, shippingFee, extraSurcharge, voucherDiscount, voucherCode
-        } = req.body;
+            items, phone, shippingAddress, shippingLocation, customerName,
+            paymentMethod, voucherDiscount, voucherCode
+        } = req.body; // Loại bỏ `shippingFee`, `extraSurcharge`, `total` khỏi đây
         const userId = req.user._id;
 
         if (!Array.isArray(items) || items.length === 0) {
@@ -57,6 +58,7 @@ exports.createOrder = async (req, res) => {
         const now = new Date();
         const nowMin = now.getHours() * 60 + now.getMinutes();
         const enrichedItems = [];
+        let itemsTotal = 0; // Biến để tính tổng tiền hàng
 
         for (const item of items) {
             const product = await Product.findById(item.productId).populate('seller').session(session);
@@ -78,9 +80,11 @@ exports.createOrder = async (req, res) => {
                 throw new Error(`Sản phẩm "${product.name}" không đủ hàng trong kho.`);
             }
 
-            const itemTotal = item.price * item.quantity;
+            const itemValue = item.price * item.quantity;
+            itemsTotal += itemValue;
+            
             const commissionRate = product.seller.commissionRate || 0;
-            const commissionAmount = itemTotal * (commissionRate / 100);
+            const commissionAmount = itemValue * (commissionRate / 100);
             
             enrichedItems.push({
                 ...item,
@@ -96,23 +100,23 @@ exports.createOrder = async (req, res) => {
             }
             await product.save({ session });
         }
+        
+        // BACKEND TỰ TÍNH TOÁN PHÍ SHIP
+        const { shippingFeeActual, shippingFeeCustomerPaid } = await shippingController.calculateFeeForOrder(shippingLocation, itemsTotal);
+
+        // BACKEND TỰ TÍNH TỔNG TIỀN CUỐI CÙNG
+        const finalTotal = itemsTotal + shippingFeeCustomerPaid - (voucherDiscount || 0);
+
 
         if (voucherCode && voucherDiscount > 0) {
             const voucher = await Voucher.findOne({ code: voucherCode.toUpperCase() }).session(session);
             if (!voucher) {
                 throw new Error(`Mã voucher "${voucherCode}" không tồn tại.`);
             }
-
-            const userVoucher = await UserVoucher.findOne({
-                user: userId,
-                voucher: voucher._id,
-                isUsed: false
-            }).session(session);
-
+            const userVoucher = await UserVoucher.findOne({ user: userId, voucher: voucher._id, isUsed: false }).session(session);
             if (!userVoucher) {
                 throw new Error(`Bạn không sở hữu voucher "${voucherCode}" hoặc đã sử dụng nó.`);
             }
-
             userVoucher.isUsed = true;
             await userVoucher.save({ session });
         }
@@ -120,15 +124,16 @@ exports.createOrder = async (req, res) => {
         const order = new Order({
             user: userId,
             items: enrichedItems,
-            total,
+            total: finalTotal, // Dùng tổng tiền do backend tính
             customerName,
             phone,
             shippingAddress,
             shippingLocation,
             paymentMethod: paymentMethod || 'COD',
-            shippingFee,
-            extraSurcharge,
-            voucherDiscount,
+            shippingFeeActual: shippingFeeActual, // Lưu phí ship thực tế
+            shippingFeeCustomerPaid: shippingFeeCustomerPaid, // Lưu phí ship khách trả
+            extraSurcharge: 0, // extraSurcharge sẽ được thêm sau bởi shipper
+            voucherDiscount: voucherDiscount || 0,
             voucherCode,
             status: 'Chờ xác nhận',
         });
@@ -181,12 +186,19 @@ exports.acceptOrder = async (req, res) => {
     order.timestamps.acceptedAt = new Date();
 
     const shareRate = (shipper.shipperProfile.shippingFeeShareRate || 0) / 100;
-    const totalShippingFee = (order.shippingFee || 0) + (order.extraSurcharge || 0);
+    // TÍNH DỰA TRÊN PHÍ SHIP THỰC TẾ (shippingFeeActual), KHÔNG PHẢI PHÍ KHÁCH TRẢ
+    const totalActualShippingFee = (order.shippingFeeActual || 0) + (order.extraSurcharge || 0);
+    
     const totalCommission = order.items.reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
     const profitShareRate = (shipper.shipperProfile.profitShareRate || 0) / 100;
-    order.shipperIncome = (totalShippingFee * shareRate) + (totalCommission * profitShareRate);
+    
+    // TÍNH TOÁN LẠI THU NHẬP SHIPPER
+    order.shipperIncome = (totalActualShippingFee * shareRate) + (totalCommission * profitShareRate);
+    
+    // LƯU LẠI CHI TIẾT ĐỂ ĐỐI SOÁT SAU NÀY
     order.financialDetails = {
-        shippingFee: order.shippingFee,
+        shippingFeeActual: order.shippingFeeActual,
+        shippingFeeCustomerPaid: order.shippingFeeCustomerPaid,
         extraSurcharge: order.extraSurcharge,
         shippingFeeShareRate: shipper.shipperProfile.shippingFeeShareRate,
         profitShareRate: shipper.shipperProfile.profitShareRate
@@ -224,9 +236,6 @@ exports.acceptOrder = async (req, res) => {
   }
 };
 
-// ==========================================================
-// ===   SỬA HÀM NÀY ĐỂ GHI NHẬN TIMESTAMP ĐÚNG CÁCH      ===
-// ==========================================================
 exports.updateOrderStatusByShipper = async (req, res) => {
     try {
         const { status, cancelReason } = req.body;
@@ -247,25 +256,19 @@ exports.updateOrderStatusByShipper = async (req, res) => {
             return res.status(400).json({ message: `Không thể chuyển từ trạng thái "${order.status}" sang "${status}".` });
         }
 
-        const updatePayload = {
-            status: status,
-        };
         const now = new Date();
+        order.status = status;
 
         if (status === 'Đang giao') {
-            updatePayload['timestamps.deliveringAt'] = now;
+            order.timestamps.deliveringAt = now;
         } else if (status === 'Đã giao') {
-            updatePayload['timestamps.deliveredAt'] = now;
+            order.timestamps.deliveredAt = now;
         } else if (status === 'Đã huỷ') {
-            updatePayload['timestamps.canceledAt'] = now;
-            updatePayload.cancelReason = cancelReason || 'Shipper đã hủy đơn';
+            order.timestamps.canceledAt = now;
+            order.cancelReason = cancelReason || 'Shipper đã hủy đơn';
         }
 
-        const updatedOrder = await Order.findByIdAndUpdate(
-            orderId,
-            { $set: updatePayload },
-            { new: true }
-        );
+        const updatedOrder = await order.save();
 
         if (status === 'Đã giao') {
             await processOrderCompletionForFinance(updatedOrder._id);
@@ -460,16 +463,13 @@ exports.adminCountByStatus = async (req, res) => {
 };
 
 exports.requestOrderTransfer = async (req, res) => {
-    // <<< SỬA LỖI TẠI ĐÂY: Đọc đúng tham số 'id' từ route >>>
-    const { id: orderId } = req.params; // Đổi từ orderId thành id
+    const { id: orderId } = req.params;
     const shipperId = req.user._id;
-
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
         const order = await Order.findById(orderId).session(session);
-
         if (!order) {
             throw new Error('Đơn hàng không tồn tại.');
         }
