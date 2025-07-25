@@ -1,4 +1,3 @@
-require('./config/firebase');
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -15,6 +14,7 @@ const voucherRoutes = require('./routes/voucherRoutes'); // Thêm
 const conversationRoutes = require('./routes/conversations');
 const messageRoutes = require('./routes/messages');
 require('dotenv').config();
+require('./config/firebase');
 const {initShippingFees} = require('./utils/initData');
 const sellerRoutes = require('./routes/sellerRoutes');
 const payoutRoutes = require('./routes/payoutRoutes');
