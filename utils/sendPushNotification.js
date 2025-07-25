@@ -1,35 +1,53 @@
 // utils/sendPushNotification.js
-const admin = require('firebase-admin');
+// utils/sendPushNotification.js
+const axios = require('axios');
 
-module.exports = async (token, { title, body, data }) => {
-  // Vì ExponentPushToken có dạng ExponentPushToken[xxxxxxxx], 
-  // chúng ta cần kiểm tra và đảm bảo nó không phải là token của FCM.
-  // firebase-admin chỉ gửi được đến token gốc của FCM, không phải của Expo.
-  // Tuy nhiên, chúng ta sẽ thử gửi và xem lỗi trả về.
-  
+// Đọc Access Token từ biến môi trường
+const EXPO_ACCESS_TOKEN = process.env.EXPO_ACCESS_TOKEN;
+
+const sendPushNotification = async (token, notificationData) => {
+  // Kiểm tra xem token có được thiết lập trong môi trường không
+  if (!EXPO_ACCESS_TOKEN) {
+    const errorMessage = 'LỖI NGHIÊM TRỌNG: Biến môi trường EXPO_ACCESS_TOKEN chưa được thiết lập!';
+    console.error(`[PushAPI] ${errorMessage}`);
+    return {
+      error: true,
+      details: { message: errorMessage }
+    };
+  }
+
+  // Tạo cấu trúc message chuẩn cho API của Expo
   const message = {
-    notification: {
-      title: title || 'Thông báo',
-      body: body || '',
-    },
-    data: data || {},
-    token: token, // Gửi đến token cụ thể
+    to: token,
+    sound: 'default',
+    title: notificationData.title || 'Thông báo',
+    body: notificationData.body || '',
+    data: notificationData.data || {}
   };
 
   try {
-    const response = await admin.messaging().send(message);
-    console.log('[FCM-Admin] Gửi thông báo thành công:', response);
-    return { success: true, data: response };
+    // Gọi trực tiếp đến API của Expo bằng axios
+    const response = await axios.post('https://exp.host/--/api/v2/push/send', [message], {
+      headers: {
+        'Accept': 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+        // Thêm header xác thực, đây là phần quan trọng nhất
+        'Authorization': `Bearer ${EXPO_ACCESS_TOKEN}`
+      }
+    });
+    
+    // Trả về dữ liệu từ server Expo để hàm gọi nó có thể xử lý
+    return response.data;
+
   } catch (error) {
-    console.error('[FCM-Admin] Lỗi khi gửi thông báo:', error.message);
-    // Trả về một cấu trúc lỗi nhất quán
-    return { 
-      success: false, 
-      error: "Failed to send notification", 
-      details: { 
-        code: error.code, 
-        message: error.message 
-      } 
-    };
+    // Log lỗi chi tiết nếu có
+    const errorDetails = error.response?.data || { message: error.message };
+    console.error('[PushAPI] Lỗi khi gửi thông báo đẩy:', JSON.stringify(errorDetails, null, 2));
+    
+    // Trả về cấu trúc lỗi để hàm gọi nó biết
+    return { error: true, details: errorDetails };
   }
 };
+
+module.exports = sendPushNotification;
