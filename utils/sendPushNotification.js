@@ -1,30 +1,31 @@
 // utils/sendPushNotification.js
 const { Expo } = require('expo-server-sdk');
-
 let expo;
 
-// Kiểm tra xem biến môi trường chứa nội dung JSON có tồn tại không
-if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+// Đọc biến môi trường chứa chuỗi Base64
+if (process.env.GOOGLE_CREDENTIALS_BASE64) {
   try {
-    // Phân tích chuỗi JSON từ biến môi trường thành một object
-    const serviceAccount = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+    // Bước 1: Giải mã chuỗi Base64 trở lại thành chuỗi JSON
+    const jsonString = Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64, 'base64').toString('utf-8');
     
-    // Khởi tạo Expo SDK với useFcmV1 và serviceAccount
+    // Bước 2: Parse chuỗi JSON thành object
+    const serviceAccount = JSON.parse(jsonString);
+    
+    // Bước 3: Khởi tạo Expo SDK
     expo = Expo.usingServiceAccountCredentials(serviceAccount);
     
-    console.log("[FCM V1] Đã khởi tạo Expo SDK thành công bằng Service Account.");
+    console.log("[FCM V1] Đã khởi tạo Expo SDK thành công bằng Service Account (từ Base64).");
 
   } catch (error) {
-    console.error("[FCM V1] LỖI: Không thể parse GOOGLE_APPLICATION_CREDENTIALS_JSON. Vui lòng kiểm tra lại giá trị biến môi trường.", error);
-    expo = new Expo(); // Khởi tạo rỗng để tránh crash
+    console.error("[FCM V1] LỖI: Không thể giải mã hoặc parse GOOGLE_CREDENTIALS_BASE64.", error);
+    expo = new Expo();
   }
 } else {
-  console.error("[FCM V1] LỖI NGHIÊM TRỌNG: Biến môi trường GOOGLE_APPLICATION_CREDENTIALS_JSON chưa được thiết lập!");
+  console.error("[FCM V1] LỖI NGHIÊM TRỌNG: Biến môi trường GOOGLE_CREDENTIALS_BASE64 chưa được thiết lập!");
   expo = new Expo();
 }
 
-
-// Hàm sendPushNotification sẽ sử dụng instance 'expo' đã được cấu hình đúng
+// ... hàm sendPushNotification giữ nguyên ...
 const sendPushNotification = async (token, { title, body, data }) => {
     if (!Expo.isExpoPushToken(token)) {
         console.error(`Push token ${token} không phải là token hợp lệ.`);
