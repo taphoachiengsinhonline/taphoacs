@@ -43,18 +43,22 @@ const notifyAdmins = async (order) => {
 exports.createOrder = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
-    let savedOrder; // << KHAI BÁO BIẾN Ở NGOÀI
+    let savedOrder; // Khai báo biến ở ngoài để có thể truy cập sau khi try...catch kết thúc
 
     try {
-        // --- TOÀN BỘ LOGIC TẠO ĐƠN HÀNG CỦA BẠN GIỮ NGUYÊN ---
+        // --- Toàn bộ logic tạo đơn hàng của bạn được giữ nguyên ---
         const {
             items, phone, shippingAddress, shippingLocation, customerName,
             paymentMethod, voucherDiscount, voucherCode
         } = req.body;
         const userId = req.user._id;
 
-        if (!Array.isArray(items) || items.length === 0) throw new Error('Giỏ hàng không được để trống');
-        if (!phone || !shippingAddress || !shippingLocation) throw new Error('Thiếu thông tin nhận hàng');
+        if (!Array.isArray(items) || items.length === 0) {
+            throw new Error('Giỏ hàng không được để trống');
+        }
+        if (!phone || !shippingAddress || !shippingLocation) {
+            throw new Error('Thiếu thông tin nhận hàng');
+        }
 
         const now = new Date();
         const nowMin = now.getHours() * 60 + now.getMinutes();
@@ -68,6 +72,7 @@ exports.createOrder = async (req, res) => {
             if (!validateSaleTime(product, nowMin)) {
                 throw new Error(`Sản phẩm "${product.name}" chỉ bán từ ${product.saleStartTime} đến ${product.saleEndTime}.`);
             }
+
             let stock;
             if (product.variantTable && product.variantTable.length > 0) {
                 const variant = product.variantTable.find(v => v.combination === item.combination);
@@ -76,7 +81,9 @@ exports.createOrder = async (req, res) => {
             } else {
                 stock = product.stock;
             }
-            if (stock < item.quantity) throw new Error(`Sản phẩm "${product.name}" không đủ hàng trong kho.`);
+            if (stock < item.quantity) {
+                throw new Error(`Sản phẩm "${product.name}" không đủ hàng trong kho.`);
+            }
 
             const itemValue = item.price * item.quantity;
             itemsTotal += itemValue;
@@ -128,16 +135,13 @@ exports.createOrder = async (req, res) => {
             status: 'Chờ xác nhận',
         });
         
-        // --- THAY ĐỔI CÁCH LƯU VÀ COMMIT ---
-        const createdOrders = await Order.create([order], { session });
-        savedOrder = createdOrders[0];
+        const [createdOrder] = await Order.create([order], { session });
+        savedOrder = createdOrder; // Gán giá trị cho biến bên ngoài
 
         await session.commitTransaction();
-        console.log(`[createOrder] Transaction committed successfully for order #${savedOrder._id}.`);
+        console.log(`[createOrder] Transaction committed cho đơn hàng #${savedOrder._id}.`);
 
-        // --- GỬI RESPONSE CHO CLIENT TRƯỚC ---
-        // Gửi phản hồi về cho người dùng ngay lập tức để họ không phải chờ.
-        // Các tác vụ thông báo sẽ chạy ở chế độ nền.
+        // --- THAY ĐỔI QUAN TRỌNG: Gửi response về cho client ngay lập tức ---
         res.status(201).json({
             message: 'Tạo đơn thành công',
             order: { ...savedOrder.toObject(), timestamps: savedOrder.timestamps }
@@ -146,7 +150,7 @@ exports.createOrder = async (req, res) => {
     } catch (err) {
         await session.abortTransaction();
         console.error('Lỗi khi tạo đơn hàng:', err);
-        // Tránh gửi response hai lần nếu đã gửi ở trên
+        // Chỉ gửi response lỗi nếu chưa có response nào được gửi đi
         if (!res.headersSent) {
             const statusCode = err.message.includes('tồn tại') || err.message.includes('đủ hàng') || err.message.includes('voucher') ? 400 : 500;
             return res.status(statusCode).json({ message: err.message || 'Lỗi server' });
@@ -155,20 +159,20 @@ exports.createOrder = async (req, res) => {
         session.endSession();
     }
 
-    // --- THỰC THI CÁC TÁC VỤ THÔNG BÁO SAU KHI ĐÃ GỬI RESPONSE ---
-    // Điều này đảm bảo transaction đã hoàn tất và response đã được gửi đi.
+    // --- THAY ĐỔI QUAN TRỌNG: Thực thi các tác vụ nền sau khi đã gửi response ---
+    // Điều này đảm bảo transaction đã hoàn tất và client không phải chờ
     if (savedOrder) {
-        console.log(`[createOrder] Starting post-order tasks for order #${savedOrder._id}.`);
-        // Chúng ta có thể dùng Promise.all để chạy song song cho nhanh
+        console.log(`[createOrder] Bắt đầu tác vụ nền cho đơn hàng #${savedOrder._id}.`);
+        // Chạy song song và không cần chờ đợi (fire-and-forget), nhưng vẫn bắt lỗi
         Promise.all([
             assignOrderToNearestShipper(savedOrder._id),
             notifyAdmins(savedOrder)
         ]).catch(err => {
-            console.error(`[createOrder] Error in post-order tasks for order #${savedOrder._id}:`, err);
+            // Log lại lỗi của tác vụ nền mà không làm sập server
+            console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn hàng #${savedOrder._id}:`, err);
         });
     }
 };
-
 
 // =================================================================
 // === CÁC HÀM KHÁC CỦA BẠN ĐƯỢC GIỮ NGUYÊN HOÀN TOÀN BÊN DƯỚI ===
