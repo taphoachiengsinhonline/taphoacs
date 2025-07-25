@@ -1,45 +1,35 @@
 // utils/sendPushNotification.js
-const { Expo } = require('expo-server-sdk');
-let expo;
+const admin = require('firebase-admin');
 
-// Đọc biến môi trường chứa chuỗi Base64
-if (process.env.GOOGLE_CREDENTIALS_BASE64) {
+module.exports = async (token, { title, body, data }) => {
+  // Vì ExponentPushToken có dạng ExponentPushToken[xxxxxxxx], 
+  // chúng ta cần kiểm tra và đảm bảo nó không phải là token của FCM.
+  // firebase-admin chỉ gửi được đến token gốc của FCM, không phải của Expo.
+  // Tuy nhiên, chúng ta sẽ thử gửi và xem lỗi trả về.
+  
+  const message = {
+    notification: {
+      title: title || 'Thông báo',
+      body: body || '',
+    },
+    data: data || {},
+    token: token, // Gửi đến token cụ thể
+  };
+
   try {
-    // Bước 1: Giải mã chuỗi Base64 trở lại thành chuỗi JSON
-    const jsonString = Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64, 'base64').toString('utf-8');
-    
-    // Bước 2: Parse chuỗi JSON thành object
-    const serviceAccount = JSON.parse(jsonString);
-    
-    // Bước 3: Khởi tạo Expo SDK
-    expo = Expo.usingServiceAccountCredentials(serviceAccount);
-    
-    console.log("[FCM V1] Đã khởi tạo Expo SDK thành công bằng Service Account (từ Base64).");
-
+    const response = await admin.messaging().send(message);
+    console.log('[FCM-Admin] Gửi thông báo thành công:', response);
+    return { success: true, data: response };
   } catch (error) {
-    console.error("[FCM V1] LỖI: Không thể giải mã hoặc parse GOOGLE_CREDENTIALS_BASE64.", error);
-    expo = new Expo();
+    console.error('[FCM-Admin] Lỗi khi gửi thông báo:', error.message);
+    // Trả về một cấu trúc lỗi nhất quán
+    return { 
+      success: false, 
+      error: "Failed to send notification", 
+      details: { 
+        code: error.code, 
+        message: error.message 
+      } 
+    };
   }
-} else {
-  console.error("[FCM V1] LỖI NGHIÊM TRỌNG: Biến môi trường GOOGLE_CREDENTIALS_BASE64 chưa được thiết lập!");
-  expo = new Expo();
-}
-
-// ... hàm sendPushNotification giữ nguyên ...
-const sendPushNotification = async (token, { title, body, data }) => {
-    if (!Expo.isExpoPushToken(token)) {
-        console.error(`Push token ${token} không phải là token hợp lệ.`);
-        return { success: false, error: "Invalid token" };
-    }
-    const message = [{ to: token, title, body, data, sound: 'default' }];
-    try {
-        const tickets = await expo.sendPushNotificationsAsync(message);
-        // Trả về kết quả để file safeNotify có thể đọc được
-        return { success: true, data: tickets }; 
-    } catch (error) {
-        console.error("Lỗi khi gửi thông báo qua Expo SDK (V1):", error);
-        return { success: false, error: "Lỗi hệ thống gửi thông báo" };
-    }
 };
-
-module.exports = sendPushNotification;
