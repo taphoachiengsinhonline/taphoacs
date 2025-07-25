@@ -1,42 +1,44 @@
 // utils/sendPushNotification.js
-const axios = require('axios');
+const { Expo } = require('expo-server-sdk');
 
-// Đọc Access Token từ biến môi trường
-const EXPO_ACCESS_TOKEN = process.env.EXPO_ACCESS_TOKEN;
+let expo;
 
-module.exports = async (token, notificationData) => {
-  // Kiểm tra xem token có tồn tại không
-  if (!EXPO_ACCESS_TOKEN) {
-    console.error('[sendPushNotification] LỖI: Biến môi trường EXPO_ACCESS_TOKEN chưa được thiết lập!');
-    return { error: true, details: 'Server configuration error: Missing Access Token.' };
-  }
-
-  const safeNotification = {
-    to: token,
-    sound: 'default',
-    title: notificationData.title || 'Thông báo',
-    body: notificationData.body || '',
-    data: notificationData.data || {}
-  };
-
+// Kiểm tra xem biến môi trường chứa nội dung JSON có tồn tại không
+if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
   try {
-    const response = await axios.post('https://exp.host/--/api/v2/push/send', [safeNotification], {
-      headers: {
-        'Accept': 'application/json',
-        'Accept-encoding': 'gzip, deflate',
-        'Content-Type': 'application/json',
-        // =========================================================
-        // THÊM HEADER XÁC THỰC VÀO ĐÂY
-        // =========================================================
-        'Authorization': `Bearer ${EXPO_ACCESS_TOKEN}`
-      }
-    });
+    // Phân tích chuỗi JSON từ biến môi trường thành một object
+    const serviceAccount = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
     
-    // Trả về dữ liệu để các hàm khác có thể log và xử lý
-    return response.data;
+    // Khởi tạo Expo SDK với useFcmV1 và serviceAccount
+    expo = Expo.usingServiceAccountCredentials(serviceAccount);
+    
+    console.log("[FCM V1] Đã khởi tạo Expo SDK thành công bằng Service Account.");
 
   } catch (error) {
-    console.error('Lỗi khi gửi thông báo đẩy:', error.response?.data || error.message);
-    return { error: true, details: error.response?.data || { message: error.message } };
+    console.error("[FCM V1] LỖI: Không thể parse GOOGLE_APPLICATION_CREDENTIALS_JSON. Vui lòng kiểm tra lại giá trị biến môi trường.", error);
+    expo = new Expo(); // Khởi tạo rỗng để tránh crash
   }
+} else {
+  console.error("[FCM V1] LỖI NGHIÊM TRỌNG: Biến môi trường GOOGLE_APPLICATION_CREDENTIALS_JSON chưa được thiết lập!");
+  expo = new Expo();
+}
+
+
+// Hàm sendPushNotification sẽ sử dụng instance 'expo' đã được cấu hình đúng
+const sendPushNotification = async (token, { title, body, data }) => {
+    if (!Expo.isExpoPushToken(token)) {
+        console.error(`Push token ${token} không phải là token hợp lệ.`);
+        return { success: false, error: "Invalid token" };
+    }
+    const message = [{ to: token, title, body, data, sound: 'default' }];
+    try {
+        const tickets = await expo.sendPushNotificationsAsync(message);
+        // Trả về kết quả để file safeNotify có thể đọc được
+        return { success: true, data: tickets }; 
+    } catch (error) {
+        console.error("Lỗi khi gửi thông báo qua Expo SDK (V1):", error);
+        return { success: false, error: "Lỗi hệ thống gửi thông báo" };
+    }
 };
+
+module.exports = sendPushNotification;
