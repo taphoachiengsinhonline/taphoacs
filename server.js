@@ -1,3 +1,4 @@
+console.log("--- KHOI DONG BACKEND PHIEN BAN V1.5 (API V1 FCM) ---"); 
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
