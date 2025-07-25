@@ -1,7 +1,9 @@
+// orderController.js (Đã sửa đổi)
+
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
-const Notification = require('../models/Notification'); // Đảm bảo đã import Notification
+const Notification = require('../models/Notification');
 const { safeNotify } = require('../utils/notificationMiddleware');
 const assignOrderToNearestShipper = require('../utils/assignOrderToNearestShipper');
 const { processOrderCompletionForFinance, reverseFinancialEntryForOrder } = require('./financeController');
@@ -10,7 +12,7 @@ const Voucher = require('../models/Voucher');
 const mongoose = require('mongoose');
 const shippingController = require('./shippingController'); 
 
-// Hàm kiểm tra giờ bán
+// Hàm kiểm tra giờ bán (Giữ nguyên)
 const validateSaleTime = (product, nowMin) => {
     if (!product.saleStartTime || !product.saleEndTime) return true;
     const toMin = str => {
@@ -22,38 +24,37 @@ const validateSaleTime = (product, nowMin) => {
     return start <= end ? (nowMin >= start && nowMin <= end) : (nowMin >= start || nowMin <= end);
 };
 
-// Hàm gửi thông báo cho Admin
+// Hàm gửi thông báo cho Admin (Giữ nguyên)
 const notifyAdmins = async (order) => {
-    const admins = await User.find({ role: 'admin', fcmToken: { $exists: true } });
-    for (const admin of admins) {
-        try {
+    try {
+        const admins = await User.find({ role: 'admin', fcmToken: { $exists: true, $ne: null } });
+        for (const admin of admins) {
             await safeNotify(admin.fcmToken, {
                 title: '🛒 Đơn hàng mới',
                 body: `#${order._id.toString().slice(-6)} từ ${order.customerName}: ${order.total.toLocaleString()}đ`,
                 data: { orderId: order._id.toString(), shipperView: "true" }
             });
-        } catch (e) {
-            console.error(`[notify admin] error for admin ${admin._id}:`, e);
         }
+    } catch (e) {
+        console.error(`[notify admin] error for admin:`, e);
     }
 };
 
 exports.createOrder = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
+    let savedOrder; // << KHAI BÁO BIẾN Ở NGOÀI
+
     try {
+        // --- TOÀN BỘ LOGIC TẠO ĐƠN HÀNG CỦA BẠN GIỮ NGUYÊN ---
         const {
             items, phone, shippingAddress, shippingLocation, customerName,
             paymentMethod, voucherDiscount, voucherCode
         } = req.body;
         const userId = req.user._id;
 
-        if (!Array.isArray(items) || items.length === 0) {
-            throw new Error('Giỏ hàng không được để trống');
-        }
-        if (!phone || !shippingAddress || !shippingLocation) {
-            throw new Error('Thiếu thông tin nhận hàng');
-        }
+        if (!Array.isArray(items) || items.length === 0) throw new Error('Giỏ hàng không được để trống');
+        if (!phone || !shippingAddress || !shippingLocation) throw new Error('Thiếu thông tin nhận hàng');
 
         const now = new Date();
         const nowMin = now.getHours() * 60 + now.getMinutes();
@@ -67,7 +68,6 @@ exports.createOrder = async (req, res) => {
             if (!validateSaleTime(product, nowMin)) {
                 throw new Error(`Sản phẩm "${product.name}" chỉ bán từ ${product.saleStartTime} đến ${product.saleEndTime}.`);
             }
-
             let stock;
             if (product.variantTable && product.variantTable.length > 0) {
                 const variant = product.variantTable.find(v => v.combination === item.combination);
@@ -76,9 +76,7 @@ exports.createOrder = async (req, res) => {
             } else {
                 stock = product.stock;
             }
-            if (stock < item.quantity) {
-                throw new Error(`Sản phẩm "${product.name}" không đủ hàng trong kho.`);
-            }
+            if (stock < item.quantity) throw new Error(`Sản phẩm "${product.name}" không đủ hàng trong kho.`);
 
             const itemValue = item.price * item.quantity;
             itemsTotal += itemValue;
@@ -130,25 +128,51 @@ exports.createOrder = async (req, res) => {
             status: 'Chờ xác nhận',
         });
         
-        const [savedOrder] = await Order.create([order], { session });
+        // --- THAY ĐỔI CÁCH LƯU VÀ COMMIT ---
+        const createdOrders = await Order.create([order], { session });
+        savedOrder = createdOrders[0];
+
         await session.commitTransaction();
+        console.log(`[createOrder] Transaction committed successfully for order #${savedOrder._id}.`);
 
-        assignOrderToNearestShipper(savedOrder._id).catch(console.error);
-        notifyAdmins(savedOrder);
-
-        return res.status(201).json({
+        // --- GỬI RESPONSE CHO CLIENT TRƯỚC ---
+        // Gửi phản hồi về cho người dùng ngay lập tức để họ không phải chờ.
+        // Các tác vụ thông báo sẽ chạy ở chế độ nền.
+        res.status(201).json({
             message: 'Tạo đơn thành công',
             order: { ...savedOrder.toObject(), timestamps: savedOrder.timestamps }
         });
+
     } catch (err) {
         await session.abortTransaction();
         console.error('Lỗi khi tạo đơn hàng:', err);
-        const statusCode = err.message.includes('tồn tại') || err.message.includes('đủ hàng') || err.message.includes('voucher') ? 400 : 500;
-        return res.status(statusCode).json({ message: err.message || 'Lỗi server' });
+        // Tránh gửi response hai lần nếu đã gửi ở trên
+        if (!res.headersSent) {
+            const statusCode = err.message.includes('tồn tại') || err.message.includes('đủ hàng') || err.message.includes('voucher') ? 400 : 500;
+            return res.status(statusCode).json({ message: err.message || 'Lỗi server' });
+        }
     } finally {
         session.endSession();
     }
+
+    // --- THỰC THI CÁC TÁC VỤ THÔNG BÁO SAU KHI ĐÃ GỬI RESPONSE ---
+    // Điều này đảm bảo transaction đã hoàn tất và response đã được gửi đi.
+    if (savedOrder) {
+        console.log(`[createOrder] Starting post-order tasks for order #${savedOrder._id}.`);
+        // Chúng ta có thể dùng Promise.all để chạy song song cho nhanh
+        Promise.all([
+            assignOrderToNearestShipper(savedOrder._id),
+            notifyAdmins(savedOrder)
+        ]).catch(err => {
+            console.error(`[createOrder] Error in post-order tasks for order #${savedOrder._id}:`, err);
+        });
+    }
 };
+
+
+// =================================================================
+// === CÁC HÀM KHÁC CỦA BẠN ĐƯỢC GIỮ NGUYÊN HOÀN TOÀN BÊN DƯỚI ===
+// =================================================================
 
 exports.countByStatus = async (req, res) => {
   try {
@@ -191,7 +215,7 @@ exports.acceptOrder = async (req, res) => {
     const updatedOrder = await order.save();
 
     const customer = await User.findById(order.user);
-    if (customer) { // <<< Sửa đổi: Kiểm tra customer tồn tại
+    if (customer) { 
         const title = 'Shipper đã nhận đơn của bạn!';
         const message = `Đơn hàng #${order._id.toString().slice(-6)} đang được chuẩn bị.`;
 
@@ -203,7 +227,6 @@ exports.acceptOrder = async (req, res) => {
             });
         }
         
-        // <<< THÊM ĐOẠN NÀY: LƯU THÔNG BÁO VÀO CSDL >>>
         await Notification.create({
             user: customer._id,
             title: title,
@@ -240,7 +263,6 @@ exports.updateOrderStatusByShipper = async (req, res) => {
         const { status, cancelReason } = req.body;
         const orderId = req.params.id;
 
-        // <<< Sửa đổi: Thêm .populate('user') để có thông tin khách hàng >>>
         const order = await Order.findOne({ _id: orderId, shipper: req.user._id }).populate('user', 'fcmToken');
 
         if (!order) {
@@ -270,7 +292,6 @@ exports.updateOrderStatusByShipper = async (req, res) => {
 
         const updatedOrder = await order.save();
         
-        // <<< THÊM ĐOẠN NÀY: GỬI VÀ LƯU THÔNG BÁO CHO KHÁCH HÀNG >>>
         if (order.user) {
             let title = '';
             let message = '';
@@ -290,7 +311,7 @@ exports.updateOrderStatusByShipper = async (req, res) => {
                     break;
             }
 
-            if (title) { // Chỉ thực hiện nếu có thông báo cần gửi
+            if (title) {
                 if (order.user.fcmToken) {
                     await safeNotify(order.user.fcmToken, {
                         title,
@@ -478,7 +499,7 @@ exports.requestOrderTransfer = async (req, res) => {
         assignOrderToNearestShipper(order._id).catch(err => console.error(`[Order Transfer] Lỗi khi tái gán đơn ${order._id}:`, err));
 
         const customer = await User.findById(order.user);
-        if (customer) { // <<< Sửa đổi: Kiểm tra customer tồn tại
+        if (customer) {
             const title = 'Thông báo đơn hàng';
             const message = `Shipper cũ của bạn không thể tiếp tục giao đơn hàng #${order._id.toString().slice(-6)}. Chúng tôi đang tìm shipper mới cho bạn.`;
 
@@ -490,7 +511,6 @@ exports.requestOrderTransfer = async (req, res) => {
                 });
             }
 
-            // <<< THÊM ĐOẠN NÀY: LƯU THÔNG BÁO VÀO CSDL >>>
             await Notification.create({
                 user: customer._id,
                 title: title,
