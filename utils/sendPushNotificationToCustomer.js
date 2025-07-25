@@ -1,3 +1,4 @@
+//utils/NotificationToCustomer.js
 const sendPushNotification = require('./sendPushNotification');
 const User = require('../models/User');
 
