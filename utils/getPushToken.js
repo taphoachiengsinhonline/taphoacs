@@ -1,41 +1,29 @@
 // utils/getPushToken.js
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
-import { Platform, Alert } from 'react-native';
+import messaging from '@react-native-firebase/messaging';
+import { PermissionsAndroid, Platform } from 'react-native';
 
-// Hàm đăng ký và lấy push token
-export async function registerForPushNotificationsAsync() {
-  try {
-    if (!Device.isDevice) {
-      Alert.alert('Thông báo', 'Chỉ thiết bị thật mới nhận được thông báo đẩy');
-      return null;
+export async function registerForPushNotifications() {
+  if (Platform.OS === 'android') {
+    const authStatus = await messaging().requestPermission();
+    const enabled =
+      authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+      authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+    if (enabled) {
+      console.log('Authorization status:', authStatus);
+      try {
+        const token = await messaging().getToken();
+        console.log("FCM TOKEN GỐC:", token);
+        return token;
+      } catch (error) {
+        console.error("Lỗi khi lấy FCM token:", error);
+        return null;
+      }
+    } else {
+        console.log("Người dùng từ chối quyền thông báo.");
+        return null;
     }
-
-    // Kiểm tra quyền hiện tại
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-
-    // Nếu chưa cấp quyền thì yêu cầu người dùng cấp
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-
-    // Nếu vẫn không được cấp quyền thì thông báo lỗi
-    if (finalStatus !== 'granted') {
-      Alert.alert('Thông báo', 'Bạn cần cấp quyền để nhận thông báo');
-      return null;
-    }
-
-    // Lấy push token từ Expo
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: 'YOUR_PROJECT_ID_HERE' // nếu dùng EAS hoặc SDK 48+ thì nên thêm dòng này
-    });
-
-    console.log('Expo Push Token:', tokenData.data);
-    return tokenData.data;
-  } catch (error) {
-    console.error('Lỗi lấy push token:', error);
-    return null;
   }
+  // (Thêm logic cho iOS nếu cần sau)
+  return null;
 }
