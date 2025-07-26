@@ -1,55 +1,40 @@
-// utils/notificationMiddleware.js
-const sendPushNotification = require('./sendPushNotification');
+// utils/notificationMiddleware.js (file 36)
+const sendFirebaseNotification = require('./sendPushNotification'); // File cũ
+const sendExpoNotification = require('./sendExpoPushNotification'); // File mới
+const { Expo } = require('expo-server-sdk');
 const User = require('../models/User');
 
 module.exports = {
   safeNotify: async (token, notificationData) => {
     try {
       if (!token) {
-        console.log('[safeNotify] BỎ QUA: Không có FCM token để gửi.');
-        return { success: false, error: 'Missing token' };
+        console.log('[safeNotify] BỎ QUA: Không có token.');
+        return;
+      }
+
+      console.log(`[safeNotify] Chuẩn bị gửi đến token: ...${token.slice(-10)}`);
+      
+      let result;
+      // Tự động nhận diện loại token và chọn hàm gửi phù hợp
+      if (Expo.isExpoPushToken(token)) {
+        console.log("[safeNotify] Phát hiện Expo Push Token. Sử dụng API của Expo.");
+        result = await sendExpoNotification(token, notificationData);
+      } else {
+        console.log("[safeNotify] Phát hiện FCM Token gốc. Sử dụng Firebase Admin SDK.");
+        result = await sendFirebaseNotification(token, notificationData);
       }
       
-      const safeData = {
-        ...notificationData,
-        title: notificationData.title || 'Thông báo',
-        body: notificationData.body || '',
-        data: notificationData.data || {}
-      };
+      console.log(`[safeNotify] KẾT QUẢ GỬI:`, result);
 
-      console.log(`[safeNotify] CHUẨN BỊ GỬI đến token: ...${token.slice(-10)}`);
-      console.log(`[safeNotify] NỘI DUNG: ${JSON.stringify(safeData, null, 2)}`);
-      
-      const result = await sendPushNotification(token, safeData);
-      
-      console.log(`[safeNotify] KẾT QUẢ GỬI:`, JSON.stringify(result, null, 2));
-
+      // Xử lý lỗi (chủ yếu cho token không hợp lệ)
+      // Logic này cần được điều chỉnh lại cho phù hợp với kết quả trả về của cả 2 SDK
       if (result && result.success === false) {
-        const errorCode = result.details?.code || result.details?.errorCode;
-        console.error(`[safeNotify] LỖI GỬI: ${errorCode} - ${result.details?.message}`);
-        
-        // Lỗi phổ biến nhất: token không còn tồn tại trên server của Google/Apple
-        if (errorCode === 'messaging/registration-token-not-registered') {
-          console.log(`[safeNotify] Token ${token.slice(-10)} không hợp lệ. TIẾN HÀNH XÓA KHỎI DATABASE.`);
-          try {
-            const updateResult = await User.updateOne(
-              { fcmToken: token },
-              { $unset: { fcmToken: "" } }
-            );
-            console.log(`[safeNotify] KẾT QUẢ XÓA TOKEN: ${updateResult.modifiedCount} bản ghi được cập nhật.`);
-          } catch (dbError) {
-            console.error('[safeNotify] LỖI KHI XÓA TOKEN KHỎI DATABASE:', dbError);
-          }
-        }
-        return { success: false, error: result.details };
+          // Xóa token nếu không hợp lệ
+          await User.updateOne({ fcmToken: token }, { $unset: { fcmToken: "" } });
       }
-      
-      console.log(`[safeNotify] GỬI THÀNH CÔNG đến token: ...${token.slice(-10)}`);
-      return { success: true };
 
     } catch (error) {
-      console.error('[safeNotify] LỖI NGHIÊM TRỌNG TRONG HÀM safeNotify:', error);
-      return { success: false, error: error.message };
+      console.error('[safeNotify] Lỗi nghiêm trọng:', error);
     }
   }
 };
