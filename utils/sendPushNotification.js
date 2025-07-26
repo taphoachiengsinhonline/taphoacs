@@ -2,7 +2,7 @@
 const admin = require('firebase-admin');
 
 /**
- * Gửi thông báo đẩy qua Firebase Admin SDK với cấu trúc payload đã được sửa lỗi.
+ * Gửi thông báo đẩy qua Firebase Admin SDK với cấu trúc payload đã được sửa lỗi vị trí.
  * @param {string} fcmToken - Token của thiết bị nhận.
  * @param {object} param1 - Dữ liệu thông báo { title, body, data }.
  * @returns {Promise<object>} - Kết quả gửi từ Firebase.
@@ -12,36 +12,32 @@ module.exports = async (fcmToken, { title, body, data }) => {
     Object.entries(data).map(([key, value]) => [key, String(value)])
   ) : {};
 
-  // <<< BẮT ĐẦU SỬA LỖI CẤU TRÚC PAYLOAD >>>
   const message = {
     token: fcmToken,
     
-    // Phần Data luôn được gửi đến app
     data: stringifiedData,
 
-    // Phần Notification hiển thị cho người dùng
     notification: {
       title: title || 'Thông báo mới',
       body: body || 'Bạn có một thông báo mới.',
     },
 
-    // Cấu hình riêng cho ANDROID
     android: {
       priority: 'high',
       notification: {
-        // Âm thanh, kênh, màu sắc vẫn giữ nguyên ở đây
+        // <<< BẮT ĐẦU SỬA LỖI VỊ TRÍ VÀ TÊN TRƯỜNG >>>
         sound: 'default',
         channelId: 'default',
         color: '#4CAF50',
+        
+        // Tên đúng là `vibrationTimings` (camelCase)
+        // và nó phải nằm BÊN TRONG `android.notification`.
+        // Định dạng thời gian là mili-giây, không phải chuỗi.
+        vibrationTimings: ['500ms', '200ms', '500ms', '200ms', '500ms'],
+        // <<< KẾT THÚC SỬA LỖI VỊ TRÍ VÀ TÊN TRƯỜNG >>>
       },
-      // --- DI CHUYỂN CẤU HÌNH RUNG RA NGOÀI `notification` ---
-      // Tên đúng của trường là `vibration_timings` (dùng dấu gạch dưới)
-      // và nó nằm cùng cấp với `priority` và `notification`.
-      vibration_timings: ['0.5s', '0.2s', '0.5s', '0.2s', '0.5s'],
     },
-    // <<< KẾT THÚC SỬA LỖI CẤU TRÚC PAYLOAD >>>
 
-    // Cấu hình riêng cho APN (iOS)
     apns: {
       payload: {
         aps: {
@@ -53,6 +49,7 @@ module.exports = async (fcmToken, { title, body, data }) => {
   };
 
   try {
+    // Log lại để kiểm tra payload trước khi gửi
     console.log(`[FCM-Admin] Chuẩn bị gửi payload: ${JSON.stringify(message, null, 2)}`);
     const response = await admin.messaging().send(message);
     console.log(`[FCM-Admin] Gửi thông báo thành công tới ${fcmToken.slice(-10)}:`, response);
