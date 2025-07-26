@@ -1,8 +1,12 @@
+// backend/utils/assignOrderToNearestShipper.js
+
 const Order = require('../models/Order');
 const User = require('../models/User');
 const PendingDelivery = require('../models/PendingDelivery');
-const sendPushNotification = require('./sendPushNotification');
 const mongoose = require('mongoose');
+
+// Thay thế import cũ bằng import `safeNotify`
+const { safeNotify } = require('./notificationMiddleware');
 
 const MAX_RETRY = 5;
 const RETRY_DELAY = 35000;
@@ -26,9 +30,15 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
 
       const customer = await User.findById(order.user);
       if (customer?.fcmToken) {
-        await sendPushNotification(customer.fcmToken, {
+        // Sử dụng safeNotify để gửi thông báo cho khách hàng
+        await safeNotify(customer.fcmToken, {
           title: 'Thông báo hủy đơn',
-          body: 'Đơn hàng đã bị huỷ do không có shipper nhận, vui lòng đặt lại sau.',
+          body: 'Đơn hàng của bạn đã bị huỷ do không có tài xế nhận. Vui lòng đặt lại sau ít phút.',
+          // Thêm data để app khách hàng có thể điều hướng nếu cần
+          data: {
+            orderId: order._id.toString(),
+            type: 'order_canceled_no_shipper'
+          }
         });
       }
       return;
@@ -61,6 +71,7 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
           query: {
             role: 'shipper',
             isAvailable: true,
+            fcmToken: { $exists: true, $ne: null }, // Chỉ tìm shipper có token
             _id: { $nin: triedShippers.map(id => new mongoose.Types.ObjectId(id)) },
           },
           spherical: true,
@@ -110,9 +121,11 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
 
     if (shipper.fcmToken) {
       const distance = (shipper.distance / 1000).toFixed(2);
-      await sendPushNotification(shipper.fcmToken, {
+      
+      // Sử dụng safeNotify để gửi thông báo cho shipper
+      await safeNotify(shipper.fcmToken, {
         title: '🛒 ĐƠN HÀNG MỚI',
-        body: `Bạn có đơn hàng mới cách ${distance}km`,
+        body: `Bạn có đơn hàng mới cách khoảng ${distance}km`,
         data: {
           orderId: order._id.toString(),
           notificationType: 'newOrderModal',
@@ -121,21 +134,29 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
           shipperView: "true"
         },
       });
-      console.log(`[Assign] Đã gửi thông báo tới shipper ${shipper._id}`);
+      console.log(`[Assign] Đã gửi yêu cầu thông báo tới shipper ${shipper._id} thông qua safeNotify.`);
+    } else {
+        // Trường hợp hiếm gặp: shipper tìm thấy nhưng không có token
+        console.log(`[Assign] Shipper ${shipper._id} không có fcmToken, bỏ qua và tìm shipper tiếp theo.`);
+        // Gọi lại ngay lập tức để không phải chờ timeout
+        assignOrderToNearestShipper(orderId, retryCount);
+        return;
     }
 
+    // Cơ chế timeout để tìm shipper tiếp theo nếu shipper hiện tại không phản hồi
     setTimeout(async () => {
       const freshOrder = await Order.findById(orderId);
       if (freshOrder?.status === 'Chờ xác nhận') {
         console.log(`[Assign] Modal timeout, đơn ${orderId} vẫn chưa được nhận, thử shipper tiếp theo`);
         assignOrderToNearestShipper(orderId, retryCount);
       } else {
-        console.log(`[Assign] Đơn ${orderId} đã được xử lý, dừng quá trình`);
+        console.log(`[Assign] Đơn ${orderId} đã được xử lý bởi shipper, dừng quá trình gán đơn.`);
       }
     }, MODAL_TIMEOUT);
 
   } catch (err) {
     console.error(`[Assign] Lỗi trong chu kỳ ${retryCount + 1}:`, err);
+    // Vẫn thử lại sau một khoảng thời gian delay nếu có lỗi xảy ra
     setTimeout(() => assignOrderToNearestShipper(orderId, retryCount), RETRY_DELAY);
   }
 }
