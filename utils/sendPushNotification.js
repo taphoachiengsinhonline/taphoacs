@@ -1,4 +1,4 @@
-/utils/sendPushNotification.js
+//utils/sendPushNotification.js
 
 const admin = require('firebase-admin');
 
