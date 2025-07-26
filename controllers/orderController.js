@@ -387,8 +387,15 @@ exports.countOrdersByStatus = async (req, res) => {
 
 exports.getOrderById = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id).populate('user', 'name phone').populate('shipper', 'name phone shipperProfile.vehicleType shipperProfile.licensePlate');
-    if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+    const order = await Order.findById(req.params.id)
+      .populate('user', 'name phone')
+      .populate('shipper', 'name phone shipperProfile.vehicleType shipperProfile.licensePlate');
+      
+    if (!order) {
+      return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+    }
+
+    // Logic kiểm tra quyền truy cập của bạn đã đúng và được giữ nguyên
     let canView = false;
     const currentUserId = req.user._id;
     const currentUserRole = req.user.role;
@@ -397,10 +404,23 @@ exports.getOrderById = async (req, res) => {
     else if (order.shipper?._id.equals(currentUserId)) canView = true;
     else if (currentUserRole === 'shipper' && order.status === 'Chờ xác nhận') canView = true;
     else if (currentUserRole === 'seller' && order.items.some(item => item.sellerId.equals(currentUserId))) canView = true;
+    
     if (canView) {
+      // <<< BẮT ĐẦU SỬA LỖI TẠI ĐÂY >>>
+      // Chuyển order Mongoose document thành một object JavaScript thông thường
       let responseOrder = order.toObject({ virtuals: true });
+      
+      // Gán lại các trường timestamp (vì .toObject() có thể không giữ đúng định dạng)
       responseOrder.timestamps = order.timestamps;
+      
+      // Thêm một trường 'shippingFee' vào object trả về để tương thích với client
+      // mà không cần sửa code client.
+      // Giá trị của nó là phí mà khách hàng trả (hoặc phí thực tế nếu khách trả = 0).
+      responseOrder.shippingFee = order.shippingFeeCustomerPaid || order.shippingFeeActual || 0;
+      
+      // Trả về object đã được tùy chỉnh
       res.json(responseOrder);
+      // <<< KẾT THÚC SỬA LỖI >>>
     } else {
       res.status(403).json({ message: 'Bạn không có quyền truy cập đơn hàng này.' });
     }
