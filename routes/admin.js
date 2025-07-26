@@ -5,11 +5,13 @@ const router = express.Router();
 const User = require('../models/User');
 const { verifyToken, isAdmin } = require('../middlewares/authMiddleware');
 const bcrypt = require('bcrypt');
-const sendPushNotification = require('../utils/sendPushNotification');
 const Product = require('../models/Product');
 
-// <<< BƯỚC 1: IMPORT CONTROLLER >>>
-// Tất cả logic xử lý sẽ được gọi từ đây
+// <<< BƯỚC 1: SỬA LẠI IMPORT >>>
+// Bỏ import cũ, thay bằng import `safeNotify`
+const { safeNotify } = require('../utils/notificationMiddleware');
+
+// Import controller
 const adminController = require('../controllers/adminController');
 
 // Middleware: Yêu cầu tất cả các route trong file này phải là admin đã đăng nhập
@@ -31,7 +33,6 @@ router.post('/shippers', async (req, res) => {
         if (existingUser) {
             return res.status(400).json({ status: 'error', message: 'Email đã tồn tại' });
         }
-        //const hashedPassword = await bcrypt.hash(password, 10);
         const shipper = new User({
             email, password: password, name, address, phone, role: 'shipper',
             shipperProfile: { vehicleType, licensePlate, shippingFeeShareRate, profitShareRate }
@@ -98,10 +99,17 @@ router.post('/shippers/:id/test-notification', async (req, res) => {
       return res.status(404).json({ status: 'error', message: 'Shipper không tồn tại' });
     }
     if (!shipper.fcmToken) {
-      return res.status(400).json({ status: 'error', message: 'Shipper chưa có FCM token' });
+      return res.status(400).json({ status: 'error', message: 'Shipper này hiện chưa có token để nhận thông báo.' });
     }
-    await sendPushNotification(shipper.fcmToken, 'Kiểm tra thông báo', 'Admin đang kiểm tra hệ thống thông báo');
-    res.json({ status: 'success', message: 'Đã gửi thông báo kiểm tra' });
+
+    // <<< BƯỚC 2: SỬA LẠI HÀM GỌI Ở ĐÂY >>>
+    await safeNotify(shipper.fcmToken, {
+        title: 'Kiểm tra thông báo', 
+        body: 'Admin đang kiểm tra hệ thống thông báo của bạn.',
+        data: { type: 'test_notification' } // Gửi kèm data để app có thể xử lý nếu cần
+    });
+
+    res.json({ status: 'success', message: 'Đã gửi yêu cầu gửi thông báo kiểm tra' });
   } catch (error) {
     console.error('Error sending test notification:', error);
     res.status(500).json({ status: 'error', message: 'Lỗi server: ' + error.message });
@@ -117,12 +125,25 @@ router.post('/shippers/:id/fake-order', async (req, res) => {
       return res.status(404).json({ status: 'error', message: 'Shipper không tồn tại' });
     }
     if (!shipper.fcmToken) {
-      return res.status(400).json({ status: 'error', message: 'Shipper chưa có FCM token' });
+      return res.status(400).json({ status: 'error', message: 'Shipper này hiện chưa có token để nhận thông báo.' });
     }
     const fakeOrderId = 'FAKE-' + Math.floor(Math.random() * 10000);
     const fakeAddress = '123 Đường kiểm tra, Quận 1, TP.HCM';
     const fakeAmount = Math.floor(Math.random() * 500000) + 50000;
-    await sendPushNotification(shipper.fcmToken, `Đơn hàng mới #${fakeOrderId}`, `Giao đến: ${fakeAddress} - ${fakeAmount.toLocaleString('vi-VN')}đ`);
+    
+    // <<< BƯỚC 3: SỬA LẠI HÀM GỌI Ở ĐÂY >>>
+    await safeNotify(shipper.fcmToken, {
+        title: `Đơn hàng mới #${fakeOrderId}`, 
+        body: `Giao đến: ${fakeAddress} - ${fakeAmount.toLocaleString('vi-VN')}đ`,
+        // Gửi data giống hệt một đơn hàng thật để app có thể hiển thị modal
+        data: {
+          orderId: fakeOrderId,
+          notificationType: 'newOrderModal',
+          distance: (Math.random() * 5).toFixed(2), // Khoảng cách ngẫu nhiên
+          shipperView: "true"
+        }
+    });
+
     res.json({ status: 'success', message: 'Đã gửi thông báo đơn hàng ảo', order: { id: fakeOrderId, address: fakeAddress, amount: fakeAmount } });
   } catch (error) {
     console.error('Error sending fake order:', error);
@@ -197,50 +218,24 @@ router.post('/products/:productId/reject', async (req, res) => {
 });
 
 // =======================================================
-// === <<< BƯỚC 2: DỌN DẸP VÀ TRỎ ROUTE ĐẾN CONTROLLER >>> ===
+// === CÁC ROUTE TRỎ TỚI CONTROLLER (Giữ nguyên) ===
 // =======================================================
 
-// Route CŨ, bây giờ trỏ đến controller
 router.get('/shipper-debt-overview', adminController.getShipperDebtOverview);
-
-// Route CŨ, bây giờ trỏ đến controller
 router.get('/remittances/pending-count', adminController.countPendingRemittanceRequests);
-
-// Route CŨ, bây giờ trỏ đến controller
 router.patch('/remittance-request/:requestId/process', adminController.processRemittanceRequest);
-
-
-// --- CÁC ROUTE MỚI CHO CHỨC NĂNG TRẢ LƯƠNG ---
-
-// Lấy tổng quan tài chính (Công nợ & Lương) của tất cả shipper
-// **MÀN HÌNH "Công nợ & Lương Shipper" SẼ GỌI ROUTE NÀY**
 router.get('/shipper-financial-overview', adminController.getShipperFinancialOverview);
-
-// Admin lấy chi tiết tài chính của 1 shipper theo tháng
-// **MÀN HÌNH "Đối soát tài chính Shipper" SẼ GỌI ROUTE NÀY**
 router.get('/shippers/:shipperId/financial-details', adminController.getShipperFinancialDetails);
 router.get('/shippers/:shipperId/comprehensive-financials', adminController.getShipperComprehensiveFinancials);
-
-// Admin trả lương cho shipper
-// **NÚT "TRẢ LƯƠNG" TRONG MODAL SẼ GỌI ROUTE NÀY**
 router.post('/shippers/:shipperId/pay-salary', adminController.payShipperSalary);
-router.get('/shipper-financial-overview', adminController.getShipperFinancialOverview);
-
-// Lấy tổng quan tài chính của tất cả Seller (cho màn hình danh sách)
 router.get('/seller-financial-overview', adminController.getSellerFinancialOverview);
-
-// Lấy chi tiết tài chính của 1 Seller (cho màn hình chi tiết)
 router.get('/sellers/:sellerId/comprehensive-financials', adminController.getSellerComprehensiveFinancials);
-
-// Admin thanh toán cho Seller
 router.post('/sellers/:sellerId/pay', adminController.payToSeller);
-
-
-
 router.get('/all-pending-counts', adminController.getAllPendingCounts);
 router.get('/sellers/pending', adminController.getPendingSellers);
 router.post('/sellers/:sellerId/approve', adminController.approveSeller);
 router.post('/sellers/:sellerId/reject', adminController.rejectSeller);
 router.get('/dashboard-counts', adminController.getAdminDashboardCounts);
 router.post('/shippers/:shipperId/remind-debt', adminController.remindShipperToPayDebt);
+
 module.exports = router;
