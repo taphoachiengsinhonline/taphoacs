@@ -1,13 +1,12 @@
 // utils/notificationMiddleware.js
-
 const sendPushNotification = require('./sendPushNotification');
-const User = require('../models/User'); // << QUAN TRỌNG: Phải import User model để có thể xóa token
+const User = require('../models/User');
 
 module.exports = {
   safeNotify: async (token, notificationData) => {
     try {
       if (!token) {
-        console.log('[safeNotify] Không có FCM token, bỏ qua gửi thông báo.');
+        console.log('[safeNotify] BỎ QUA: Không có FCM token để gửi.');
         return { success: false, error: 'Missing token' };
       }
       
@@ -18,51 +17,39 @@ module.exports = {
         data: notificationData.data || {}
       };
 
-      // =========================================================
-      // THÊM LOG TRƯỚC KHI GỬI
-      // =========================================================
-      console.log(`[safeNotify] Chuẩn bị gửi thông báo đến token: ${token}`);
-      console.log(`[safeNotify] Nội dung: ${JSON.stringify(safeData, null, 2)}`);
+      console.log(`[safeNotify] CHUẨN BỊ GỬI đến token: ...${token.slice(-10)}`);
+      console.log(`[safeNotify] NỘI DUNG: ${JSON.stringify(safeData, null, 2)}`);
       
-      // Gửi thông báo
       const result = await sendPushNotification(token, safeData);
       
-      // =========================================================
-      // THÊM LOG KẾT QUẢ TRẢ VỀ ("BIÊN LAI")
-      // =========================================================
-      console.log(`[safeNotify] KẾT QUẢ từ sendPushNotification:`, JSON.stringify(result, null, 2));
+      console.log(`[safeNotify] KẾT QUẢ GỬI:`, JSON.stringify(result, null, 2));
 
-      // Xử lý token không hợp lệ (logic của bạn vẫn được giữ nguyên và cải tiến)
-      if (result && result.error) {
-        // Log lỗi cụ thể
-        console.error(`[safeNotify] Gửi thông báo thất bại. Chi tiết:`, result.details);
+      if (result && result.success === false) {
+        const errorCode = result.details?.code || result.details?.errorCode;
+        console.error(`[safeNotify] LỖI GỬI: ${errorCode} - ${result.details?.message}`);
         
-        // Kiểm tra lỗi DeviceNotRegistered một cách an toàn hơn
-        const isDeviceNotRegistered = result.details?.errorCode === 'DEVICE_NOT_REGISTERED' || 
-                                      result.details?.error === 'DeviceNotRegistered';
-
-        if (isDeviceNotRegistered) {
-          console.log(`[safeNotify] Token ${token} không hợp lệ. Tiến hành xóa khỏi database.`);
+        // Lỗi phổ biến nhất: token không còn tồn tại trên server của Google/Apple
+        if (errorCode === 'messaging/registration-token-not-registered') {
+          console.log(`[safeNotify] Token ${token.slice(-10)} không hợp lệ. TIẾN HÀNH XÓA KHỎI DATABASE.`);
           try {
             const updateResult = await User.updateOne(
               { fcmToken: token },
-              { $unset: { fcmToken: "" } } // Dùng "" thay vì 1 để tương thích tốt hơn
+              { $unset: { fcmToken: "" } }
             );
-            console.log(`[safeNotify] Kết quả xóa token: ${updateResult.modifiedCount} bản ghi được cập nhật.`);
+            console.log(`[safeNotify] KẾT QUẢ XÓA TOKEN: ${updateResult.modifiedCount} bản ghi được cập nhật.`);
           } catch (dbError) {
-            console.error('[safeNotify] Lỗi khi xóa token khỏi database:', dbError);
+            console.error('[safeNotify] LỖI KHI XÓA TOKEN KHỎI DATABASE:', dbError);
           }
         }
         return { success: false, error: result.details };
       }
       
-      // Log trạng thái thành công
-      console.log(`[safeNotify] Gửi thông báo thành công tới token: ${token}`);
+      console.log(`[safeNotify] GỬI THÀNH CÔNG đến token: ...${token.slice(-10)}`);
       return { success: true };
 
     } catch (error) {
-      console.error('[safeNotify] Lỗi nghiêm trọng trong hàm safeNotify:', error);
-      return { success: false, error };
+      console.error('[safeNotify] LỖI NGHIÊM TRỌNG TRONG HÀM safeNotify:', error);
+      return { success: false, error: error.message };
     }
   }
 };
