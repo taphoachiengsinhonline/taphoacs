@@ -16,6 +16,183 @@ const { safeNotify } = require('../utils/notificationMiddleware');
 // === CÁC HÀM CŨ CỦA BẠN - GIỮ NGUYÊN HOÀN TOÀN              ===
 // ==============================================================
 
+
+exports.getFinancialOverview = async (req, res) => {
+    try {
+        // --- 1. TÍNH TOÁN DOANH THU VÀ LỢI NHUẬN TỪ CÁC ĐƠN HÀNG ĐÃ GIAO ---
+        const orderFinancials = await Order.aggregate([
+            { $match: { status: 'Đã giao' } }, // Chỉ tính các đơn đã giao thành công
+            {
+                $project: {
+                    // Lấy các trường cần thiết
+                    deliveredAt: '$timestamps.deliveredAt',
+                    totalRevenue: '$total', // Tổng tiền thu từ khách hàng
+                    totalShipperIncome: '$shipperIncome', // Tổng tiền trả cho shipper từ đơn hàng
+                    
+                    // Tính tổng tiền hàng (giá gốc sản phẩm)
+                    itemsTotal: {
+                        $reduce: {
+                            input: '$items',
+                            initialValue: 0,
+                            in: { $add: ['$$value', { $multiply: ['$$this.price', '$$this.quantity'] }] }
+                        }
+                    },
+                    
+                    // Tính tổng tiền hoa hồng của sàn (từ các seller)
+                    totalCommission: {
+                        $reduce: {
+                            input: '$items',
+                            initialValue: 0,
+                            in: { $add: ['$$value', '$$this.commissionAmount'] }
+                        }
+                    }
+                }
+            },
+            {
+                $project: {
+                    deliveredAt: 1,
+                    totalRevenue: 1, // Doanh thu tổng
+                    grossProfit: {
+                        $add: [
+                            { $subtract: ['$totalRevenue', '$itemsTotal'] },
+                            { $subtract: ['$totalCommission', '$totalShipperIncome'] }
+                        ]
+                    }
+                }
+            }
+        ]);
+        
+        // --- 2. TÍNH TOÁN TỔNG LƯƠNG CỨNG ĐÃ TRẢ CHO SHIPPER (NGOÀI ĐƠN HÀNG) ---
+        const totalHardSalaryPaidResult = await SalaryPayment.aggregate([
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const totalHardSalaryPaid = totalHardSalaryPaidResult[0]?.total || 0;
+
+        // --- 3. BỔ SUNG: TÍNH TOÁN TỔNG COD ĐÃ THU TỪ TRƯỚC ĐẾN NAY ---
+        const totalCodResult = await Order.aggregate([
+            { $match: { status: 'Đã giao', paymentMethod: 'COD' } },
+            { $group: { _id: null, total: { $sum: '$total' } } }
+        ]);
+        const totalCodCollected = totalCodResult[0]?.total || 0;
+
+        // --- 4. TÍNH TOÁN CÔNG NỢ PHẢI THU TỪ SHIPPER (TIỀN COD) ---
+        const shipperDebtResult = await Order.aggregate([
+            { $match: { status: 'Đã giao', paymentMethod: 'COD' } },
+            {
+                $group: {
+                    _id: '$shipper',
+                    totalCodCollected: { $sum: '$total' }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'remittances',
+                    localField: '_id',
+                    foreignField: 'shipper',
+                    as: 'remittances'
+                }
+            },
+            {
+                $project: {
+                    shipperId: '$_id',
+                    debt: {
+                        $subtract: ['$totalCodCollected', { $sum: '$remittances.amount' }]
+                    }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalDebtToCollect: { $sum: { $max: [0, '$debt'] } } // Chỉ tính công nợ dương
+                }
+            }
+        ]);
+        const totalCodDebt = shipperDebtResult[0]?.totalDebtToCollect || 0;
+
+        // --- 5. TÍNH TOÁN CÔNG NỢ PHẢI TRẢ CHO SELLER ---
+        const sellerLiabilityResult = await User.aggregate([
+            { $match: { role: 'seller', approvalStatus: 'approved' } },
+            {
+                $lookup: {
+                    from: 'ledgerentries', // Tên collection của LedgerEntry model
+                    localField: '_id',
+                    foreignField: 'seller',
+                    pipeline: [ { $sort: { createdAt: -1 } }, { $limit: 1 } ],
+                    as: 'lastLedgerEntry'
+                }
+            },
+            { $unwind: { path: '$lastLedgerEntry', preserveNullAndEmptyArrays: true } },
+            {
+                $group: {
+                    _id: null,
+                    totalBalanceToPay: { $sum: '$lastLedgerEntry.balanceAfter' }
+                }
+            }
+        ]);
+        const totalSellerLiability = sellerLiabilityResult[0]?.totalBalanceToPay || 0;
+
+        // --- 6. TỔNG HỢP DỮ LIỆU THEO NGÀY, THÁNG, NĂM ---
+        const today = moment().tz('Asia/Ho_Chi_Minh');
+        const thisMonth = today.month();
+        const thisYear = today.year();
+        const todayStr = today.format('YYYY-MM-DD');
+
+        let daily = { revenue: 0, profit: 0 };
+        let monthly = { revenue: 0, profit: 0 };
+        let yearly = { revenue: 0, profit: 0 };
+        let allTime = { revenue: 0, profit: 0 };
+
+        orderFinancials.forEach(order => {
+            const date = moment(order.deliveredAt).tz('Asia/Ho_Chi_Minh');
+            const orderRevenue = order.totalRevenue || 0;
+            const orderProfit = order.grossProfit || 0;
+            
+            // Tổng mọi thời đại
+            allTime.revenue += orderRevenue;
+            allTime.profit += orderProfit;
+
+            // Tổng theo năm
+            if (date.year() === thisYear) {
+                yearly.revenue += orderRevenue;
+                yearly.profit += orderProfit;
+            }
+
+            // Tổng theo tháng
+            if (date.year() === thisYear && date.month() === thisMonth) {
+                monthly.revenue += orderRevenue;
+                monthly.profit += orderProfit;
+            }
+
+            // Tổng theo ngày
+            if (date.format('YYYY-MM-DD') === todayStr) {
+                daily.revenue += orderRevenue;
+                daily.profit += orderProfit;
+            }
+        });
+        
+        // Trừ đi lương cứng đã trả để có lợi nhuận ròng
+        allTime.netProfit = allTime.profit - totalHardSalaryPaid;
+
+        res.status(200).json({
+            summary: {
+                totalCodCollected: totalCodCollected, // Tổng COD đã thu từ khách
+                totalCodDebtToCollect: totalCodDebt, // Tổng công nợ COD phải thu từ shipper
+                totalSellerLiabilityToPay: totalSellerLiability, // Tổng tiền phải trả cho seller
+                netProfitAllTime: allTime.netProfit, // Lợi nhuận ròng cuối cùng
+            },
+            revenueAndProfit: {
+                today: daily,
+                thisMonth: monthly,
+                thisYear: yearly,
+                allTime: { revenue: allTime.revenue, profit: allTime.profit }
+            }
+        });
+    } catch (error) {
+        console.error("[getFinancialOverview] Lỗi:", error);
+        res.status(500).json({ message: "Lỗi server khi lấy tổng quan tài chính." });
+    }
+};
+
 // API để lấy danh sách tất cả các shipper và công nợ của họ
 exports.getShipperDebtOverview = async (req, res) => {
     try {
