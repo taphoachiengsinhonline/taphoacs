@@ -235,6 +235,7 @@ router.get('/all-pending-counts', adminController.getAllPendingCounts);
 router.get('/sellers/pending', adminController.getPendingSellers);
 router.post('/sellers/:sellerId/approve', adminController.approveSeller);
 router.post('/sellers/:sellerId/reject', adminController.rejectSeller);
+router.get('/financial-overview', adminController.getFinancialOverview);
 router.get('/dashboard-counts', adminController.getAdminDashboardCounts);
 router.post('/shippers/:shipperId/remind-debt', adminController.remindShipperToPayDebt);
 
