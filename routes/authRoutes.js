@@ -122,15 +122,12 @@ router.post('/login', async (req, res) => {
     const user = await User.findOne({ email: email.toLowerCase().trim() })
         .select('+password +role +phone +address +name +email +shipperProfile +commissionRate +paymentInfo');
     
-    console.log('[DEBUG] User found:', user ? user.email : 'Không tồn tại');
-
-    if (!user) {
+   if (!user) {
       return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
-    console.log('[DEBUG] Password match:', isMatch);
-
+    
     if (!isMatch) {
       return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
     }
@@ -142,7 +139,6 @@ router.post('/login', async (req, res) => {
     };
     const requestClientType = client_type || 'customer'; 
     if (!allowedRoles[requestClientType] || !allowedRoles[requestClientType].includes(user.role)) {
-        console.log(`[DEBUG] Role không hợp lệ. client_type: ${requestClientType}, user.role: ${user.role}`);
         return res.status(403).json({
             status: 'error',
             message: 'Tài khoản của bạn không có quyền truy cập vào ứng dụng này.'
@@ -194,8 +190,7 @@ router.post('/refresh-token', async (req, res) => {
 
   try {
     const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET);
-    console.log('[DEBUG] Decoded refresh token:', decoded);
-
+ 
     const user = await User.findById(decoded.userId);
     if (!user) {
       console.log('[DEBUG] User not found for ID:', decoded.userId);
@@ -203,8 +198,6 @@ router.post('/refresh-token', async (req, res) => {
     }
 
     const { accessToken, refreshToken: newRefreshToken } = generateTokens(user._id);
-    console.log('[DEBUG] New tokens generated:', { accessToken: 'Generated', refreshToken: 'Generated' });
-
     return res.status(200).json({
       status: 'success',
       data: {
@@ -294,8 +287,7 @@ router.post('/register/seller', async (req, res) => {
         res.status(201).json({ message: 'Đăng ký thành công! Tài khoản của bạn đang chờ quản trị viên phê duyệt.' });
         
     } catch (error) {
-        console.error("Lỗi khi đăng ký seller:", error);
-        res.status(500).json({ message: "Đã có lỗi xảy ra, vui lòng thử lại." });
+         res.status(500).json({ message: "Đã có lỗi xảy ra, vui lòng thử lại." });
     }
 });
 
