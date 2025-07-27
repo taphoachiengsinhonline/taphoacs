@@ -52,11 +52,9 @@ const protect = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.userId).select('-password');
     if (!user) {
-      console.log('[protect] User not found for ID:', decoded.userId);
-      return res.status(401).json({ message: 'User không tồn tại' });
+       return res.status(401).json({ message: 'User không tồn tại' });
     }
     req.user = user;
-    console.log('[protect] User authenticated:', user._id);
     next();
   } catch (err) {
    return res.status(401).json({ message: err.name === 'TokenExpiredError' ? 'Token hết hạn' : 'Token không hợp lệ' });
