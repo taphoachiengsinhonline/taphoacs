@@ -267,13 +267,14 @@ exports.createRemittanceRequest = async (req, res) => {
     try {
         const shipperId = req.user._id;
         const { amount, notes, isForOldDebt = false } = req.body;
+
         if (!amount || amount <= 0) {
             return res.status(400).json({ message: "Số tiền yêu cầu không hợp lệ." });
         }
         
         const existingPending = await RemittanceRequest.findOne({ shipper: shipperId, status: 'pending' });
         if (existingPending) {
-            return res.status(400).json({ message: "Bạn đã có một yêu cầu đang chờ xử lý. Vui lòng đợi Admin xác nhận trước khi tạo yêu cầu mới." });
+            return res.status(400).json({ message: "Bạn đã có một yêu cầu đang chờ xử lý." });
         }
         
         const newRequest = new RemittanceRequest({ 
@@ -285,47 +286,51 @@ exports.createRemittanceRequest = async (req, res) => {
 
         await newRequest.save();
 
-        // <<< BẮT ĐẦU THÊM LOGIC THÔNG BÁO CHO ADMIN >>>
+        // <<< BẮT ĐẦU SỬA LỖI: BỌC LOGIC THÔNG BÁO TRONG TRY...CATCH RIÊNG >>>
+        // Chạy tác vụ này một cách "bất đồng bộ" và không chờ đợi (fire-and-forget).
+        // Điều này đảm bảo response được gửi về cho shipper ngay lập tức.
+        (async () => {
+            try {
+                const admins = await User.find({ role: 'admin', fcmToken: { $exists: true, $ne: null } });
 
-        // 1. Tìm tất cả các admin có push token
-        const admins = await User.find({ role: 'admin', fcmToken: { $exists: true, $ne: null } });
+                if (admins.length > 0) {
+                    const notificationTitle = "Yêu cầu nộp tiền mới";
+                    const notificationBody = `Shipper ${req.user.name} vừa gửi yêu cầu xác nhận đã nộp ${amount.toLocaleString()}đ.`;
+                    
+                    const adminNotifications = admins.map(admin => ({
+                        user: admin._id,
+                        title: notificationTitle,
+                        message: notificationBody,
+                        type: 'remittance',
+                        data: { remittanceRequestId: newRequest._id.toString() }
+                    }));
+                    await Notification.insertMany(adminNotifications);
 
-        if (admins.length > 0) {
-            const notificationTitle = "Yêu cầu nộp tiền mới";
-            const notificationBody = `Shipper ${req.user.name} vừa gửi yêu cầu xác nhận đã nộp ${amount.toLocaleString()}đ.`;
-            
-            // 2. Tạo thông báo trong database cho từng admin
-            const adminNotifications = admins.map(admin => ({
-                user: admin._id,
-                title: notificationTitle,
-                message: notificationBody,
-                type: 'remittance', // Phân loại thông báo
-                data: {
-                    // Gửi kèm ID để sau này có thể nhấn vào và điều hướng
-                    remittanceRequestId: newRequest._id.toString() 
-                }
-            }));
-            await Notification.insertMany(adminNotifications);
-
-            // 3. Gửi thông báo đẩy (push notification) đến từng admin
-            for (const admin of admins) {
-                await safeNotify(admin.fcmToken, {
-                    title: notificationTitle,
-                    body: notificationBody,
-                    data: {
-                        type: 'new_remittance_request',
-                        // Gợi ý cho app admin điều hướng đến màn hình phù hợp
-                        screen: 'RemittanceApproval' 
+                    for (const admin of admins) {
+                        await safeNotify(admin.fcmToken, {
+                            title: notificationTitle,
+                            body: notificationBody,
+                            data: {
+                                type: 'new_remittance_request',
+                                screen: 'RemittanceApproval' 
+                            }
+                        });
                     }
-                });
+                    console.log(`[Remittance Background Task] Đã gửi thông báo đến ${admins.length} admin.`);
+                }
+            } catch (notificationError) {
+                // Nếu có lỗi, chỉ ghi log ra server và không làm gì ảnh hưởng đến request chính.
+                console.error('[Remittance Background Task] LỖI khi gửi thông báo cho Admin:', notificationError);
             }
-            console.log(`[Remittance] Đã gửi thông báo đến ${admins.length} admin.`);
-        }
-        // <<< KẾT THÚC THÊM LOGIC THÔNG BÁO >>>
+        })();
+        // <<< KẾT THÚC SỬA LỖI >>>
 
+        // Gửi response thành công về cho shipper ngay lập tức
         res.status(201).json({ message: "Yêu cầu đã được gửi. Vui lòng chờ admin xác nhận." });
+
     } catch (error) {
-        console.error('[createRemittanceRequest] Lỗi:', error);
+        // Khối catch này chỉ bắt lỗi của phần logic chính (tạo request)
+        console.error('[createRemittanceRequest] Lỗi logic chính:', error);
         res.status(500).json({ message: 'Lỗi server.' });
     }
 };
