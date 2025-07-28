@@ -25,11 +25,20 @@ const notificationSchema = new mongoose.Schema({
     },
 
     // Phân loại thông báo để xử lý logic ở frontend.
-    // Ví dụ: 'finance' cho các thông báo tài chính, 'order' cho đơn hàng, 'general' cho thông báo chung.
     type: {
         type: String,
-        enum: ['finance', 'order', 'general', 'promotion'], // Các loại thông báo có thể có
+        // <<< BẮT ĐẦU SỬA LỖI: THÊM CÁC GIÁ TRỊ MỚI VÀO ENUM >>>
+        enum: [
+            'order',        // Liên quan đến trạng thái đơn hàng
+            'finance',      // Tài chính chung (vd: admin nhắc nợ, lương)
+            'remittance',   // Cụ thể cho yêu cầu nộp tiền của shipper
+            'payout',       // Cụ thể cho yêu cầu rút tiền của seller
+            'product',      // Liên quan đến sản phẩm (được duyệt, bị từ chối)
+            'general',      // Thông báo chung
+            'promotion'     // Khuyến mãi
+        ],
         default: 'general'
+        // <<< KẾT THÚC SỬA LỖI >>>
     },
 
     // Trường quan trọng: Đánh dấu thông báo đã được đọc hay chưa.
@@ -49,16 +58,10 @@ const notificationSchema = new mongoose.Schema({
     }
 }, { 
     // Tự động thêm hai trường: createdAt và updatedAt.
-    // `createdAt` sẽ được dùng cho TTL Index.
     timestamps: true 
 });
 
-// *** TTL (Time-To-Live) Index ***
-// Đây là tính năng mạnh mẽ của MongoDB để tự động xóa các document sau một khoảng thời gian nhất định.
-// 'createdAt': Trường chứa thời gian tạo document.
-// 'expireAfterSeconds': Số giây mà document sẽ tồn tại trước khi bị xóa.
-// 864000 giây = 10 ngày (10 * 24 * 60 * 60)
-// MongoDB sẽ tự động kiểm tra và xóa các document có 'createdAt' đã quá 10 ngày.
-notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 864000 });
+// TTL (Time-To-Live) Index để tự động xóa thông báo cũ
+notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 864000 }); // 10 ngày
 
 module.exports = mongoose.model('Notification', notificationSchema);
