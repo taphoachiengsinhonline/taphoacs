@@ -16,18 +16,6 @@ const { safeNotify } = require('../utils/notificationMiddleware');
 // === CÁC HÀM CŨ CỦA BẠN - GIỮ NGUYÊN HOÀN TOÀN              ===
 // ==============================================================
 
-
-// backend/controllers/adminController.js
-
-// ... imports ...
-const Order = require('../models/Order');
-const User = require('../models/User');
-const SalaryPayment = require('../models/SalaryPayment');
-const moment = require('moment-timezone');
-const mongoose = require('mongoose');
-
-// ... các hàm controller khác ...
-
 exports.getFinancialOverview = async (req, res) => {
     try {
         console.log("--- Bắt đầu tính toán tổng quan tài chính ---");
