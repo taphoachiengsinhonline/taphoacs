@@ -17,6 +17,17 @@ const { safeNotify } = require('../utils/notificationMiddleware');
 // ==============================================================
 
 
+// backend/controllers/adminController.js
+
+// ... imports ...
+const Order = require('../models/Order');
+const User = require('../models/User');
+const SalaryPayment = require('../models/SalaryPayment');
+const moment = require('moment-timezone');
+const mongoose = require('mongoose');
+
+// ... các hàm controller khác ...
+
 exports.getFinancialOverview = async (req, res) => {
     try {
         console.log("--- Bắt đầu tính toán tổng quan tài chính ---");
@@ -32,13 +43,67 @@ exports.getFinancialOverview = async (req, res) => {
 
         // --- 2. TÍNH TOÁN CÁC CHỈ SỐ TỔNG HỢP (SUMMARY) ---
         
+        // Lấy tổng lương cứng đã trả
+        const totalHardSalaryPaidResult = await SalaryPayment.aggregate([
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]);
+        const totalHardSalaryPaid = totalHardSalaryPaidResult[0]?.total || 0;
+
         // Tổng công nợ COD phải thu từ shipper
-        const shipperDebtResult = await User.aggregate([/* ... giữ nguyên logic tính công nợ shipper ... */]);
+        const shipperDebtResult = await Order.aggregate([
+            { $match: { status: 'Đã giao', paymentMethod: 'COD' } },
+            {
+                $group: {
+                    _id: '$shipper',
+                    totalCodCollected: { $sum: '$total' }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'remittances',
+                    localField: '_id',
+                    foreignField: 'shipper',
+                    as: 'remittances'
+                }
+            },
+            {
+                $project: {
+                    shipperId: '$_id',
+                    debt: {
+                        $subtract: ['$totalCodCollected', { $sum: '$remittances.amount' }]
+                    }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalDebtToCollect: { $sum: { $max: [0, '$debt'] } } // Chỉ tính công nợ dương
+                }
+            }
+        ]);
         const totalCodDebt = shipperDebtResult[0]?.totalDebtToCollect || 0;
         console.log(`Tổng công nợ COD phải thu từ Shipper: ${totalCodDebt}`);
 
         // Tổng nợ phải trả cho seller
-        const sellerLiabilityResult = await User.aggregate([/* ... giữ nguyên logic tính công nợ seller ... */]);
+        const sellerLiabilityResult = await User.aggregate([
+            { $match: { role: 'seller', approvalStatus: 'approved' } },
+            {
+                $lookup: {
+                    from: 'ledgerentries', // Tên collection của LedgerEntry model
+                    localField: '_id',
+                    foreignField: 'seller',
+                    pipeline: [ { $sort: { createdAt: -1 } }, { $limit: 1 } ],
+                    as: 'lastLedgerEntry'
+                }
+            },
+            { $unwind: { path: '$lastLedgerEntry', preserveNullAndEmptyArrays: true } },
+            {
+                $group: {
+                    _id: null,
+                    totalBalanceToPay: { $sum: '$lastLedgerEntry.balanceAfter' }
+                }
+            }
+        ]);
         const totalSellerLiability = sellerLiabilityResult[0]?.totalBalanceToPay || 0;
         console.log(`Tổng nợ phải trả cho Seller: ${totalSellerLiability}`);
 
@@ -49,8 +114,6 @@ exports.getFinancialOverview = async (req, res) => {
         console.log(`Tổng COD đã thu (tích lũy): ${totalCodCollectedAllTime}`);
 
         // --- 3. TỔNG HỢP DOANH THU & LỢI NHUẬN THEO THỜI GIAN ---
-        // Logic này đảm bảo "Doanh thu" được tính từ TẤT CẢ các đơn hàng đã giao trong kỳ,
-        // không phân biệt đã thu được COD hay chưa.
         
         const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day');
         const monthStart = moment().tz('Asia/Ho_Chi_Minh').startOf('month');
@@ -95,10 +158,6 @@ exports.getFinancialOverview = async (req, res) => {
         console.log(`Doanh thu tháng này (từ đơn hàng giao trong tháng): ${monthly.revenue}`);
         
         // --- 4. TÍNH TOÁN LỢI NHUẬN RÒNG CUỐI CÙNG ---
-        const totalHardSalaryPaidResult = await SalaryPayment.aggregate([
-            { $group: { _id: null, total: { $sum: '$amount' } } }
-        ]);
-        const totalHardSalaryPaid = totalHardSalaryPaidResult[0]?.total || 0;
         const netProfitAllTime = allTime.profit - totalHardSalaryPaid;
         console.log(`Lợi nhuận gộp tích lũy: ${allTime.profit}, Lương cứng đã trả: ${totalHardSalaryPaid}, Lợi nhuận ròng: ${netProfitAllTime}`);
 
@@ -115,7 +174,7 @@ exports.getFinancialOverview = async (req, res) => {
                 today: daily,
                 thisMonth: monthly,
                 thisYear: yearly,
-                allTime: allTime
+                allTime: allTime,
             }
         });
     } catch (error) {
