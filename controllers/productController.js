@@ -263,3 +263,79 @@ exports.deleteProduct = async (req, res) => {
     res.status(500).json({ message: 'Lỗi server khi xoá sản phẩm' });
   }
 };
+
+exports.getProductRecommendations = async (req, res) => {
+    try {
+        const { id: productId } = req.params;
+        const limit = parseInt(req.query.limit, 10) || 8; // Lấy 8 sản phẩm để có dư lựa chọn
+
+        const currentProduct = await Product.findById(productId).lean();
+        if (!currentProduct) {
+            return res.status(404).json({ message: "Sản phẩm không tồn tại." });
+        }
+
+        // --- Thuật toán 1: "Người khác cũng mua" (Frequently Bought Together) ---
+        
+        // Tìm các đơn hàng chứa sản phẩm hiện tại
+        const ordersWithProduct = await Order.find(
+            { 'items.productId': productId, status: 'Đã giao' },
+            'items.productId' // Chỉ lấy field productId
+        ).limit(200).lean(); // Giới hạn 200 đơn gần nhất để tăng tốc
+
+        let companionProductIds = {};
+        if (ordersWithProduct.length > 0) {
+            ordersWithProduct.forEach(order => {
+                const productIdsInOrder = order.items.map(item => item.productId.toString());
+                // Nếu đơn hàng có nhiều hơn 1 sản phẩm
+                if (productIdsInOrder.length > 1) {
+                    productIdsInOrder.forEach(id => {
+                        // Bỏ qua chính sản phẩm đang xem
+                        if (id !== productId) {
+                            companionProductIds[id] = (companionProductIds[id] || 0) + 1;
+                        }
+                    });
+                }
+            });
+        }
+        
+        // Sắp xếp các sản phẩm mua cùng theo tần suất và lấy ID
+        let recommendedIds = Object.entries(companionProductIds)
+            .sort(([, a], [, b]) => b - a)
+            .map(([id]) => new mongoose.Types.ObjectId(id));
+            
+        console.log(`[Recommend] Tìm thấy ${recommendedIds.length} sản phẩm thường được mua cùng.`);
+        
+        // --- Thuật toán 2: "Sản phẩm cùng danh mục" (Fallback) ---
+        
+        // Nếu không có đủ sản phẩm từ thuật toán 1, bổ sung bằng sản phẩm cùng danh mục
+        let recommendations = [];
+        if (recommendedIds.length > 0) {
+            recommendations = await Product.find({
+                _id: { $in: recommendedIds },
+                approvalStatus: 'approved'
+            }).lean();
+        }
+
+        if (recommendations.length < limit && currentProduct.category) {
+            console.log("[Recommend] Không đủ gợi ý, tìm thêm sản phẩm cùng danh mục...");
+            const additionalProducts = await Product.find({
+                category: currentProduct.category,
+                _id: { $nin: [productId, ...recommendedIds] }, // Loại trừ sản phẩm đã có
+                approvalStatus: 'approved'
+            }).limit(limit - recommendations.length).lean();
+            
+            recommendations = [...recommendations, ...additionalProducts];
+        }
+
+        // Đảm bảo không có sản phẩm trùng lặp và lọc các sản phẩm có tồn kho > 0
+        const finalRecommendations = recommendations
+            .filter((p, index, self) => index === self.findIndex((t) => t._id.toString() === p._id.toString()))
+            .filter(p => p.totalStock > 0);
+
+        res.json(finalRecommendations);
+
+    } catch (error) {
+        console.error('❌ Lỗi khi lấy sản phẩm gợi ý:', error);
+        res.status(500).json({ error: 'Lỗi server' });
+    }
+};
