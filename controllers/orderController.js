@@ -11,17 +11,32 @@ const UserVoucher = require('../models/UserVoucher');
 const Voucher = require('../models/Voucher');
 const mongoose = require('mongoose');
 const shippingController = require('./shippingController'); 
+const moment = require('moment-timezone');
 
-// Hàm kiểm tra giờ bán (Giữ nguyên)
-const validateSaleTime = (product, nowMin) => {
-    if (!product.saleStartTime || !product.saleEndTime) return true;
-    const toMin = str => {
-        const [h, m] = str.split(':').map(Number);
+// <<< HÀM MỚI - LUÔN DÙNG MÚI GIỜ VIỆT NAM >>>
+const validateSaleTime = (product) => {
+    if (!product.saleStartTime || !product.saleEndTime) {
+        return true; // Nếu không có giới hạn, luôn cho phép
+    }
+    
+    // Lấy thời gian hiện tại theo múi giờ 'Asia/Ho_Chi_Minh'
+    const nowInVietnam = moment().tz('Asia/Ho_Chi_Minh');
+    const nowMin = nowInVietnam.hours() * 60 + nowInVietnam.minutes();
+
+    const toMin = (timeString) => {
+        const [h, m] = timeString.split(':').map(Number);
         return h * 60 + m;
     };
+
     const start = toMin(product.saleStartTime);
     const end = toMin(product.saleEndTime);
-    return start <= end ? (nowMin >= start && nowMin <= end) : (nowMin >= start || nowMin <= end);
+
+    // Logic so sánh giữ nguyên
+    if (start <= end) { // Khung giờ trong cùng một ngày (vd: 07:00 - 19:30)
+        return nowMin >= start && nowMin <= end;
+    } else { // Khung giờ qua đêm (vd: 20:00 - 02:00)
+        return nowMin >= start || nowMin <= end;
+    }
 };
 
 // Hàm gửi thông báo cho Admin (Giữ nguyên)
@@ -43,10 +58,9 @@ const notifyAdmins = async (order) => {
 exports.createOrder = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
-    let savedOrder; // Khai báo biến ở ngoài để có thể truy cập sau khi try...catch kết thúc
+    let savedOrder;
 
     try {
-        // --- Toàn bộ logic tạo đơn hàng của bạn được giữ nguyên ---
         const {
             items, phone, shippingAddress, shippingLocation, customerName,
             paymentMethod, voucherDiscount, voucherCode
@@ -59,9 +73,7 @@ exports.createOrder = async (req, res) => {
         if (!phone || !shippingAddress || !shippingLocation) {
             throw new Error('Thiếu thông tin nhận hàng');
         }
-
-        const now = new Date();
-        const nowMin = now.getHours() * 60 + now.getMinutes();
+        
         const enrichedItems = [];
         let itemsTotal = 0;
 
@@ -69,7 +81,9 @@ exports.createOrder = async (req, res) => {
             const product = await Product.findById(item.productId).populate('seller').session(session);
             if (!product) throw new Error(`Sản phẩm "${item.name}" không còn tồn tại.`);
             if (!product.seller) throw new Error(`Sản phẩm "${product.name}" không có thông tin người bán.`);
-            if (!validateSaleTime(product, nowMin)) {
+            
+            // <<< SỬA LẠI LOGIC KIỂM TRA THỜI GIAN >>>
+            if (!validateSaleTime(product)) {
                 throw new Error(`Sản phẩm "${product.name}" chỉ bán từ ${product.saleStartTime} đến ${product.saleEndTime}.`);
             }
 
@@ -136,12 +150,11 @@ exports.createOrder = async (req, res) => {
         });
         
         const [createdOrder] = await Order.create([order], { session });
-        savedOrder = createdOrder; // Gán giá trị cho biến bên ngoài
+        savedOrder = createdOrder;
 
         await session.commitTransaction();
         console.log(`[createOrder] Transaction committed cho đơn hàng #${savedOrder._id}.`);
 
-        // --- THAY ĐỔI QUAN TRỌNG: Gửi response về cho client ngay lập tức ---
         res.status(201).json({
             message: 'Tạo đơn thành công',
             order: { ...savedOrder.toObject(), timestamps: savedOrder.timestamps }
@@ -150,7 +163,6 @@ exports.createOrder = async (req, res) => {
     } catch (err) {
         await session.abortTransaction();
         console.error('Lỗi khi tạo đơn hàng:', err);
-        // Chỉ gửi response lỗi nếu chưa có response nào được gửi đi
         if (!res.headersSent) {
             const statusCode = err.message.includes('tồn tại') || err.message.includes('đủ hàng') || err.message.includes('voucher') ? 400 : 500;
             return res.status(statusCode).json({ message: err.message || 'Lỗi server' });
@@ -159,16 +171,12 @@ exports.createOrder = async (req, res) => {
         session.endSession();
     }
 
-    // --- THAY ĐỔI QUAN TRỌNG: Thực thi các tác vụ nền sau khi đã gửi response ---
-    // Điều này đảm bảo transaction đã hoàn tất và client không phải chờ
     if (savedOrder) {
         console.log(`[createOrder] Bắt đầu tác vụ nền cho đơn hàng #${savedOrder._id}.`);
-        // Chạy song song và không cần chờ đợi (fire-and-forget), nhưng vẫn bắt lỗi
         Promise.all([
             assignOrderToNearestShipper(savedOrder._id),
             notifyAdmins(savedOrder)
         ]).catch(err => {
-            // Log lại lỗi của tác vụ nền mà không làm sập server
             console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn hàng #${savedOrder._id}:`, err);
         });
     }
