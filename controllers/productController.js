@@ -5,6 +5,7 @@ const Category = require('../models/Category');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { safeNotify } = require('../utils/notificationMiddleware'); // Đường dẫn có thể cần sửa lại thành ../utils/
+const Order = require('../models/Order');
 
 // Hàm đệ quy lấy danh sách category con
 const getAllChildCategoryIds = async (parentId) => {
@@ -66,6 +67,41 @@ exports.getProductById = async (req, res) => {
     console.error('❌ Lỗi khi lấy chi tiết sản phẩm:', err);
     res.status(500).json({ message: 'Lỗi server' });
   }
+};
+
+
+exports.getBestSellers = async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit, 10) || 10;
+
+        const bestSellers = await Order.aggregate([
+            { $match: { status: 'Đã giao' } },
+            { $unwind: '$items' },
+            {
+                $group: {
+                    _id: '$items.productId',
+                    totalQuantitySold: { $sum: '$items.quantity' }
+                }
+            },
+            { $sort: { totalQuantitySold: -1 } },
+            { $limit: limit },
+            {
+                $lookup: {
+                    from: 'products',
+                    localField: '_id',
+                    foreignField: '_id',
+                    as: 'productDetails'
+                }
+            },
+            { $unwind: '$productDetails' },
+            { $replaceRoot: { newRoot: '$productDetails' } }
+        ]);
+
+        res.json(bestSellers);
+    } catch (err) {
+        console.error('❌ Lỗi khi lấy sản phẩm bán chạy:', err);
+        res.status(500).json({ error: 'Lỗi server' });
+    }
 };
 
 // Tạo sản phẩm mới
