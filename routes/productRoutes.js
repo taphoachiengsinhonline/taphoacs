@@ -12,8 +12,7 @@ const { verifyToken, isAdminMiddleware } = require('../middlewares/authMiddlewar
 // === CÁC ROUTE CÔNG KHAI (KHÔNG CẦN ĐĂNG NHẬP) ===
 
 // Lấy danh sách sản phẩm (dùng cho cả trang chủ và trang của seller)
-// Route này bị trùng với route GET ở dưới, nhưng tôi giữ lại logic từ file gốc của bạn.
-// Bạn nên xem xét gộp 2 route GET / này lại.
+// Đây là route DUY NHẤT cho việc lấy danh sách sản phẩm.
 router.get('/', productController.getAllProducts);
 
 // Lấy chi tiết một sản phẩm
@@ -32,21 +31,7 @@ router.put('/:id', verifyToken, productController.updateProduct);
 router.delete('/:id', verifyToken, productController.deleteProduct);
 
 
-// Ghi chú: Route GET / bị trùng lặp ở file gốc của bạn, tôi giữ lại cả hai.
-// Bạn nên xem xét và chỉ giữ lại một route GET / duy nhất cho rõ ràng.
-router.get('/', async (req, res) => {
-  try {
-    const { sellerId } = req.query;
-    let query = {};
-    if (sellerId) {
-      query.createdBy = sellerId;
-    }
-    const products = await Product.find(query).sort({ createdAt: -1 }).limit(20);
-    res.json(products);
-  } catch (err) {
-    console.error('[Products] Error:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
+// <<< ĐÃ XÓA HOÀN TOÀN KHỐI ROUTER.GET('/') BỊ TRÙNG LẶP Ở ĐÂY >>>
+
 
 module.exports = router;
