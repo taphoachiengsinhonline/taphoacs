@@ -10,6 +10,9 @@ const { verifyToken } = require('../middlewares/authMiddleware');
 // Lấy sản phẩm bán chạy nhất
 router.get('/bestsellers', productController.getBestSellers);
 
+// <<< ROUTE MỚI: LẤY SẢN PHẨM GỢI Ý CHO MỘT SẢN PHẨM CỤ THỂ >>>
+router.get('/:id/recommendations', productController.getProductRecommendations);
+
 
 // === CÁC ROUTE ĐỘNG ===
 
