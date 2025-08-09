@@ -18,17 +18,20 @@ const { safeNotify } = require('../utils/notificationMiddleware');
 
 exports.getFinancialOverview = async (req, res) => {
     try {
-        // --- 1. TÍNH TOÁN DOANH THU VÀ LỢI NHUẬN TỪ CÁC ĐƠN HÀNG ĐÃ GIAO ---
+        // --- 1. TÍNH TOÁN DOANH THU, LỢI NHUẬN VÀ CHI PHÍ TỪ CÁC ĐƠN HÀNG ĐÃ GIAO ---
         const orderFinancials = await Order.aggregate([
-            { $match: { status: 'Đã giao' } }, // Chỉ tính các đơn đã giao thành công
+            { $match: { status: 'Đã giao' } },
             {
                 $project: {
-                    // Lấy các trường cần thiết
                     deliveredAt: '$timestamps.deliveredAt',
-                    totalRevenue: '$total', // Tổng tiền thu từ khách hàng
-                    totalShipperIncome: '$shipperIncome', // Tổng tiền trả cho shipper từ đơn hàng
+                    totalRevenue: '$total', // Tổng tiền THU TỪ KHÁCH (đã trừ voucher)
+                    totalShipperIncome: '$shipperIncome',
                     
-                    // Tính tổng tiền hàng (giá gốc sản phẩm)
+                    // <<< THÊM CÁC TRƯỜNG CẦN THIẾT ĐỂ TÍNH TOÁN CHÍNH XÁC >>>
+                    shippingFeeActual: { $ifNull: ['$shippingFeeActual', 0] },
+                    extraSurcharge: { $ifNull: ['$extraSurcharge', 0] },
+                    voucherDiscount: { $ifNull: ['$voucherDiscount', 0] },
+                    
                     itemsTotal: {
                         $reduce: {
                             input: '$items',
@@ -36,8 +39,6 @@ exports.getFinancialOverview = async (req, res) => {
                             in: { $add: ['$$value', { $multiply: ['$$this.price', '$$this.quantity'] }] }
                         }
                     },
-                    
-                    // Tính tổng tiền hoa hồng của sàn (từ các seller)
                     totalCommission: {
                         $reduce: {
                             input: '$items',
@@ -50,83 +51,57 @@ exports.getFinancialOverview = async (req, res) => {
             {
                 $project: {
                     deliveredAt: 1,
-                    totalRevenue: 1, // Doanh thu tổng
+                    // Doanh thu gộp = Tiền hàng + Phí ship thực tế + Phụ phí
+                    grossRevenue: { $add: ['$itemsTotal', '$shippingFeeActual', '$extraSurcharge'] },
+                    
+                    // Lợi nhuận gộp = (Doanh thu gộp) - (Tiền trả seller) - (Tiền trả shipper) - (Tiền trợ giá voucher)
+                    // Tiền trả seller = itemsTotal - totalCommission
                     grossProfit: {
-                        $add: [
-                            { $subtract: ['$totalRevenue', '$itemsTotal'] },
-                            { $subtract: ['$totalCommission', '$totalShipperIncome'] }
+                        $subtract: [
+                            { $add: ['$itemsTotal', '$shippingFeeActual', '$extraSurcharge'] }, // Doanh thu gộp
+                            { 
+                                $add: [
+                                    { $subtract: ['$itemsTotal', '$totalCommission'] }, // Tiền trả seller
+                                    '$totalShipperIncome', // Tiền trả shipper
+                                    '$voucherDiscount' // Chi phí voucher
+                                ] 
+                            }
                         ]
-                    }
+                    },
+                    voucherCost: '$voucherDiscount' // Giữ lại chi phí voucher để thống kê
                 }
             }
         ]);
         
-        // --- 2. TÍNH TOÁN TỔNG LƯƠNG CỨNG ĐÃ TRẢ CHO SHIPPER (NGOÀI ĐƠN HÀNG) ---
+        // --- 2. TÍNH TOÁN TỔNG LƯƠNG CỨNG ĐÃ TRẢ ---
         const totalHardSalaryPaidResult = await SalaryPayment.aggregate([
             { $group: { _id: null, total: { $sum: '$amount' } } }
         ]);
         const totalHardSalaryPaid = totalHardSalaryPaidResult[0]?.total || 0;
 
-        // --- 3. BỔ SUNG: TÍNH TOÁN TỔNG COD ĐÃ THU TỪ TRƯỚC ĐẾN NAY ---
+        // --- 3. TÍNH TOÁN TỔNG COD ĐÃ THU ---
         const totalCodResult = await Order.aggregate([
             { $match: { status: 'Đã giao', paymentMethod: 'COD' } },
             { $group: { _id: null, total: { $sum: '$total' } } }
         ]);
         const totalCodCollected = totalCodResult[0]?.total || 0;
 
-        // --- 4. TÍNH TOÁN CÔNG NỢ PHẢI THU TỪ SHIPPER (TIỀN COD) ---
+        // --- 4. TÍNH TOÁN CÔNG NỢ PHẢI THU TỪ SHIPPER ---
         const shipperDebtResult = await Order.aggregate([
             { $match: { status: 'Đã giao', paymentMethod: 'COD' } },
-            {
-                $group: {
-                    _id: '$shipper',
-                    totalCodCollected: { $sum: '$total' }
-                }
-            },
-            {
-                $lookup: {
-                    from: 'remittances',
-                    localField: '_id',
-                    foreignField: 'shipper',
-                    as: 'remittances'
-                }
-            },
-            {
-                $project: {
-                    shipperId: '$_id',
-                    debt: {
-                        $subtract: ['$totalCodCollected', { $sum: '$remittances.amount' }]
-                    }
-                }
-            },
-            {
-                $group: {
-                    _id: null,
-                    totalDebtToCollect: { $sum: { $max: [0, '$debt'] } } // Chỉ tính công nợ dương
-                }
-            }
+            { $group: { _id: '$shipper', totalCodCollected: { $sum: '$total' } } },
+            { $lookup: { from: 'remittances', localField: '_id', foreignField: 'shipper', as: 'remittances' } },
+            { $project: { shipperId: '$_id', debt: { $subtract: ['$totalCodCollected', { $sum: '$remittances.amount' }] } } },
+            { $group: { _id: null, totalDebtToCollect: { $sum: { $max: [0, '$debt'] } } } }
         ]);
         const totalCodDebt = shipperDebtResult[0]?.totalDebtToCollect || 0;
 
         // --- 5. TÍNH TOÁN CÔNG NỢ PHẢI TRẢ CHO SELLER ---
         const sellerLiabilityResult = await User.aggregate([
             { $match: { role: 'seller', approvalStatus: 'approved' } },
-            {
-                $lookup: {
-                    from: 'ledgerentries', // Tên collection của LedgerEntry model
-                    localField: '_id',
-                    foreignField: 'seller',
-                    pipeline: [ { $sort: { createdAt: -1 } }, { $limit: 1 } ],
-                    as: 'lastLedgerEntry'
-                }
-            },
+            { $lookup: { from: 'ledgerentries', localField: '_id', foreignField: 'seller', pipeline: [ { $sort: { createdAt: -1 } }, { $limit: 1 } ], as: 'lastLedgerEntry' } },
             { $unwind: { path: '$lastLedgerEntry', preserveNullAndEmptyArrays: true } },
-            {
-                $group: {
-                    _id: null,
-                    totalBalanceToPay: { $sum: '$lastLedgerEntry.balanceAfter' }
-                }
-            }
+            { $group: { _id: null, totalBalanceToPay: { $sum: '$lastLedgerEntry.balanceAfter' } } }
         ]);
         const totalSellerLiability = sellerLiabilityResult[0]?.totalBalanceToPay || 0;
 
@@ -136,36 +111,35 @@ exports.getFinancialOverview = async (req, res) => {
         const thisYear = today.year();
         const todayStr = today.format('YYYY-MM-DD');
 
-        let daily = { revenue: 0, profit: 0 };
-        let monthly = { revenue: 0, profit: 0 };
-        let yearly = { revenue: 0, profit: 0 };
-        let allTime = { revenue: 0, profit: 0 };
+        let daily = { revenue: 0, profit: 0, voucherCost: 0 };
+        let monthly = { revenue: 0, profit: 0, voucherCost: 0 };
+        let yearly = { revenue: 0, profit: 0, voucherCost: 0 };
+        let allTime = { revenue: 0, profit: 0, voucherCost: 0 };
 
         orderFinancials.forEach(order => {
             const date = moment(order.deliveredAt).tz('Asia/Ho_Chi_Minh');
-            const orderRevenue = order.totalRevenue || 0;
+            const orderRevenue = order.grossRevenue || 0; // Dùng doanh thu gộp
             const orderProfit = order.grossProfit || 0;
+            const orderVoucherCost = order.voucherCost || 0;
             
-            // Tổng mọi thời đại
             allTime.revenue += orderRevenue;
             allTime.profit += orderProfit;
+            allTime.voucherCost += orderVoucherCost;
 
-            // Tổng theo năm
             if (date.year() === thisYear) {
                 yearly.revenue += orderRevenue;
                 yearly.profit += orderProfit;
+                yearly.voucherCost += orderVoucherCost;
             }
-
-            // Tổng theo tháng
             if (date.year() === thisYear && date.month() === thisMonth) {
                 monthly.revenue += orderRevenue;
                 monthly.profit += orderProfit;
+                monthly.voucherCost += orderVoucherCost;
             }
-
-            // Tổng theo ngày
             if (date.format('YYYY-MM-DD') === todayStr) {
                 daily.revenue += orderRevenue;
                 daily.profit += orderProfit;
+                daily.voucherCost += orderVoucherCost;
             }
         });
         
@@ -174,16 +148,17 @@ exports.getFinancialOverview = async (req, res) => {
 
         res.status(200).json({
             summary: {
-                totalCodCollected: totalCodCollected, // Tổng COD đã thu từ khách
-                totalCodDebtToCollect: totalCodDebt, // Tổng công nợ COD phải thu từ shipper
-                totalSellerLiabilityToPay: totalSellerLiability, // Tổng tiền phải trả cho seller
-                netProfitAllTime: allTime.netProfit, // Lợi nhuận ròng cuối cùng
+                totalCodCollected: totalCodCollected,
+                totalCodDebtToCollect: totalCodDebt,
+                totalSellerLiabilityToPay: totalSellerLiability,
+                netProfitAllTime: allTime.netProfit,
+                totalVoucherCost: allTime.voucherCost,
             },
             revenueAndProfit: {
                 today: daily,
                 thisMonth: monthly,
                 thisYear: yearly,
-                allTime: { revenue: allTime.revenue, profit: allTime.profit }
+                allTime: { revenue: allTime.revenue, profit: allTime.profit, voucherCost: allTime.voucherCost }
             }
         });
     } catch (error) {
