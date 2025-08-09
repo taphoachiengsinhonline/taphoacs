@@ -9,8 +9,8 @@ const cartRoutes = require('./routes/cartRoutes');
 const shipperRoutes = require('./routes/shipperRoutes');
 const adminRoutes = require('./routes/admin');
 const userRoutes = require('./routes/userRoutes');
-const shippingRoutes = require('./routes/shippingRoutes'); // Thêm
-const voucherRoutes = require('./routes/voucherRoutes'); // Thêm
+const shippingRoutes = require('./routes/shippingRoutes');
+const voucherRoutes = require('./routes/voucherRoutes');
 const conversationRoutes = require('./routes/conversations');
 const messageRoutes = require('./routes/messages');
 require('dotenv').config();
@@ -18,6 +18,7 @@ require('./config/firebase');
 const {initShippingFees} = require('./utils/initData');
 const sellerRoutes = require('./routes/sellerRoutes');
 const payoutRoutes = require('./routes/payoutRoutes');
+
 const app = express();
 
 app.use(cors({
@@ -34,9 +35,6 @@ console.log('🔧 Environment Check:', {
   MONGODB_URI: process.env.MONGODB_URI ? '***' : 'MISSING - KILLING PROCESS'
 });
 
-
-
-
 const connectDB = async () => {
   try {
     if (!process.env.MONGODB_URI) {
@@ -48,7 +46,7 @@ const connectDB = async () => {
       socketTimeoutMS: 20000
     });
     console.log('✅ MongoDB Atlas Connected');
-    await initShippingFees(); // Thêm dòng này
+    await initShippingFees();
   } catch (err) {
     console.error('❌ DATABASE CONNECTION FAILED:', {
       error: err.name,
@@ -70,8 +68,8 @@ app.use('/api/v1/cart', cartRoutes);
 app.use('/api/v1/shippers', shipperRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/users', userRoutes);
-app.use('/api/v1/shipping', shippingRoutes); // Thêm
-app.use('/api/v1/vouchers', voucherRoutes); // Thêm
+app.use('/api/v1/shipping', shippingRoutes);
+app.use('/api/v1/vouchers', voucherRoutes);
 app.use('/api/v1/conversations', conversationRoutes);
 app.use('/api/v1/messages', messageRoutes);
 app.use('/api/v1/sellers', sellerRoutes);
@@ -98,8 +96,19 @@ app.use((err, req, res, next) => {
   });
 });
 
+// --- PHẦN KHỞI ĐỘNG SERVER ĐÃ ĐƯỢC SỬA LẠI ---
+
+// 1. Lấy PORT từ biến môi trường (do Railway cung cấp).
+//    Nếu không có (khi chạy local), sẽ dùng port 10000.
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server UP: http://localhost:${PORT}`);
+
+// 2. Định nghĩa HOST. 
+//    Trên server production (như Railway), nó phải là '0.0.0.0' để chấp nhận kết nối từ bên ngoài.
+//    Khi chạy local, nó sẽ là 'localhost'.
+const HOST = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
+
+// 3. Khởi động server với PORT và HOST đã được định nghĩa
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 Server UP: Listening on http://${HOST}:${PORT}`);
   console.log(`📡 Mode: ${process.env.NODE_ENV || 'development'}`);
 });
