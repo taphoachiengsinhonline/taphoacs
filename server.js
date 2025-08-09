@@ -59,6 +59,10 @@ const connectDB = async () => {
 
 connectDB();
 
+app.get('/', (req, res) => {
+  res.status(200).json({ status: 'ok', message: 'API is up and running' });
+});
+
 // Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/categories', categoryRoutes);
@@ -112,3 +116,4 @@ app.listen(PORT, HOST, () => {
   console.log(`🚀 Server UP: Listening on http://${HOST}:${PORT}`);
   console.log(`📡 Mode: ${process.env.NODE_ENV || 'development'}`);
 });
+
