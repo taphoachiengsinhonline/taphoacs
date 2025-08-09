@@ -181,11 +181,17 @@ exports.applyVoucher = async (req, res) => {
 
 exports.deleteVoucher = async (req, res) => {
   try {
-    const voucher = await Voucher.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
+    // <<< THAY THẾ findByIdAndUpdate BẰNG findByIdAndDelete >>>
+    const voucher = await Voucher.findByIdAndDelete(req.params.id);
+    
     if (!voucher) {
-      return res.status(404).json({ message: 'Voucher không tồn tại' });
+      return res.status(404).json({ message: 'Voucher không tồn tại hoặc đã được xóa.' });
     }
-    res.status(200).json({ message: 'Xóa voucher thành công' });
+
+    // (Tùy chọn nâng cao) Xóa luôn các bản ghi UserVoucher liên quan
+    await UserVoucher.deleteMany({ voucher: req.params.id });
+    
+    res.status(200).json({ message: 'Đã xóa vĩnh viễn voucher thành công' });
   } catch (err) {
     console.error('[deleteVoucher] Lỗi:', err);
     res.status(500).json({ message: 'Lỗi server', error: err.message });
