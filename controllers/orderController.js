@@ -199,8 +199,12 @@ exports.countByStatus = async (req, res) => {
 exports.acceptOrder = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
-    if (!order) return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
-    if (order.status !== 'Chờ xác nhận') return res.status(400).json({ message: 'Đơn không khả dụng' });
+    if (!order) {
+      return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
+    }
+    if (order.status !== 'Chờ xác nhận') {
+      return res.status(400).json({ message: 'Đơn không khả dụng' });
+    }
 
     const shipper = await User.findById(req.user._id);
     if (!shipper || shipper.role !== 'shipper') {
@@ -226,6 +230,7 @@ exports.acceptOrder = async (req, res) => {
     
     const updatedOrder = await order.save();
 
+    // Gửi thông báo cho khách hàng
     const customer = await User.findById(order.user);
     if (customer) { 
         const title = 'Shipper đã nhận đơn của bạn!';
@@ -248,20 +253,44 @@ exports.acceptOrder = async (req, res) => {
         });
     }
 
+    // --- BẮT ĐẦU SỬA LỖI: THÊM LOGIC TẠO THÔNG BÁO CHO SELLER ---
 
+    // Lấy danh sách ID của tất cả các seller có sản phẩm trong đơn hàng
     const sellerIds = [...new Set(order.items.map(item => item.sellerId.toString()))];
-    const sellers = await User.find({
-        _id: { $in: sellerIds },
-        fcmToken: { $exists: true, $ne: null }
-    }).select('fcmToken');
+    // Tìm tất cả các seller đó để lấy fcmToken
+    const sellers = await User.find({ _id: { $in: sellerIds } }).select('fcmToken');
 
+    const notificationTitle = 'Đơn hàng đã có tài xế!';
+    const notificationBody = `Đơn hàng #${order._id.toString().slice(-6)} đã có tài xế nhận. Vui lòng chuẩn bị hàng.`;
+
+    // Lặp qua từng seller để gửi và lưu thông báo
     for (const seller of sellers) {
-        await safeNotify(seller.fcmToken, {
-            title: 'Shipper đã nhận đơn hàng!',
-            body: `Đơn hàng #${order._id.toString().slice(-6)} đã có shipper nhận. Vui lòng chuẩn bị hàng.`,
-            data: { orderId: order._id.toString(), type: 'order_accepted_by_shipper' }
+        // 1. Luôn tạo một bản ghi Notification trong database cho seller
+        await Notification.create({
+            user: seller._id,
+            title: notificationTitle,
+            message: notificationBody,
+            type: 'order_accepted_by_shipper',
+            data: { 
+                orderId: order._id.toString(),
+                screen: 'OrderDetail'
+            }
         });
+
+        // 2. Nếu seller có token, gửi thêm push notification
+        if (seller.fcmToken) {
+            await safeNotify(seller.fcmToken, {
+                title: notificationTitle,
+                body: notificationBody,
+                data: { 
+                    orderId: order._id.toString(), 
+                    type: 'order_accepted_by_shipper',
+                    screen: 'OrderDetail'
+                }
+            });
+        }
     }
+    // --- KẾT THÚC SỬA LỖI ---
     
     res.json({ message: 'Nhận đơn thành công', order: updatedOrder });
   } catch (error) {
