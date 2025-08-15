@@ -625,17 +625,13 @@ exports.payToSeller = async (req, res) => {
         if (!amount || amount <= 0) {
             return res.status(400).json({ message: "Số tiền thanh toán không hợp lệ." });
         }
-
         const lastEntry = await LedgerEntry.findOne({ seller: sellerId }).sort({ createdAt: -1 });
         const currentBalance = lastEntry ? lastEntry.balanceAfter : 0;
-
         if (amount > currentBalance) {
             return res.status(400).json({ message: "Số tiền thanh toán không được lớn hơn số dư hiện có của seller." });
         }
-
         const newBalance = currentBalance - amount;
 
-        // Tạo bút toán Ghi nợ (debit)
         await LedgerEntry.create({
             seller: sellerId,
             type: 'debit',
@@ -644,8 +640,37 @@ exports.payToSeller = async (req, res) => {
             balanceAfter: newBalance,
         });
 
-        res.status(201).json({ message: 'Đã ghi nhận thanh toán cho seller thành công!' });
+        // --- BẮT ĐẦU THÊM LOGIC THÔNG BÁO ---
+        (async () => {
+            try {
+                const seller = await User.findById(sellerId).select('fcmToken');
+                if (seller) {
+                    const title = "Nhận thanh toán thành công";
+                    const body = `Admin vừa thanh toán cho bạn số tiền ${amount.toLocaleString('vi-VN')}đ. Số dư của bạn đã được cập nhật.`;
+                    
+                    await Notification.create({
+                        user: sellerId,
+                        title: title,
+                        message: body,
+                        type: 'payout',
+                        data: { screen: 'Finance' }
+                    });
+                    
+                    if (seller.fcmToken) {
+                        await safeNotify(seller.fcmToken, {
+                            title,
+                            body,
+                            data: { screen: 'Finance' }
+                        });
+                    }
+                }
+            } catch (notificationError) {
+                console.error("[payToSeller] Lỗi khi gửi thông báo:", notificationError);
+            }
+        })();
+        // --- KẾT THÚC THÊM LOGIC THÔNG BÁO ---
 
+        res.status(201).json({ message: 'Đã ghi nhận thanh toán cho seller thành công!' });
     } catch (error) {
         console.error('[payToSeller] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server khi thanh toán cho seller.' });
