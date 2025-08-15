@@ -1,5 +1,4 @@
 // controllers/sellerController.js
-
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const User = require('../models/User');
@@ -9,14 +8,11 @@ const crypto = require('crypto');
 const moment = require('moment-timezone');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
-// <<< SỬA LẠI TÊN MODEL CHO ĐÚNG >>>
 const PayoutRequest = require('../models/PayoutRequest'); 
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs'); 
+const Notification = require('../models/Notification'); // Thêm import này
 
-// ==============================================================================
-// ===                  API CHO DASHBOARD - ĐÃ NÂNG CẤP                       ===
-// ==============================================================================
 exports.getDashboardStats = async (req, res) => {
     try {
         const sellerId = req.user._id;
@@ -144,7 +140,7 @@ exports.getSellerProducts = async (req, res) => {
     try {
         const products = await Product.find({ seller: req.user._id }).sort({ createdAt: -1 });
         res.json(products);
-    } catch (error) {
+    } catch (error) => {
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
@@ -156,12 +152,11 @@ exports.getSellerOrders = async (req, res) => {
         const orders = await Order.find({ 'items.sellerId': sellerId })
             .select('customerName total status timestamps.createdAt items.name items.price items.quantity')
             .populate('user', 'name')
-            // <<< SỬA LẠI SẮP XẾP TẠI ĐÂY >>>
-            .sort({ _id: -1 }) // Sắp xếp theo _id giảm dần (mới nhất lên đầu)
+            .sort({ _id: -1 })
             .lean();
             
         res.json(orders);
-    } catch (error) {
+    } catch (error) => {
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
@@ -224,9 +219,6 @@ exports.verifyUpdatePaymentInfo = async (req, res) => {
     }
 };
 
-// ==============================================================================
-// ===                 API MỚI: ĐỐI SOÁT CHI TIẾT CHO SELLER                   ===
-// ==============================================================================
 exports.getMonthlyRemittanceDetails = async (req, res) => {
     try {
         const sellerId = req.user._id;
@@ -268,7 +260,6 @@ exports.getMonthlyRemittanceDetails = async (req, res) => {
             };
         });
 
-        // <<< SỬA LẠI TÊN MODEL Ở ĐÂY >>>
         const payouts = await PayoutRequest.find({
             seller: sellerId,
             status: 'completed',
@@ -302,31 +293,20 @@ exports.getMonthlyRemittanceDetails = async (req, res) => {
 exports.changePassword = async (req, res) => {
     try {
         const { currentPassword, newPassword, confirmPassword } = req.body;
-
-        // 1. Validation cơ bản
         if (!currentPassword || !newPassword || !confirmPassword) {
             return res.status(400).json({ message: 'Vui lòng điền đầy đủ các trường.' });
         }
         if (newPassword !== confirmPassword) {
             return res.status(400).json({ message: 'Mật khẩu mới không khớp.' });
         }
-
-        // 2. Lấy user từ DB (bao gồm cả password)
         const user = await User.findById(req.user.id).select('+password');
-
-        // 3. Kiểm tra mật khẩu hiện tại có đúng không
         const isMatch = await bcrypt.compare(currentPassword, user.password);
         if (!isMatch) {
             return res.status(401).json({ message: 'Mật khẩu hiện tại không chính xác.' });
         }
-
-        // 4. Cập nhật mật khẩu mới và lưu
         user.password = newPassword;
-        await user.save(); // Middleware pre('save') trong model User sẽ tự động hash mật khẩu mới
-
-        // 5. Trả về thành công
+        await user.save();
         res.status(200).json({ message: 'Đổi mật khẩu thành công!' });
-        
     } catch (error) {
         console.error('[changePassword Seller] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server, vui lòng thử lại.' });
@@ -334,12 +314,15 @@ exports.changePassword = async (req, res) => {
 };
 
 
+// <<< BẮT ĐẦU THÊM CÁC HÀM BỊ THIẾU >>>
+
+// Lấy danh sách thông báo của seller
 exports.getNotifications = async (req, res) => {
     try {
         const sellerId = req.user._id;
         const notifications = await Notification.find({ user: sellerId })
             .sort({ createdAt: -1 })
-            .limit(100); // Giới hạn 100 thông báo gần nhất
+            .limit(100);
         res.status(200).json(notifications);
     } catch (error) {
         console.error("[Seller] Lỗi khi lấy danh sách thông báo:", error);
@@ -347,7 +330,7 @@ exports.getNotifications = async (req, res) => {
     }
 };
 
-// <<< HÀM MỚI 2: ĐẾM SỐ THÔNG BÁO CHƯA ĐỌC >>>
+// Đếm số thông báo chưa đọc
 exports.getUnreadNotificationCount = async (req, res) => {
     try {
         const sellerId = req.user._id;
@@ -359,7 +342,7 @@ exports.getUnreadNotificationCount = async (req, res) => {
     }
 };
 
-// <<< HÀM MỚI 3: ĐÁNH DẤU THÔNG BÁO LÀ ĐÃ ĐỌC >>>
+// Đánh dấu thông báo là đã đọc
 exports.markNotificationAsRead = async (req, res) => {
     try {
         const { notificationId } = req.params;
@@ -380,3 +363,5 @@ exports.markNotificationAsRead = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server.' });
     }
 };
+
+// <<< KẾT THÚC THÊM CÁC HÀM BỊ THIẾU >>>
