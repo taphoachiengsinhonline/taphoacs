@@ -34,5 +34,10 @@ router.post('/change-password', sellerController.changePassword);
 // --- ROUTE MỚI CHO MÀN HÌNH ĐỐI SOÁT ---
 router.get('/monthly-remittance', sellerController.getMonthlyRemittanceDetails);
 
+// <<< CÁC ROUTE MỚI CHO HỆ THỐNG THÔNG BÁO >>>
+router.get('/notifications', sellerController.getNotifications);
+router.get('/notifications/unread-count', sellerController.getUnreadNotificationCount);
+router.patch('/notifications/:notificationId/read', sellerController.markNotificationAsRead);
+
 
 module.exports = router;
