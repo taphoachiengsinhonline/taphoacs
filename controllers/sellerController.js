@@ -11,7 +11,7 @@ const Message = require('../models/Message');
 const PayoutRequest = require('../models/PayoutRequest'); 
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs'); 
-const Notification = require('../models/Notification'); // Thêm import này
+const Notification = require('../models/Notification');
 
 exports.getDashboardStats = async (req, res) => {
     try {
@@ -140,7 +140,7 @@ exports.getSellerProducts = async (req, res) => {
     try {
         const products = await Product.find({ seller: req.user._id }).sort({ createdAt: -1 });
         res.json(products);
-    } catch (error) => {
+    } catch (error) {
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
@@ -156,7 +156,7 @@ exports.getSellerOrders = async (req, res) => {
             .lean();
             
         res.json(orders);
-    } catch (error) => {
+    } catch (error) {
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
@@ -313,10 +313,6 @@ exports.changePassword = async (req, res) => {
     }
 };
 
-
-// <<< BẮT ĐẦU THÊM CÁC HÀM BỊ THIẾU >>>
-
-// Lấy danh sách thông báo của seller
 exports.getNotifications = async (req, res) => {
     try {
         const sellerId = req.user._id;
@@ -324,25 +320,23 @@ exports.getNotifications = async (req, res) => {
             .sort({ createdAt: -1 })
             .limit(100);
         res.status(200).json(notifications);
-    } catch (error) {
+    } catch (error) { // <<< ĐÃ SỬA LỖI CÚ PHÁP Ở ĐÂY
         console.error("[Seller] Lỗi khi lấy danh sách thông báo:", error);
         res.status(500).json({ message: 'Lỗi server.' });
     }
 };
 
-// Đếm số thông báo chưa đọc
 exports.getUnreadNotificationCount = async (req, res) => {
     try {
         const sellerId = req.user._id;
         const count = await Notification.countDocuments({ user: sellerId, isRead: false });
         res.status(200).json({ count });
-    } catch (error) {
+    } catch (error) { // <<< ĐÃ SỬA LỖI CÚ PHÁP Ở ĐÂY
         console.error("[Seller] Lỗi khi đếm thông báo chưa đọc:", error);
         res.status(500).json({ message: 'Lỗi server.' });
     }
 };
 
-// Đánh dấu thông báo là đã đọc
 exports.markNotificationAsRead = async (req, res) => {
     try {
         const { notificationId } = req.params;
@@ -358,10 +352,8 @@ exports.markNotificationAsRead = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy thông báo.' });
         }
         res.status(200).json({ message: 'Đã đánh dấu đã đọc.', notification });
-    } catch (error) {
+    } catch (error) { // <<< ĐÃ SỬA LỖI CÚ PHÁP Ở ĐÂY
         console.error("[Seller] Lỗi khi đánh dấu đã đọc:", error);
         res.status(500).json({ message: 'Lỗi server.' });
     }
 };
-
-// <<< KẾT THÚC THÊM CÁC HÀM BỊ THIẾU >>>
