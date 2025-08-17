@@ -17,101 +17,105 @@ const productSchema = new mongoose.Schema({
   },
    price: {
     type: Number,
-    // Chỉ bắt buộc khi không có phân loại
     required: function() {
-      // `this` ở đây là document đang được validate
       return !this.variantTable || this.variantTable.length === 0;
     },
     min: 0
   },
   stock: {
     type: Number,
-    // Chỉ bắt buộc khi không có phân loại
     required: function() {
       return !this.variantTable || this.variantTable.length === 0;
     },
     min: 0,
     default: 0
   },
-  // Khung giờ bán lặp lại mỗi ngày, định dạng "HH:mm"
-   saleTimeFrames: [{
-        start: { type: String, required: true }, // "HH:mm"
-        end: { type: String, required: true }    // "HH:mm"
-    }],
- 
-  // Ví dụ phân loại
+  saleTimeFrames: [{
+        start: { type: String, required: true },
+        end: { type: String, required: true }
+  }],
   category: {
-    type: String,
-    default: 'general'
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Category',
+    required: true
   },
-
-  weight: { // <-- THÊM MỚI
-    type: Number, // In grams
+  weight: {
+    type: Number,
     default: 0
   },
-   barcode: { // <-- THÊM MỚI
+   barcode: {
     type: String,
     trim: true,
     default: ''
   },
-  // THÊM MỚI TOÀN BỘ PHẦN PHÂN LOẠI
   variantGroups: [{
-    name: String, // VD: "Màu sắc"
-    options: [String] // VD: ["Đỏ", "Xanh"]
+    name: String,
+    options: [String]
   }],
   variantTable: [{
-    combination: String, // VD: "Đỏ-S"
+    combination: String,
     price: Number,
     stock: Number,
     sku: String
   }],
-    
-  createdBy: { // Thêm field liên kết với seller (hiện là admin)
+  createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     default: null
   },
-
-seller: {
+  seller: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true
-},
-approvalStatus: {
+  },
+  approvalStatus: {
     type: String,
     enum: ['pending_approval', 'approved', 'rejected'],
     default: 'pending_approval'
-},
-rejectionReason: { // Lý do từ chối (nếu có)
+  },
+  rejectionReason: {
     type: String
-}
-  
+  }
 }, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
 
-// Optional: validate định dạng "HH:mm"
-productSchema.path('saleStartTime').validate(function(v) {
-  return v === null || /^\d{2}:\d{2}$/.test(v);
-}, 'saleStartTime phải có định dạng "HH:mm"');
 
-productSchema.path('saleEndTime').validate(function(v) {
-  return v === null || /^\d{2}:\d{2}$/.test(v);
-}, 'saleEndTime phải có định dạng "HH:mm"');
+// 2. (Tùy chọn nhưng khuyến khích) Thêm validation mới cho trường `saleTimeFrames`
+productSchema.path('saleTimeFrames').validate(function(timeFrames) {
+  // Cho phép mảng rỗng (nghĩa là bán 24/7)
+  if (!timeFrames || timeFrames.length === 0) {
+    return true;
+  }
+  
+  // Kiểm tra từng object trong mảng
+  for (const frame of timeFrames) {
+    const isValidStart = frame.start && /^(?:2[0-3]|[01]?[0-9]):[0-5][0-9]$/.test(frame.start);
+    const isValidEnd = frame.end && /^(?:2[0-3]|[01]?[0-9]):[0-5][0-9]$/.test(frame.end);
+    
+    // Nếu có một khung giờ không hợp lệ, trả về false
+    if (!isValidStart || !isValidEnd) {
+      return false;
+    }
+  }
+  
+  // Tất cả đều hợp lệ
+  return true;
+}, 'Một hoặc nhiều khung giờ bán có định dạng không hợp lệ. Vui lòng dùng định dạng "HH:mm".');
+
+// <<< KẾT THÚC SỬA LỖI >>>
 
 
-
+// Virtual `totalStock` để tính tổng tồn kho
 productSchema.virtual('totalStock').get(function() {
-  // `this` ở đây là document sản phẩm
   if (this.variantTable && this.variantTable.length > 0) {
-    // Nếu có phân loại, tính tổng stock từ các biến thể
     return this.variantTable.reduce((sum, variant) => sum + (variant.stock || 0), 0);
   }
-  // Nếu không, trả về stock ở cấp gốc
   return this.stock || 0;
 });
 
 // Đảm bảo trường ảo được bao gồm khi chuyển đổi sang JSON/Object
+// Ghi chú: `toJSON: { virtuals: true }` ở đầu schema đã làm việc này rồi,
+// nhưng để 2 dòng này cũng không sao.
 productSchema.set('toJSON', { virtuals: true });
 productSchema.set('toObject', { virtuals: true });
 
 module.exports = mongoose.model('Product', productSchema);
-
