@@ -34,14 +34,10 @@ const productSchema = new mongoose.Schema({
     default: 0
   },
   // Khung giờ bán lặp lại mỗi ngày, định dạng "HH:mm"
-  saleStartTime: {
-    type: String,
-    default: null
-  },
-  saleEndTime: {
-    type: String,
-    default: null
-  },
+   saleTimeFrames: [{
+        start: { type: String, required: true }, // "HH:mm"
+        end: { type: String, required: true }    // "HH:mm"
+    }],
  
   // Ví dụ phân loại
   category: {
@@ -90,9 +86,7 @@ rejectionReason: { // Lý do từ chối (nếu có)
     type: String
 }
   
-}, {
-  timestamps: true
-});
+}, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
 
 // Optional: validate định dạng "HH:mm"
 productSchema.path('saleStartTime').validate(function(v) {
@@ -120,3 +114,4 @@ productSchema.set('toJSON', { virtuals: true });
 productSchema.set('toObject', { virtuals: true });
 
 module.exports = mongoose.model('Product', productSchema);
+
