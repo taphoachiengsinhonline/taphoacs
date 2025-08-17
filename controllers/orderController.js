@@ -15,11 +15,11 @@ const moment = require('moment-timezone');
 
 // <<< HÀM MỚI - LUÔN DÙNG MÚI GIỜ VIỆT NAM >>>
 const validateSaleTime = (product) => {
-    if (!product.saleStartTime || !product.saleEndTime) {
-        return true; // Nếu không có giới hạn, luôn cho phép
+    // Nếu không có mảng khung giờ hoặc mảng rỗng, coi như bán 24/7
+    if (!product.saleTimeFrames || product.saleTimeFrames.length === 0) {
+        return true;
     }
     
-    // Lấy thời gian hiện tại theo múi giờ 'Asia/Ho_Chi_Minh'
     const nowInVietnam = moment().tz('Asia/Ho_Chi_Minh');
     const nowMin = nowInVietnam.hours() * 60 + nowInVietnam.minutes();
 
@@ -28,15 +28,18 @@ const validateSaleTime = (product) => {
         return h * 60 + m;
     };
 
-    const start = toMin(product.saleStartTime);
-    const end = toMin(product.saleEndTime);
+    // Kiểm tra xem thời gian hiện tại có lọt vào BẤT KỲ khung giờ nào không
+    const isWithinAnyFrame = product.saleTimeFrames.some(frame => {
+        const start = toMin(frame.start);
+        const end = toMin(frame.end);
+        if (start <= end) {
+            return nowMin >= start && nowMin <= end;
+        } else {
+            return nowMin >= start || nowMin <= end;
+        }
+    });
 
-    // Logic so sánh giữ nguyên
-    if (start <= end) { // Khung giờ trong cùng một ngày (vd: 07:00 - 19:30)
-        return nowMin >= start && nowMin <= end;
-    } else { // Khung giờ qua đêm (vd: 20:00 - 02:00)
-        return nowMin >= start || nowMin <= end;
-    }
+    return isWithinAnyFrame;
 };
 
 // Hàm gửi thông báo cho Admin (Giữ nguyên)
