@@ -30,9 +30,9 @@ exports.getAllProducts = async (req, res) => {
 
     let filter = {}; 
 
-    // Bắt đầu xây dựng filter
     if (!sellerId) {
-        filter.approvalStatus = 'approved';
+        // SỬA Ở ĐÂY: Dùng regex để tìm 'approved' bất chấp khoảng trắng
+        filter.approvalStatus = /approved/i; 
     } else {
         filter.seller = sellerId;
     }
@@ -41,22 +41,17 @@ exports.getAllProducts = async (req, res) => {
       const childIds = await getAllChildCategoryIds(category);
       const allIds_String = [category, ...childIds];
       
-      const allIds_ObjectId = allIds_String
-        .filter(id => mongoose.Types.ObjectId.isValid(id))
-        .map(id => new mongoose.Types.ObjectId(id));
+      console.log(`[DEBUG Server] Searching for category IDs containing:`, allIds_String);
 
-      console.log(`[DEBUG Server] Total ObjectIDs for category query:`, allIds_ObjectId);
+      // SỬA Ở ĐÂY: Dùng regex để tìm category ID, bỏ qua vấn đề Type và ký tự ẩn
+      // Tạo một mảng các regex, mỗi regex cho một ID
+      const regexArray = allIds_String.map(id => new RegExp(id, 'i'));
 
-      // SỬA LỖI LOGIC QUERY Ở ĐÂY
-      // Chúng ta sẽ thêm điều kiện $or vào bên trong filter đã có sẵn `approvalStatus`
-      // thay vì ghi đè nó.
-      filter.$or = [
-          { category: { $in: allIds_String } },
-          { category: { $in: allIds_ObjectId } }
-      ];
+      // Tìm bất kỳ sản phẩm nào có trường category khớp với một trong các regex
+      filter.category = { $in: regexArray };
     }
     
-    console.log('[DEBUG Server] Final product filter being sent to MongoDB:', JSON.stringify(filter, null, 2)); 
+    console.log('[DEBUG Server] Final product filter with REGEX:', filter); 
 
     let query = Product.find(filter).populate('category').sort({ createdAt: -1 });
 
@@ -66,9 +61,9 @@ exports.getAllProducts = async (req, res) => {
 
     let products = await query.exec();
     
-    console.log(`[DEBUG Server] MongoDB returned ${products.length} products before stock filtering.`);
+    console.log(`[DEBUG Server] MongoDB returned ${products.length} products with REGEX query.`);
 
-    // Đoạn code lọc tồn kho phía dưới giữ nguyên
+    // Phần còn lại giữ nguyên
     if (!sellerId) {
         products = products.filter(p => {
             const isStockAvailable = p.totalStock > 0;
