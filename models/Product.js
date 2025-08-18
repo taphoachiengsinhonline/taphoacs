@@ -1,4 +1,3 @@
-// models/Product.js
 const mongoose = require('mongoose');
 
 const productSchema = new mongoose.Schema({
@@ -15,27 +14,32 @@ const productSchema = new mongoose.Schema({
     type: [String],
     default: []
   },
-   price: {
+  price: {
     type: Number,
+    // Chỉ bắt buộc khi không có phân loại VÀ không yêu cầu tư vấn
     required: function() {
-      return !this.variantTable || this.variantTable.length === 0;
+      const hasVariants = this.variantTable && this.variantTable.length > 0;
+      return !hasVariants && !this.requiresConsultation;
     },
     min: 0
   },
   stock: {
     type: Number,
+    // Chỉ bắt buộc khi không có phân loại VÀ không yêu cầu tư vấn
     required: function() {
-      return !this.variantTable || this.variantTable.length === 0;
+      const hasVariants = this.variantTable && this.variantTable.length > 0;
+      return !hasVariants && !this.requiresConsultation;
     },
     min: 0,
     default: 0
   },
+  // THAY THẾ: Sử dụng mảng các khung giờ
   saleTimeFrames: [{
-        start: { type: String, required: true },
-        end: { type: String, required: true }
+        start: { type: String, required: true }, // "HH:mm"
+        end: { type: String, required: true }    // "HH:mm"
   }],
   category: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.ObjectId, // Đổi sang ObjectId để populate
     ref: 'Category',
     required: true
   },
@@ -43,7 +47,7 @@ const productSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-   barcode: {
+  barcode: {
     type: String,
     trim: true,
     default: ''
@@ -73,42 +77,32 @@ const productSchema = new mongoose.Schema({
     enum: ['pending_approval', 'approved', 'rejected'],
     default: 'pending_approval'
   },
-  requiresConsultation: {
-        type: Boolean,
-        default: false,
-    },
   rejectionReason: {
     type: String
-  }
+  },
+  // THÊM: Trường mới cho sản phẩm cần tư vấn
+  requiresConsultation: {
+    type: Boolean,
+    default: false,
+  },
 }, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
 
-
-// 2. (Tùy chọn nhưng khuyến khích) Thêm validation mới cho trường `saleTimeFrames`
+// Validation mới cho saleTimeFrames
 productSchema.path('saleTimeFrames').validate(function(timeFrames) {
-  // Cho phép mảng rỗng (nghĩa là bán 24/7)
   if (!timeFrames || timeFrames.length === 0) {
-    return true;
+    return true; // Cho phép mảng rỗng (bán 24/7)
   }
-  
-  // Kiểm tra từng object trong mảng
   for (const frame of timeFrames) {
     const isValidStart = frame.start && /^(?:2[0-3]|[01]?[0-9]):[0-5][0-9]$/.test(frame.start);
     const isValidEnd = frame.end && /^(?:2[0-3]|[01]?[0-9]):[0-5][0-9]$/.test(frame.end);
-    
-    // Nếu có một khung giờ không hợp lệ, trả về false
     if (!isValidStart || !isValidEnd) {
       return false;
     }
   }
-  
-  // Tất cả đều hợp lệ
   return true;
 }, 'Một hoặc nhiều khung giờ bán có định dạng không hợp lệ. Vui lòng dùng định dạng "HH:mm".');
 
-// <<< KẾT THÚC SỬA LỖI >>>
-
-
-// Virtual `totalStock` để tính tổng tồn kho
+// Virtual `totalStock`
 productSchema.virtual('totalStock').get(function() {
   if (this.variantTable && this.variantTable.length > 0) {
     return this.variantTable.reduce((sum, variant) => sum + (variant.stock || 0), 0);
@@ -116,11 +110,4 @@ productSchema.virtual('totalStock').get(function() {
   return this.stock || 0;
 });
 
-// Đảm bảo trường ảo được bao gồm khi chuyển đổi sang JSON/Object
-// Ghi chú: `toJSON: { virtuals: true }` ở đầu schema đã làm việc này rồi,
-// nhưng để 2 dòng này cũng không sao.
-productSchema.set('toJSON', { virtuals: true });
-productSchema.set('toObject', { virtuals: true });
-
 module.exports = mongoose.model('Product', productSchema);
-
