@@ -18,6 +18,7 @@ require('./config/firebase');
 const {initShippingFees} = require('./utils/initData');
 const sellerRoutes = require('./routes/sellerRoutes');
 const payoutRoutes = require('./routes/payoutRoutes');
+const sellerOrderRoutes = require('./routes/sellerOrderRoutes');
 const app = express();
 
 app.use(cors({
@@ -104,4 +105,5 @@ app.listen(PORT, () => {
   console.log(`🚀 Server UP: http://localhost:${PORT}`);
   console.log(`📡 Mode: ${process.env.NODE_ENV || 'development'}`);
 });
+
 
