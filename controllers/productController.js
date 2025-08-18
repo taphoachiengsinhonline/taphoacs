@@ -20,23 +20,38 @@ exports.getAllProducts = async (req, res) => {
   try {
     const { category, limit, sellerId } = req.query;
     let filter = {}; 
+
     if (sellerId) {
         filter = { seller: sellerId };
     } else {
         filter = { approvalStatus: 'approved' };
     }
+
     if (category && category !== 'Tất cả' && !sellerId) {
       const ids = [category, ...(await getAllChildCategoryIds(category))];
       filter.category = { $in: ids };
     }
+    
     let query = Product.find(filter).populate('category').sort({ createdAt: -1 });
+
     if (limit) {
       query = query.limit(parseInt(limit));
     }
-    let products = await query;
+
+    // <<< BẮT ĐẦU SỬA LỖI >>>
+    // .lean({ virtuals: true }) để đảm bảo trường ảo `totalStock` được tính toán
+    let products = await query.lean({ virtuals: true });
+
+    // Chỉ lọc sản phẩm cho app khách hàng
     if (!sellerId) {
-        products = products.filter(p => p.totalStock > 0);
+        products = products.filter(p => {
+            const isStockAvailable = p.totalStock > 0;
+            const needsConsultation = p.requiresConsultation === true;
+            return isStockAvailable || needsConsultation;
+        });
     }
+    // <<< KẾT THÚC SỬA LỖI >>>
+    
     res.json(products);
   } catch (err) {
     console.error('❌ Lỗi khi lấy sản phẩm:', err);
@@ -91,7 +106,6 @@ exports.createProduct = async (req, res) => {
 
     if (!requiresConsultation) {
         if (variantTable && variantTable.length > 0) {
-            // Validation cho variant
         } else {
             if (price == null || stock == null) {
                 return res.status(400).json({ message: 'Sản phẩm không cần tư vấn phải có giá và kho.' });
@@ -252,13 +266,11 @@ exports.getProductRecommendations = async (req, res) => {
             });
         }
         let recommendedIds = Object.entries(companionProductIds).sort(([, a], [, b]) => b - a).map(([id]) => new mongoose.Types.ObjectId(id));
-        console.log(`[Recommend] Tìm thấy ${recommendedIds.length} sản phẩm thường được mua cùng.`);
         let recommendations = [];
         if (recommendedIds.length > 0) {
             recommendations = await Product.find({ _id: { $in: recommendedIds }, approvalStatus: 'approved' }).lean();
         }
         if (recommendations.length < limit && currentProduct.category) {
-            console.log("[Recommend] Không đủ gợi ý, tìm thêm sản phẩm cùng danh mục...");
             const additionalProducts = await Product.find({
                 category: currentProduct.category,
                 _id: { $nin: [productId, ...recommendedIds] },
