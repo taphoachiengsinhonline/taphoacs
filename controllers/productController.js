@@ -32,19 +32,22 @@ exports.getAllProducts = async (req, res) => {
       filter.category = { $in: ids };
     }
     
+    // <<< BẮT ĐẦU SỬA LỖI >>>
+    
+    // 1. Luôn query mà không có .lean() trước
     let query = Product.find(filter).populate('category').sort({ createdAt: -1 });
 
     if (limit) {
       query = query.limit(parseInt(limit));
     }
 
-    // <<< BẮT ĐẦU SỬA LỖI >>>
-    // .lean({ virtuals: true }) để đảm bảo trường ảo `totalStock` được tính toán
-    let products = await query.lean({ virtuals: true });
+    // 2. Thực thi query để lấy về Mongoose documents
+    let products = await query;
 
-    // Chỉ lọc sản phẩm cho app khách hàng
+    // 3. Chỉ lọc sản phẩm cho app khách hàng
     if (!sellerId) {
         products = products.filter(p => {
+            // Bây giờ `p` là một Mongoose document, chúng ta có thể gọi trường ảo `totalStock`
             const isStockAvailable = p.totalStock > 0;
             const needsConsultation = p.requiresConsultation === true;
             return isStockAvailable || needsConsultation;
