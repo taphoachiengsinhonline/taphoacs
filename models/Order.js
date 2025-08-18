@@ -87,6 +87,16 @@ const orderSchema = new mongoose.Schema({
         ],
         default: 'Chờ xác nhận'
   },
+  isConsultationOrder: {
+        type: Boolean,
+        default: false
+    },
+    
+    // Trường để lưu ID của seller chính cần tư vấn
+    consultationSellerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
   sellerNotes: { type: String },
   paymentMethod: {
     type: String,
