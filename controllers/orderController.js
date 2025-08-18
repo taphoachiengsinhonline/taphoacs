@@ -199,40 +199,61 @@ exports.acceptOrder = async (req, res) => {
     }
     
     // --- LOGIC MỚI: PHÂN NHÁNH CHO ĐƠN TƯ VẤN VÀ ĐƠN THƯỜNG ---
-    if (order.isConsultationOrder) {
+     if (order.isConsultationOrder) {
+        // --- Bắt đầu logic tìm/tạo cuộc trò chuyện ---
+        const conversation = await Conversation.findOneAndUpdate(
+            { 
+                productId: order.items[0].productId, 
+                customerId: order.user._id, 
+                sellerId: order.consultationSellerId._id 
+            },
+            { $set: { updatedAt: new Date() } }, // Cập nhật để nó nổi lên trên
+            { new: true, upsert: true } // Tạo mới nếu chưa có
+        );
+        const conversationId = conversation._id.toString();
+        // --- Kết thúc logic tìm/tạo cuộc trò chuyện ---
+
         order.status = 'Đang tư vấn';
-        order.shipper = shipper._id;
+        order.shipper = req.user._id;
         order.timestamps.acceptedAt = new Date();
         const updatedOrder = await order.save();
         
-        // Thông báo cho khách hàng
+        // Thông báo cho khách hàng (gửi kèm conversationId)
         if (order.user && order.user.fcmToken) {
             safeNotify(order.user.fcmToken, { 
                 title: "Bắt đầu tư vấn", 
-                body: `Shipper đã nhận yêu cầu. Bạn có thể bắt đầu trò chuyện với ${order.consultationSellerId.name}.` 
+                body: `Shipper đã nhận yêu cầu. Bạn có thể bắt đầu trò chuyện với ${order.consultationSellerId.name}.`,
+                data: {
+                    type: 'start_consultation', // Thêm type để app dễ xử lý
+                    conversationId: conversationId
+                }
             });
         }
         await Notification.create({ 
             user: order.user._id, 
             title: "Bắt đầu tư vấn", 
-            message: `Shipper đã nhận yêu cầu. Bạn có thể bắt đầu trò chuyện với ${order.consultationSellerId.name}.`, 
+            message: `Shipper đã nhận yêu cầu. Bấm để bắt đầu trò chuyện với ${order.consultationSellerId.name}.`, 
             type: 'order', 
-            data: { orderId: order._id.toString() } 
+            data: { conversationId: conversationId } 
         });
 
-        // Thông báo cho seller
+        // Thông báo cho seller (gửi kèm conversationId)
         if (order.consultationSellerId && order.consultationSellerId.fcmToken) {
             safeNotify(order.consultationSellerId.fcmToken, { 
                 title: "Khách hàng cần tư vấn", 
-                body: `Khách hàng ${order.user.name} đang chờ bạn tư vấn cho đơn hàng #${order._id.toString().slice(-6)}.` 
+                body: `Khách hàng ${order.user.name} đang chờ bạn tư vấn.`,
+                data: {
+                    type: 'new_consultation_request',
+                    conversationId: conversationId
+                }
             });
         }
         await Notification.create({ 
             user: order.consultationSellerId._id, 
             title: "Khách hàng cần tư vấn", 
-            message: `Khách hàng ${order.user.name} đang chờ bạn tư vấn cho đơn hàng #${order._id.toString().slice(-6)}.`, 
+            message: `Khách hàng ${order.user.name} đang chờ bạn tư vấn. Bấm để trò chuyện.`, 
             type: 'order', 
-            data: { orderId: order._id.toString() } 
+            data: { conversationId: conversationId } 
         });
 
         res.json({ message: "Nhận yêu cầu tư vấn thành công.", order: updatedOrder });
