@@ -30,41 +30,32 @@ exports.getAllProducts = async (req, res) => {
 
     let filter = {}; 
 
-    // Áp dụng filter mặc định cho app của khách hàng (phải được duyệt)
+    // Bắt đầu xây dựng filter
     if (!sellerId) {
         filter.approvalStatus = 'approved';
-    } 
-    // Nếu có sellerId (app của seller gọi), thì lọc theo seller
-    else {
+    } else {
         filter.seller = sellerId;
     }
 
-    // Nếu có query theo category, thêm điều kiện vào filter
     if (category && category !== 'Tất cả') {
-      // Lấy ID của chính category đó và tất cả các category con
       const childIds = await getAllChildCategoryIds(category);
       const allIds_String = [category, ...childIds];
       
-      // Tạo một mảng ID khác với kiểu dữ liệu là ObjectId
-      const allIds_ObjectId = allIds_String.map(id => {
-        // Thêm kiểm tra để đảm bảo ID hợp lệ trước khi chuyển đổi
-        if (mongoose.Types.ObjectId.isValid(id)) {
-          return new mongoose.Types.ObjectId(id);
-        }
-        return null; // Trả về null nếu ID không hợp lệ
-      }).filter(id => id !== null); // Lọc bỏ các giá trị null
+      const allIds_ObjectId = allIds_String
+        .filter(id => mongoose.Types.ObjectId.isValid(id))
+        .map(id => new mongoose.Types.ObjectId(id));
 
       console.log(`[DEBUG Server] Total ObjectIDs for category query:`, allIds_ObjectId);
 
-      // SỬA LỖI CHÍNH: Dùng toán tử $or để tìm kiếm khớp với cả kiểu String VÀ kiểu ObjectId
-      // Điều này đảm bảo tìm thấy dữ liệu dù nó đang bị lưu sai kiểu trong DB
+      // SỬA LỖI LOGIC QUERY Ở ĐÂY
+      // Chúng ta sẽ thêm điều kiện $or vào bên trong filter đã có sẵn `approvalStatus`
+      // thay vì ghi đè nó.
       filter.$or = [
           { category: { $in: allIds_String } },
           { category: { $in: allIds_ObjectId } }
       ];
     }
     
-    // Log bộ lọc cuối cùng để kiểm tra
     console.log('[DEBUG Server] Final product filter being sent to MongoDB:', JSON.stringify(filter, null, 2)); 
 
     let query = Product.find(filter).populate('category').sort({ createdAt: -1 });
@@ -73,12 +64,11 @@ exports.getAllProducts = async (req, res) => {
       query = query.limit(parseInt(limit));
     }
 
-    // Thực thi query
     let products = await query.exec();
     
     console.log(`[DEBUG Server] MongoDB returned ${products.length} products before stock filtering.`);
 
-    // Lọc các sản phẩm hết hàng (chỉ áp dụng cho app khách hàng)
+    // Đoạn code lọc tồn kho phía dưới giữ nguyên
     if (!sellerId) {
         products = products.filter(p => {
             const isStockAvailable = p.totalStock > 0;
