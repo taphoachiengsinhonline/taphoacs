@@ -35,4 +35,8 @@ router.put('/:id',        verifyToken, isAdminMiddleware, orderController.update
 // Hủy đơn (user hoặc admin)
 router.put('/:id/cancel', verifyToken,           orderController.cancelOrder);
 
+router.post('/request-consultation', verifyToken, orderController.requestConsultation);
+// Route mới cho khách hàng xác nhận đơn hàng sau khi được báo giá
+router.post('/:id/confirm-priced-order', verifyToken, orderController.confirmPricedOrder);
+
 module.exports = router;
