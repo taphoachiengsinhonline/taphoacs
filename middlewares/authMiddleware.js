@@ -40,6 +40,16 @@ const isAdmin = (req, res, next) => {
 const isAdminMiddleware = isAdmin;
 const verifyAdmin = isAdmin;
 
+const isSeller = (req, res, next) => {
+    // Hàm này chạy SAU KHI verifyToken đã chạy,
+    // nên chúng ta có thể tin tưởng rằng req.user đã tồn tại.
+    if (req.user && req.user.role === 'seller') {
+        next(); // Nếu là seller, cho qua
+    } else {
+        res.status(403).json({ message: 'Yêu cầu quyền người bán (Seller)' });
+    }
+};
+
 const protect = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   
