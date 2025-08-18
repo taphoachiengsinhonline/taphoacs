@@ -21,46 +21,64 @@ const getAllChildCategoryIds = async (parentId) => {
   return allIds;
 };
 
-// Thêm log vào hàm getAllProducts
+// HÀM ĐÃ SỬA LỖI HOÀN CHỈNH
 exports.getAllProducts = async (req, res) => {
   try {
     const { category, limit, sellerId } = req.query;
+
     console.log(`[DEBUG Server] getAllProducts received category query param:`, category);
 
     let filter = {}; 
 
+    // Áp dụng filter mặc định cho app của khách hàng (phải được duyệt)
     if (!sellerId) {
         filter.approvalStatus = 'approved';
-    } else {
+    } 
+    // Nếu có sellerId (app của seller gọi), thì lọc theo seller
+    else {
         filter.seller = sellerId;
     }
 
+    // Nếu có query theo category, thêm điều kiện vào filter
     if (category && category !== 'Tất cả') {
-      // BẮT ĐẦU SỬA LỖI Ở ĐÂY
+      // Lấy ID của chính category đó và tất cả các category con
       const childIds = await getAllChildCategoryIds(category);
-      const allIds = [category, ...childIds];
+      const allIds_String = [category, ...childIds];
       
-      // Chuyển đổi tất cả ID trong mảng sang kiểu ObjectId
-      const allObjectIds = allIds.map(id => new mongoose.Types.ObjectId(id));
-      
-      console.log(`[DEBUG Server] Total ObjectIDs for category query ($in):`, allObjectIds);
-      
-      filter.category = { $in: allObjectIds };
-      // KẾT THÚC SỬA LỖI
+      // Tạo một mảng ID khác với kiểu dữ liệu là ObjectId
+      const allIds_ObjectId = allIds_String.map(id => {
+        // Thêm kiểm tra để đảm bảo ID hợp lệ trước khi chuyển đổi
+        if (mongoose.Types.ObjectId.isValid(id)) {
+          return new mongoose.Types.ObjectId(id);
+        }
+        return null; // Trả về null nếu ID không hợp lệ
+      }).filter(id => id !== null); // Lọc bỏ các giá trị null
+
+      console.log(`[DEBUG Server] Total ObjectIDs for category query:`, allIds_ObjectId);
+
+      // SỬA LỖI CHÍNH: Dùng toán tử $or để tìm kiếm khớp với cả kiểu String VÀ kiểu ObjectId
+      // Điều này đảm bảo tìm thấy dữ liệu dù nó đang bị lưu sai kiểu trong DB
+      filter.$or = [
+          { category: { $in: allIds_String } },
+          { category: { $in: allIds_ObjectId } }
+      ];
     }
     
-    console.log('[DEBUG Server] Final product filter being sent to MongoDB:', filter); 
-    
+    // Log bộ lọc cuối cùng để kiểm tra
+    console.log('[DEBUG Server] Final product filter being sent to MongoDB:', JSON.stringify(filter, null, 2)); 
+
     let query = Product.find(filter).populate('category').sort({ createdAt: -1 });
-    // ... (code còn lại giữ nguyên) ...
+
     if (limit) {
       query = query.limit(parseInt(limit));
     }
+
+    // Thực thi query
     let products = await query.exec();
     
-    // <<< LOG 7: KIỂM TRA SỐ LƯỢNG KẾT QUẢ TRẢ VỀ TỪ DB >>>
     console.log(`[DEBUG Server] MongoDB returned ${products.length} products before stock filtering.`);
 
+    // Lọc các sản phẩm hết hàng (chỉ áp dụng cho app khách hàng)
     if (!sellerId) {
         products = products.filter(p => {
             const isStockAvailable = p.totalStock > 0;
@@ -69,10 +87,10 @@ exports.getAllProducts = async (req, res) => {
         });
     }
     
-    // <<< LOG 8: SỐ LƯỢNG KẾT QUẢ SAU KHI LỌC TỒN KHO >>>
     console.log(`[DEBUG Server] Sending ${products.length} products to client after stock filtering.`);
 
     res.json(products);
+
   } catch (err) {
     console.error('❌ Lỗi khi lấy sản phẩm:', err);
     res.status(500).json({ error: err.message });
