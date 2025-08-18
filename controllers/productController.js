@@ -6,42 +6,58 @@ const { safeNotify } = require('../utils/notificationMiddleware');
 const Order = require('../models/Order');
 const mongoose = require('mongoose');
 
+// Thêm log vào hàm getAllChildCategoryIds
 const getAllChildCategoryIds = async (parentId) => {
+  // <<< LOG 3: KIỂM TRA ID ĐẦU VÀO CỦA HÀM RECURSIVE >>>
+  console.log(`[DEBUG Server] getAllChildCategoryIds called for parent:`, parentId);
   const children = await Category.find({ parent: parentId }).select('_id');
   let allIds = children.map(c => c._id.toString());
   for (const c of children) {
     const sub = await getAllChildCategoryIds(c._id);
     allIds = allIds.concat(sub);
   }
+  // <<< LOG 4: KIỂM TRA KẾT QUẢ TRẢ VỀ CỦA HÀM RECURSIVE >>>
+  console.log(`[DEBUG Server] Found child IDs for ${parentId}:`, allIds);
   return allIds;
 };
 
+// Thêm log vào hàm getAllProducts
 exports.getAllProducts = async (req, res) => {
   try {
     const { category, limit, sellerId } = req.query;
+    
+    // <<< LOG 5: KIỂM TRA CATEGORY ID MÀ SERVER NHẬN ĐƯỢC >>>
+    console.log(`[DEBUG Server] getAllProducts received category query param:`, category);
+
     let filter = {}; 
 
-    if (sellerId) {
-        filter = { seller: sellerId };
+    if (!sellerId) {
+        filter.approvalStatus = 'approved';
     } else {
-        filter = { approvalStatus: 'approved' };
+        filter.seller = sellerId;
     }
 
-    if (category && category !== 'Tất cả' && !sellerId) {
+    if (category && category !== 'Tất cả') {
       const ids = [category, ...(await getAllChildCategoryIds(category))];
+      
+      // <<< LOG 6: KIỂM TRA TỔNG SỐ ID DÙNG ĐỂ QUERY >>>
+      console.log(`[DEBUG Server] Total IDs for category query ($in):`, ids);
+      
       filter.category = { $in: ids };
     }
     
-    let query = Product.find(filter).populate('category').sort({ createdAt: -1 });
+    console.log('[DEBUG Server] Final product filter being sent to MongoDB:', filter); 
 
+    let query = Product.find(filter).populate('category').sort({ createdAt: -1 });
+    // ... (code còn lại giữ nguyên) ...
     if (limit) {
       query = query.limit(parseInt(limit));
     }
-
-    // Thực thi query để lấy về Mongoose documents
     let products = await query.exec();
+    
+    // <<< LOG 7: KIỂM TRA SỐ LƯỢNG KẾT QUẢ TRẢ VỀ TỪ DB >>>
+    console.log(`[DEBUG Server] MongoDB returned ${products.length} products before stock filtering.`);
 
-    // Chỉ lọc sản phẩm cho app khách hàng
     if (!sellerId) {
         products = products.filter(p => {
             const isStockAvailable = p.totalStock > 0;
@@ -50,6 +66,9 @@ exports.getAllProducts = async (req, res) => {
         });
     }
     
+    // <<< LOG 8: SỐ LƯỢNG KẾT QUẢ SAU KHI LỌC TỒN KHO >>>
+    console.log(`[DEBUG Server] Sending ${products.length} products to client after stock filtering.`);
+
     res.json(products);
   } catch (err) {
     console.error('❌ Lỗi khi lấy sản phẩm:', err);
