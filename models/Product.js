@@ -73,6 +73,10 @@ const productSchema = new mongoose.Schema({
     enum: ['pending_approval', 'approved', 'rejected'],
     default: 'pending_approval'
   },
+  requiresConsultation: {
+        type: Boolean,
+        default: false,
+    },
   rejectionReason: {
     type: String
   }
@@ -119,3 +123,4 @@ productSchema.set('toJSON', { virtuals: true });
 productSchema.set('toObject', { virtuals: true });
 
 module.exports = mongoose.model('Product', productSchema);
+
