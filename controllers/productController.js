@@ -21,92 +21,36 @@ const getAllChildCategoryIds = async (parentId) => {
 exports.getAllProducts = async (req, res) => {
   try {
     const { category, limit, sellerId } = req.query;
-
-    // Bắt đầu xây dựng pipeline cho aggregation
-    const pipeline = [];
-
-    // --- Bước 1: Xây dựng điều kiện lọc ban đầu ($match) ---
-    const matchStage = {};
+    let filter = {}; 
 
     if (!sellerId) {
-        matchStage.approvalStatus = 'approved';
+        filter.approvalStatus = 'approved';
     } else {
-        matchStage.seller = new mongoose.Types.ObjectId(sellerId);
+        filter.seller = sellerId;
     }
 
     if (category && category !== 'Tất cả') {
-        const childIds = await getAllChildCategoryIds(category);
-        const allIds_String = [category, ...childIds];
-      
-        const allIds_ObjectId = allIds_String
-            .filter(id => mongoose.Types.ObjectId.isValid(id))
-            .map(id => new mongoose.Types.ObjectId(id));
-            
-        // Dùng $or để tìm cả String và ObjectId
-        matchStage.$or = [
-            { category: { $in: allIds_String } },
-            { category: { $in: allIds_ObjectId } }
-        ];
+      const ids = [category, ...(await getAllChildCategoryIds(category))];
+      filter.category = { $in: ids };
     }
     
-    // Thêm $match stage vào pipeline
-    pipeline.push({ $match: matchStage });
+    let query = Product.find(filter)
+        .populate('category') // Dùng lại populate, bây giờ nó đã an toàn
+        .sort({ createdAt: -1 });
 
-    // --- Bước 2: Sắp xếp và giới hạn kết quả ---
-    pipeline.push({ $sort: { createdAt: -1 } });
-    
     if (limit) {
-      pipeline.push({ $limit: parseInt(limit) });
+      query = query.limit(parseInt(limit));
     }
+
+    let products = await query.exec();
     
-    // --- Bước 3: Populate thủ công bằng $lookup ---
-    pipeline.push({
-        $lookup: {
-            from: 'categories', // Tên collection của Category
-            localField: 'category',
-            foreignField: '_id',
-            as: 'categoryDetails'
-        }
-    });
-    
-    // $lookup trả về một mảng, ta chỉ cần lấy phần tử đầu tiên
-    pipeline.push({
-        $unwind: {
-            path: '$categoryDetails',
-            preserveNullAndEmptyArrays: true // Giữ lại product nếu không tìm thấy category
-        }
-    });
-
-    // Gán lại trường category đã được populate
-    pipeline.push({
-        $addFields: {
-            category: '$categoryDetails'
-        }
-    });
-
-
-    console.log('[DEBUG Server] Final Aggregation Pipeline:', JSON.stringify(pipeline, null, 2));
-
-    // Thực thi aggregation pipeline
-    let products = await Product.aggregate(pipeline);
-
-    console.log(`[DEBUG Server] MongoDB returned ${products.length} products using AGGREGATE.`);
-
     // Lọc tồn kho (chỉ cho app khách hàng)
     if (!sellerId) {
         products = products.filter(p => {
-            let totalStock = 0;
-            if (p.variantTable && p.variantTable.length > 0) {
-                totalStock = p.variantTable.reduce((sum, variant) => sum + (variant.stock || 0), 0);
-            } else {
-                totalStock = p.stock || 0;
-            }
-            const needsConsultation = p.requiresConsultation === true;
-            return totalStock > 0 || needsConsultation;
+            return p.totalStock > 0 || p.requiresConsultation === true;
         });
     }
     
-    console.log(`[DEBUG Server] Sending ${products.length} products to client after filtering.`);
     res.json(products);
 
   } catch (err) {
