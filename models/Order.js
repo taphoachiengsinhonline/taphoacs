@@ -83,9 +83,22 @@ const orderSchema = new mongoose.Schema({
   },
   status: { 
     type: String,
-    enum: ['Chờ xác nhận','Đang xử lý','Đang giao','Đã giao','Đã huỷ'],
-    default: 'Chờ xác nhận'
+    enum: [
+            // Luồng cũ
+            'Chờ xác nhận',
+            'Đang xử lý',
+            'Đang giao',
+            'Đã giao',
+            'Đã huỷ',
+            // Luồng tư vấn mới
+            'Chờ tư vấn',       // Mới: Khách hàng vừa tạo yêu cầu
+            'Đang tư vấn',      // Mới: Seller đã xem và đang chat
+            'Chờ khách xác nhận', // Mới: Seller đã báo giá, chờ khách đồng ý
+        ],
+        default: 'Chờ xác nhận'
   },
+   // Thêm trường để ghi chú của seller
+    sellerNotes: { type: String },
   paymentMethod: {
     type: String,
     enum: ['COD','Chuyển khoản'],
