@@ -87,4 +87,5 @@ module.exports = {
   verifyAdmin,
   protect,
   restrictTo,
+  isSeller,
 };
