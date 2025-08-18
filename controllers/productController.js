@@ -21,7 +21,8 @@ const getAllChildCategoryIds = async (parentId) => {
   return allIds;
 };
 
-// HÀM ĐÃ SỬA LỖI HOÀN CHỈNH
+// PHIÊN BẢN "SIÊU DEBUG"
+
 exports.getAllProducts = async (req, res) => {
   try {
     const { category, limit, sellerId } = req.query;
