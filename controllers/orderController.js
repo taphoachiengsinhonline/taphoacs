@@ -82,6 +82,34 @@ exports.createOrder = async (req, res) => {
 
         for (const item of items) {
             const product = await Product.findById(item.productId).populate('seller').session(session);
+            if (product.requiresConsultation) {
+            const consultationOrder = new Order({
+                user: userId,
+                // Chỉ thêm sản phẩm tư vấn ban đầu vào đơn
+                items: [{ 
+                    productId: product._id, 
+                    name: product.name, 
+                    price: 0, // Giá ban đầu là 0
+                    quantity: 1, 
+                    sellerId: product.seller._id 
+                }],
+                total: 0,
+                status: 'Chờ tư vấn',
+                customerName, phone, shippingAddress, shippingLocation,
+            });
+
+            await consultationOrder.save({ session });
+            await session.commitTransaction();
+            
+            // Gửi thông báo cho seller tương ứng
+            // ... (logic gửi thông báo cho seller `product.seller._id`)
+            
+            return res.status(201).json({ 
+                message: 'Yêu cầu tư vấn đã được gửi thành công.', 
+                order: consultationOrder,
+                isConsultation: true // Thêm flag để frontend biết
+            });
+        }
             if (!product) throw new Error(`Sản phẩm "${item.name}" không còn tồn tại.`);
             if (!product.seller) throw new Error(`Sản phẩm "${product.name}" không có thông tin người bán.`);
             
