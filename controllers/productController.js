@@ -25,8 +25,6 @@ const getAllChildCategoryIds = async (parentId) => {
 exports.getAllProducts = async (req, res) => {
   try {
     const { category, limit, sellerId } = req.query;
-    
-    // <<< LOG 5: KIỂM TRA CATEGORY ID MÀ SERVER NHẬN ĐƯỢC >>>
     console.log(`[DEBUG Server] getAllProducts received category query param:`, category);
 
     let filter = {}; 
@@ -38,16 +36,21 @@ exports.getAllProducts = async (req, res) => {
     }
 
     if (category && category !== 'Tất cả') {
-      const ids = [category, ...(await getAllChildCategoryIds(category))];
+      // BẮT ĐẦU SỬA LỖI Ở ĐÂY
+      const childIds = await getAllChildCategoryIds(category);
+      const allIds = [category, ...childIds];
       
-      // <<< LOG 6: KIỂM TRA TỔNG SỐ ID DÙNG ĐỂ QUERY >>>
-      console.log(`[DEBUG Server] Total IDs for category query ($in):`, ids);
+      // Chuyển đổi tất cả ID trong mảng sang kiểu ObjectId
+      const allObjectIds = allIds.map(id => new mongoose.Types.ObjectId(id));
       
-      filter.category = { $in: ids };
+      console.log(`[DEBUG Server] Total ObjectIDs for category query ($in):`, allObjectIds);
+      
+      filter.category = { $in: allObjectIds };
+      // KẾT THÚC SỬA LỖI
     }
     
     console.log('[DEBUG Server] Final product filter being sent to MongoDB:', filter); 
-
+    
     let query = Product.find(filter).populate('category').sort({ createdAt: -1 });
     // ... (code còn lại giữ nguyên) ...
     if (limit) {
