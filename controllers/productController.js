@@ -22,45 +22,78 @@ exports.getAllProducts = async (req, res) => {
   try {
     const { category, limit, sellerId } = req.query;
 
-    let filter = {}; 
+    // Bắt đầu xây dựng pipeline cho aggregation
+    const pipeline = [];
+
+    // --- Bước 1: Xây dựng điều kiện lọc ban đầu ($match) ---
+    const matchStage = {};
 
     if (!sellerId) {
-        filter.approvalStatus = 'approved';
+        matchStage.approvalStatus = 'approved';
     } else {
-        filter.seller = sellerId;
+        matchStage.seller = new mongoose.Types.ObjectId(sellerId);
     }
 
     if (category && category !== 'Tất cả') {
-      const childIds = await getAllChildCategoryIds(category);
-      const allIds_String = [category, ...childIds];
+        const childIds = await getAllChildCategoryIds(category);
+        const allIds_String = [category, ...childIds];
       
-      const allIds_ObjectId = allIds_String
-        .filter(id => mongoose.Types.ObjectId.isValid(id))
-        .map(id => new mongoose.Types.ObjectId(id));
-
-      // DÙNG $or ĐỂ TÌM CẢ KIỂU STRING VÀ OBJECTID
-      // Đây là mấu chốt để sửa lỗi không nhất quán dữ liệu
-      filter.$or = [
-          { category: { $in: allIds_String } },
-          { category: { $in: allIds_ObjectId } }
-      ];
+        const allIds_ObjectId = allIds_String
+            .filter(id => mongoose.Types.ObjectId.isValid(id))
+            .map(id => new mongoose.Types.ObjectId(id));
+            
+        // Dùng $or để tìm cả String và ObjectId
+        matchStage.$or = [
+            { category: { $in: allIds_String } },
+            { category: { $in: allIds_ObjectId } }
+        ];
     }
     
-    // Câu query bây giờ sẽ tìm các sản phẩm có `approvalStatus` VÀ (`category` là String HOẶC `category` là ObjectId)
-    let query = Product.find(filter)
-        .populate('category') // Giữ lại populate, nó an toàn khi dùng với .lean()
-        .sort({ createdAt: -1 });
+    // Thêm $match stage vào pipeline
+    pipeline.push({ $match: matchStage });
 
+    // --- Bước 2: Sắp xếp và giới hạn kết quả ---
+    pipeline.push({ $sort: { createdAt: -1 } });
+    
     if (limit) {
-      query = query.limit(parseInt(limit));
+      pipeline.push({ $limit: parseInt(limit) });
     }
-
-    // Dùng .lean() để tối ưu hiệu suất
-    let products = await query.lean().exec();
     
+    // --- Bước 3: Populate thủ công bằng $lookup ---
+    pipeline.push({
+        $lookup: {
+            from: 'categories', // Tên collection của Category
+            localField: 'category',
+            foreignField: '_id',
+            as: 'categoryDetails'
+        }
+    });
+    
+    // $lookup trả về một mảng, ta chỉ cần lấy phần tử đầu tiên
+    pipeline.push({
+        $unwind: {
+            path: '$categoryDetails',
+            preserveNullAndEmptyArrays: true // Giữ lại product nếu không tìm thấy category
+        }
+    });
+
+    // Gán lại trường category đã được populate
+    pipeline.push({
+        $addFields: {
+            category: '$categoryDetails'
+        }
+    });
+
+
+    console.log('[DEBUG Server] Final Aggregation Pipeline:', JSON.stringify(pipeline, null, 2));
+
+    // Thực thi aggregation pipeline
+    let products = await Product.aggregate(pipeline);
+
+    console.log(`[DEBUG Server] MongoDB returned ${products.length} products using AGGREGATE.`);
+
     // Lọc tồn kho (chỉ cho app khách hàng)
     if (!sellerId) {
-        // Viết lại logic tính tổng stock để hoạt động với .lean()
         products = products.filter(p => {
             let totalStock = 0;
             if (p.variantTable && p.variantTable.length > 0) {
@@ -73,6 +106,7 @@ exports.getAllProducts = async (req, res) => {
         });
     }
     
+    console.log(`[DEBUG Server] Sending ${products.length} products to client after filtering.`);
     res.json(products);
 
   } catch (err) {
@@ -80,7 +114,6 @@ exports.getAllProducts = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
-
 exports.getProductById = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id).populate('category');
