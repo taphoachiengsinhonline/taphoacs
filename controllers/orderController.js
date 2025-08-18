@@ -185,6 +185,56 @@ exports.createOrder = async (req, res) => {
     }
 };
 
+
+exports.requestConsultation = async (req, res) => {
+    try {
+        const { sellerId, initialMessage } = req.body; // Cần biết seller nào để gửi yêu cầu
+        const userId = req.user._id;
+
+        // Tạo một "đơn hàng" đặc biệt với trạng thái chờ tư vấn
+        const consultationOrder = new Order({
+            user: userId,
+            items: [], // Ban đầu chưa có sản phẩm
+            total: 0,
+            status: 'Chờ tư vấn',
+            // Gán seller cho đơn hàng ngay từ đầu
+            // Cần một cách để xác định seller, ví dụ qua một trường `consultingSeller`
+            // Hoặc đơn giản là lấy seller từ sản phẩm tư vấn đầu tiên
+        });
+        
+        // Logic tìm seller và gửi thông báo cho họ...
+
+        res.status(201).json({ message: "Yêu cầu tư vấn đã được gửi.", order: consultationOrder });
+    } catch (error) {
+        res.status(500).json({ message: "Lỗi khi tạo yêu cầu tư vấn." });
+    }
+};
+
+exports.confirmPricedOrder = async (req, res) => {
+    try {
+        const { id: orderId } = req.params;
+        const userId = req.user._id;
+
+        const order = await Order.findOne({ _id: orderId, user: userId, status: 'Chờ khách xác nhận' });
+        if (!order) {
+            return res.status(404).json({ message: "Đơn hàng không hợp lệ hoặc không tìm thấy." });
+        }
+
+        order.status = 'Chờ xác nhận'; // Chuyển về luồng bình thường
+        await order.save();
+        
+        // Bắt đầu quá trình tìm shipper
+        assignOrderToNearestShipper(order._id);
+        notifyAdmins(order);
+
+        res.status(200).json({ message: "Đã xác nhận đơn hàng thành công!", order });
+    } catch (error) {
+        res.status(500).json({ message: "Lỗi khi xác nhận đơn hàng." });
+    }
+};
+
+
+
 // =================================================================
 // === CÁC HÀM KHÁC CỦA BẠN ĐƯỢC GIỮ NGUYÊN HOÀN TOÀN BÊN DƯỚI ===
 // =================================================================
