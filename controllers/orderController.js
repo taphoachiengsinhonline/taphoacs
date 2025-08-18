@@ -1,5 +1,4 @@
 // orderController.js (Đã sửa đổi)
-
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
@@ -13,22 +12,16 @@ const mongoose = require('mongoose');
 const shippingController = require('./shippingController'); 
 const moment = require('moment-timezone');
 
-// <<< HÀM MỚI - LUÔN DÙNG MÚI GIỜ VIỆT NAM >>>
 const validateSaleTime = (product) => {
-    // Nếu không có mảng khung giờ hoặc mảng rỗng, coi như bán 24/7
     if (!product.saleTimeFrames || product.saleTimeFrames.length === 0) {
         return true;
     }
-    
     const nowInVietnam = moment().tz('Asia/Ho_Chi_Minh');
     const nowMin = nowInVietnam.hours() * 60 + nowInVietnam.minutes();
-
     const toMin = (timeString) => {
         const [h, m] = timeString.split(':').map(Number);
         return h * 60 + m;
     };
-
-    // Kiểm tra xem thời gian hiện tại có lọt vào BẤT KỲ khung giờ nào không
     const isWithinAnyFrame = product.saleTimeFrames.some(frame => {
         const start = toMin(frame.start);
         const end = toMin(frame.end);
@@ -38,11 +31,9 @@ const validateSaleTime = (product) => {
             return nowMin >= start || nowMin <= end;
         }
     });
-
     return isWithinAnyFrame;
 };
 
-// Hàm gửi thông báo cho Admin (Giữ nguyên)
 const notifyAdmins = async (order) => {
     try {
         const admins = await User.find({ role: 'admin', fcmToken: { $exists: true, $ne: null } });
@@ -77,120 +68,100 @@ exports.createOrder = async (req, res) => {
             throw new Error('Thiếu thông tin nhận hàng');
         }
         
-        const enrichedItems = [];
-        let itemsTotal = 0;
-
-        for (const item of items) {
-            const product = await Product.findById(item.productId).populate('seller').session(session);
-            if (product.requiresConsultation) {
+        // --- LOGIC MỚI: PHÂN NHÁNH ĐƠN HÀNG THƯỜNG VÀ ĐƠN TƯ VẤN ---
+        const firstItemInfo = items[0];
+        const productForCheck = await Product.findById(firstItemInfo.productId).populate('seller').session(session);
+        if (!productForCheck) throw new Error(`Sản phẩm không còn tồn tại.`);
+        
+        if (productForCheck.requiresConsultation) {
+            // Đây là đơn hàng tư vấn
             const consultationOrder = new Order({
                 user: userId,
-                // Chỉ thêm sản phẩm tư vấn ban đầu vào đơn
                 items: [{ 
-                    productId: product._id, 
-                    name: product.name, 
-                    price: 0, // Giá ban đầu là 0
+                    productId: productForCheck._id, 
+                    name: `Yêu cầu tư vấn: ${productForCheck.name}`, 
+                    price: 0,
                     quantity: 1, 
-                    sellerId: product.seller._id 
+                    sellerId: productForCheck.seller._id 
                 }],
                 total: 0,
-                status: 'Chờ tư vấn',
+                status: 'Chờ xác nhận', // Trạng thái ban đầu để shipper nhận
+                isConsultationOrder: true,
+                consultationSellerId: productForCheck.seller._id,
                 customerName, phone, shippingAddress, shippingLocation,
             });
 
-            await consultationOrder.save({ session });
+            savedOrder = await consultationOrder.save({ session });
             await session.commitTransaction();
             
-            // Gửi thông báo cho seller tương ứng
-            // ... (logic gửi thông báo cho seller `product.seller._id`)
-            
-            return res.status(201).json({ 
-                message: 'Yêu cầu tư vấn đã được gửi thành công.', 
-                order: consultationOrder,
-                isConsultation: true // Thêm flag để frontend biết
-            });
-        }
-            if (!product) throw new Error(`Sản phẩm "${item.name}" không còn tồn tại.`);
-            if (!product.seller) throw new Error(`Sản phẩm "${product.name}" không có thông tin người bán.`);
-            
-            // <<< SỬA LẠI LOGIC KIỂM TRA THỜI GIAN >>>
-            if (!validateSaleTime(product)) {
-                throw new Error(`Sản phẩm "${product.name}" chỉ bán từ ${product.saleStartTime} đến ${product.saleEndTime}.`);
-            }
-
-            let stock;
-            if (product.variantTable && product.variantTable.length > 0) {
-                const variant = product.variantTable.find(v => v.combination === item.combination);
-                if (!variant) throw new Error(`Biến thể của sản phẩm "${item.name}" không tồn tại.`);
-                stock = variant.stock;
-            } else {
-                stock = product.stock;
-            }
-            if (stock < item.quantity) {
-                throw new Error(`Sản phẩm "${product.name}" không đủ hàng trong kho.`);
-            }
-
-            const itemValue = item.price * item.quantity;
-            itemsTotal += itemValue;
-            
-            const commissionRate = product.seller.commissionRate || 0;
-            const commissionAmount = itemValue * (commissionRate / 100);
-            
-            enrichedItems.push({
-                ...item,
-                sellerId: product.seller._id,
-                commissionAmount: commissionAmount,
+            res.status(201).json({ 
+                message: 'Yêu cầu của bạn đã được tạo và đang tìm shipper.', 
+                order: savedOrder,
             });
 
-            if (product.variantTable && product.variantTable.length > 0) {
-                const variantIndex = product.variantTable.findIndex(v => v.combination === item.combination);
-                product.variantTable[variantIndex].stock -= item.quantity;
-            } else {
-                product.stock -= item.quantity;
+        } else {
+            // Đây là đơn hàng thường, xử lý như cũ
+            const enrichedItems = [];
+            let itemsTotal = 0;
+
+            for (const item of items) {
+                const product = await Product.findById(item.productId).populate('seller').session(session);
+                if (!product) throw new Error(`Sản phẩm "${item.name}" không còn tồn tại.`);
+                if (!product.seller) throw new Error(`Sản phẩm "${product.name}" không có thông tin người bán.`);
+                if (!validateSaleTime(product)) {
+                    const timeFramesString = product.saleTimeFrames.map(f => `${f.start}-${f.end}`).join(', ');
+                    throw new Error(`Sản phẩm "${product.name}" chỉ bán trong khung giờ: ${timeFramesString}.`);
+                }
+                let stock;
+                if (product.variantTable && product.variantTable.length > 0) {
+                    const variant = product.variantTable.find(v => v.combination === item.combination);
+                    if (!variant) throw new Error(`Biến thể của sản phẩm "${item.name}" không tồn tại.`);
+                    stock = variant.stock;
+                } else {
+                    stock = product.stock;
+                }
+                if (stock < item.quantity) {
+                    throw new Error(`Sản phẩm "${product.name}" không đủ hàng trong kho.`);
+                }
+                const itemValue = item.price * item.quantity;
+                itemsTotal += itemValue;
+                const commissionRate = product.seller.commissionRate || 0;
+                const commissionAmount = itemValue * (commissionRate / 100);
+                enrichedItems.push({ ...item, sellerId: product.seller._id, commissionAmount: commissionAmount });
+                if (product.variantTable && product.variantTable.length > 0) {
+                    const variantIndex = product.variantTable.findIndex(v => v.combination === item.combination);
+                    product.variantTable[variantIndex].stock -= item.quantity;
+                } else {
+                    product.stock -= item.quantity;
+                }
+                await product.save({ session });
             }
-            await product.save({ session });
+            
+            const { shippingFeeActual, shippingFeeCustomerPaid } = await shippingController.calculateFeeForOrder(shippingLocation, itemsTotal);
+            const finalTotal = itemsTotal + shippingFeeCustomerPaid - (voucherDiscount || 0);
+
+            if (voucherCode && voucherDiscount > 0) {
+                const voucher = await Voucher.findOne({ code: voucherCode.toUpperCase() }).session(session);
+                if (!voucher) throw new Error(`Mã voucher "${voucherCode}" không tồn tại.`);
+                const userVoucher = await UserVoucher.findOne({ user: userId, voucher: voucher._id, isUsed: false }).session(session);
+                if (!userVoucher) throw new Error(`Bạn không sở hữu voucher "${voucherCode}" hoặc đã sử dụng nó.`);
+                userVoucher.isUsed = true;
+                await userVoucher.save({ session });
+            }
+
+            const order = new Order({
+                user: userId, items: enrichedItems, total: finalTotal, customerName, phone, shippingAddress,
+                shippingLocation, paymentMethod: paymentMethod || 'COD', shippingFeeActual: shippingFeeActual,
+                shippingFeeCustomerPaid: shippingFeeCustomerPaid, extraSurcharge: 0,
+                voucherDiscount: voucherDiscount || 0, voucherCode, status: 'Chờ xác nhận',
+                isConsultationOrder: false,
+            });
+            
+            const [createdOrder] = await Order.create([order], { session });
+            savedOrder = createdOrder;
+            await session.commitTransaction();
+            res.status(201).json({ message: 'Tạo đơn thành công', order: { ...savedOrder.toObject(), timestamps: savedOrder.timestamps } });
         }
-        
-        const { shippingFeeActual, shippingFeeCustomerPaid } = await shippingController.calculateFeeForOrder(shippingLocation, itemsTotal);
-        const finalTotal = itemsTotal + shippingFeeCustomerPaid - (voucherDiscount || 0);
-
-        if (voucherCode && voucherDiscount > 0) {
-            const voucher = await Voucher.findOne({ code: voucherCode.toUpperCase() }).session(session);
-            if (!voucher) throw new Error(`Mã voucher "${voucherCode}" không tồn tại.`);
-            const userVoucher = await UserVoucher.findOne({ user: userId, voucher: voucher._id, isUsed: false }).session(session);
-            if (!userVoucher) throw new Error(`Bạn không sở hữu voucher "${voucherCode}" hoặc đã sử dụng nó.`);
-            userVoucher.isUsed = true;
-            await userVoucher.save({ session });
-        }
-
-        const order = new Order({
-            user: userId,
-            items: enrichedItems,
-            total: finalTotal,
-            customerName,
-            phone,
-            shippingAddress,
-            shippingLocation,
-            paymentMethod: paymentMethod || 'COD',
-            shippingFeeActual: shippingFeeActual,
-            shippingFeeCustomerPaid: shippingFeeCustomerPaid,
-            extraSurcharge: 0,
-            voucherDiscount: voucherDiscount || 0,
-            voucherCode,
-            status: 'Chờ xác nhận',
-        });
-        
-        const [createdOrder] = await Order.create([order], { session });
-        savedOrder = createdOrder;
-
-        await session.commitTransaction();
-        console.log(`[createOrder] Transaction committed cho đơn hàng #${savedOrder._id}.`);
-
-        res.status(201).json({
-            message: 'Tạo đơn thành công',
-            order: { ...savedOrder.toObject(), timestamps: savedOrder.timestamps }
-        });
-
     } catch (err) {
         await session.abortTransaction();
         console.error('Lỗi khi tạo đơn hàng:', err);
@@ -213,54 +184,102 @@ exports.createOrder = async (req, res) => {
     }
 };
 
-
-exports.requestConsultation = async (req, res) => {
-    try {
-        const { sellerId, initialMessage } = req.body; // Cần biết seller nào để gửi yêu cầu
-        const userId = req.user._id;
-
-        // Tạo một "đơn hàng" đặc biệt với trạng thái chờ tư vấn
-        const consultationOrder = new Order({
-            user: userId,
-            items: [], // Ban đầu chưa có sản phẩm
-            total: 0,
-            status: 'Chờ tư vấn',
-            // Gán seller cho đơn hàng ngay từ đầu
-            // Cần một cách để xác định seller, ví dụ qua một trường `consultingSeller`
-            // Hoặc đơn giản là lấy seller từ sản phẩm tư vấn đầu tiên
-        });
-        
-        // Logic tìm seller và gửi thông báo cho họ...
-
-        res.status(201).json({ message: "Yêu cầu tư vấn đã được gửi.", order: consultationOrder });
-    } catch (error) {
-        res.status(500).json({ message: "Lỗi khi tạo yêu cầu tư vấn." });
+exports.acceptOrder = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id).populate('user', 'name fcmToken').populate('consultationSellerId', 'name fcmToken');
+    if (!order) {
+      return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
     }
-};
-
-exports.confirmPricedOrder = async (req, res) => {
-    try {
-        const { id: orderId } = req.params;
-        const userId = req.user._id;
-
-        const order = await Order.findOne({ _id: orderId, user: userId, status: 'Chờ khách xác nhận' });
-        if (!order) {
-            return res.status(404).json({ message: "Đơn hàng không hợp lệ hoặc không tìm thấy." });
+    if (order.status !== 'Chờ xác nhận') {
+      return res.status(400).json({ message: 'Đơn không khả dụng' });
+    }
+    const shipper = await User.findById(req.user._id);
+    if (!shipper || shipper.role !== 'shipper') {
+      return res.status(403).json({ message: 'Tài khoản không phải là shipper.' });
+    }
+    
+    // --- LOGIC MỚI: PHÂN NHÁNH CHO ĐƠN TƯ VẤN VÀ ĐƠN THƯỜNG ---
+    if (order.isConsultationOrder) {
+        order.status = 'Đang tư vấn';
+        order.shipper = shipper._id;
+        order.timestamps.acceptedAt = new Date();
+        const updatedOrder = await order.save();
+        
+        // Thông báo cho khách hàng
+        if (order.user && order.user.fcmToken) {
+            safeNotify(order.user.fcmToken, { 
+                title: "Bắt đầu tư vấn", 
+                body: `Shipper đã nhận yêu cầu. Bạn có thể bắt đầu trò chuyện với ${order.consultationSellerId.name}.` 
+            });
         }
+        await Notification.create({ 
+            user: order.user._id, 
+            title: "Bắt đầu tư vấn", 
+            message: `Shipper đã nhận yêu cầu. Bạn có thể bắt đầu trò chuyện với ${order.consultationSellerId.name}.`, 
+            type: 'order', 
+            data: { orderId: order._id.toString() } 
+        });
 
-        order.status = 'Chờ xác nhận'; // Chuyển về luồng bình thường
-        await order.save();
-        
-        // Bắt đầu quá trình tìm shipper
-        assignOrderToNearestShipper(order._id);
-        notifyAdmins(order);
+        // Thông báo cho seller
+        if (order.consultationSellerId && order.consultationSellerId.fcmToken) {
+            safeNotify(order.consultationSellerId.fcmToken, { 
+                title: "Khách hàng cần tư vấn", 
+                body: `Khách hàng ${order.user.name} đang chờ bạn tư vấn cho đơn hàng #${order._id.toString().slice(-6)}.` 
+            });
+        }
+        await Notification.create({ 
+            user: order.consultationSellerId._id, 
+            title: "Khách hàng cần tư vấn", 
+            message: `Khách hàng ${order.user.name} đang chờ bạn tư vấn cho đơn hàng #${order._id.toString().slice(-6)}.`, 
+            type: 'order', 
+            data: { orderId: order._id.toString() } 
+        });
 
-        res.status(200).json({ message: "Đã xác nhận đơn hàng thành công!", order });
-    } catch (error) {
-        res.status(500).json({ message: "Lỗi khi xác nhận đơn hàng." });
+        res.json({ message: "Nhận yêu cầu tư vấn thành công.", order: updatedOrder });
+
+    } else {
+        // Logic cho đơn hàng thường (giữ nguyên như cũ)
+        order.status = 'Đang xử lý';
+        order.shipper = shipper._id;
+        order.timestamps.acceptedAt = new Date();
+        const shareRate = (shipper.shipperProfile.shippingFeeShareRate || 0) / 100;
+        const totalActualShippingFee = (order.shippingFeeActual || 0) + (order.extraSurcharge || 0);
+        const totalCommission = order.items.reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
+        const profitShareRate = (shipper.shipperProfile.profitShareRate || 0) / 100;
+        order.shipperIncome = (totalActualShippingFee * shareRate) + (totalCommission * profitShareRate);
+        order.financialDetails = {
+            shippingFeeActual: order.shippingFeeActual,
+            shippingFeeCustomerPaid: order.shippingFeeCustomerPaid,
+            extraSurcharge: order.extraSurcharge,
+            shippingFeeShareRate: shipper.shipperProfile.shippingFeeShareRate,
+            profitShareRate: shipper.shipperProfile.profitShareRate
+        };
+        const updatedOrder = await order.save();
+        if (order.user) { 
+            const title = 'Shipper đã nhận đơn của bạn!';
+            const message = `Đơn hàng #${order._id.toString().slice(-6)} đang được chuẩn bị.`;
+            if (order.user.fcmToken) {
+                await safeNotify(order.user.fcmToken, { title, body: message, data: { orderId: order._id.toString(), type: 'order_update' } });
+            }
+            await Notification.create({ user: order.user._id, title, message, type: 'order', data: { orderId: order._id.toString() } });
+        }
+        const sellerIds = [...new Set(order.items.map(item => item.sellerId.toString()))];
+        const sellers = await User.find({ _id: { $in: sellerIds } }).select('fcmToken');
+        const notificationTitle = 'Đơn hàng đã có tài xế!';
+        const notificationBody = `Đơn hàng #${order._id.toString().slice(-6)} đã có tài xế nhận. Vui lòng chuẩn bị hàng.`;
+        for (const seller of sellers) {
+            await Notification.create({ user: seller._id, title: notificationTitle, message: notificationBody, type: 'order_accepted_by_shipper', data: { orderId: order._id.toString(), screen: 'OrderDetail' } });
+            if (seller.fcmToken) {
+                await safeNotify(seller.fcmToken, { title: notificationTitle, body: notificationBody, data: { orderId: order._id.toString(), type: 'order_accepted_by_shipper', screen: 'OrderDetail' } });
+            }
+        }
+        res.json({ message: 'Nhận đơn thành công', order: updatedOrder });
     }
+  } catch (error) {
+    console.error('Lỗi khi chấp nhận đơn hàng:', error);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
 };
-
 
 
 // =================================================================
@@ -277,108 +296,6 @@ exports.countByStatus = async (req, res) => {
   }
 };
 
-exports.acceptOrder = async (req, res) => {
-  try {
-    const order = await Order.findById(req.params.id);
-    if (!order) {
-      return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
-    }
-    if (order.status !== 'Chờ xác nhận') {
-      return res.status(400).json({ message: 'Đơn không khả dụng' });
-    }
-
-    const shipper = await User.findById(req.user._id);
-    if (!shipper || shipper.role !== 'shipper') {
-      return res.status(403).json({ message: 'Tài khoản không phải là shipper.' });
-    }
-
-    order.status = 'Đang xử lý';
-    order.shipper = shipper._id;
-    order.timestamps.acceptedAt = new Date();
-
-    const shareRate = (shipper.shipperProfile.shippingFeeShareRate || 0) / 100;
-    const totalActualShippingFee = (order.shippingFeeActual || 0) + (order.extraSurcharge || 0);
-    const totalCommission = order.items.reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
-    const profitShareRate = (shipper.shipperProfile.profitShareRate || 0) / 100;
-    order.shipperIncome = (totalActualShippingFee * shareRate) + (totalCommission * profitShareRate);
-    order.financialDetails = {
-        shippingFeeActual: order.shippingFeeActual,
-        shippingFeeCustomerPaid: order.shippingFeeCustomerPaid,
-        extraSurcharge: order.extraSurcharge,
-        shippingFeeShareRate: shipper.shipperProfile.shippingFeeShareRate,
-        profitShareRate: shipper.shipperProfile.profitShareRate
-    };
-    
-    const updatedOrder = await order.save();
-
-    // Gửi thông báo cho khách hàng
-    const customer = await User.findById(order.user);
-    if (customer) { 
-        const title = 'Shipper đã nhận đơn của bạn!';
-        const message = `Đơn hàng #${order._id.toString().slice(-6)} đang được chuẩn bị.`;
-
-        if (customer.fcmToken) {
-            await safeNotify(customer.fcmToken, {
-                title: title,
-                body: message,
-                data: { orderId: order._id.toString(), type: 'order_update' }
-            });
-        }
-        
-        await Notification.create({
-            user: customer._id,
-            title: title,
-            message: message,
-            type: 'order',
-            data: { orderId: order._id.toString() }
-        });
-    }
-
-    // --- BẮT ĐẦU SỬA LỖI: THÊM LOGIC TẠO THÔNG BÁO CHO SELLER ---
-
-    // Lấy danh sách ID của tất cả các seller có sản phẩm trong đơn hàng
-    const sellerIds = [...new Set(order.items.map(item => item.sellerId.toString()))];
-    // Tìm tất cả các seller đó để lấy fcmToken
-    const sellers = await User.find({ _id: { $in: sellerIds } }).select('fcmToken');
-
-    const notificationTitle = 'Đơn hàng đã có tài xế!';
-    const notificationBody = `Đơn hàng #${order._id.toString().slice(-6)} đã có tài xế nhận. Vui lòng chuẩn bị hàng.`;
-
-    // Lặp qua từng seller để gửi và lưu thông báo
-    for (const seller of sellers) {
-        // 1. Luôn tạo một bản ghi Notification trong database cho seller
-        await Notification.create({
-            user: seller._id,
-            title: notificationTitle,
-            message: notificationBody,
-            type: 'order_accepted_by_shipper',
-            data: { 
-                orderId: order._id.toString(),
-                screen: 'OrderDetail'
-            }
-        });
-
-        // 2. Nếu seller có token, gửi thêm push notification
-        if (seller.fcmToken) {
-            await safeNotify(seller.fcmToken, {
-                title: notificationTitle,
-                body: notificationBody,
-                data: { 
-                    orderId: order._id.toString(), 
-                    type: 'order_accepted_by_shipper',
-                    screen: 'OrderDetail'
-                }
-            });
-        }
-    }
-    // --- KẾT THÚC SỬA LỖI ---
-    
-    res.json({ message: 'Nhận đơn thành công', order: updatedOrder });
-  } catch (error) {
-    console.error('Lỗi khi chấp nhận đơn hàng:', error);
-    res.status(500).json({ message: 'Lỗi server' });
-  }
-};
 
 exports.updateOrderStatusByShipper = async (req, res) => {
     try {
@@ -678,5 +595,53 @@ exports.requestOrderTransfer = async (req, res) => {
         res.status(500).json({ message: error.message || 'Lỗi server khi yêu cầu chuyển đơn.' });
     } finally {
         session.endSession();
+    }
+};
+
+
+exports.requestConsultation = async (req, res) => {
+    try {
+        const { sellerId, initialMessage } = req.body; // Cần biết seller nào để gửi yêu cầu
+        const userId = req.user._id;
+
+        // Tạo một "đơn hàng" đặc biệt với trạng thái chờ tư vấn
+        const consultationOrder = new Order({
+            user: userId,
+            items: [], // Ban đầu chưa có sản phẩm
+            total: 0,
+            status: 'Chờ tư vấn',
+            // Gán seller cho đơn hàng ngay từ đầu
+            // Cần một cách để xác định seller, ví dụ qua một trường `consultingSeller`
+            // Hoặc đơn giản là lấy seller từ sản phẩm tư vấn đầu tiên
+        });
+        
+        // Logic tìm seller và gửi thông báo cho họ...
+
+        res.status(201).json({ message: "Yêu cầu tư vấn đã được gửi.", order: consultationOrder });
+    } catch (error) {
+        res.status(500).json({ message: "Lỗi khi tạo yêu cầu tư vấn." });
+    }
+};
+
+exports.confirmPricedOrder = async (req, res) => {
+    try {
+        const { id: orderId } = req.params;
+        const userId = req.user._id;
+
+        const order = await Order.findOne({ _id: orderId, user: userId, status: 'Chờ khách xác nhận' });
+        if (!order) {
+            return res.status(404).json({ message: "Đơn hàng không hợp lệ hoặc không tìm thấy." });
+        }
+
+        order.status = 'Chờ xác nhận'; // Chuyển về luồng bình thường
+        await order.save();
+        
+        // Bắt đầu quá trình tìm shipper
+        assignOrderToNearestShipper(order._id);
+        notifyAdmins(order);
+
+        res.status(200).json({ message: "Đã xác nhận đơn hàng thành công!", order });
+    } catch (error) {
+        res.status(500).json({ message: "Lỗi khi xác nhận đơn hàng." });
     }
 };
