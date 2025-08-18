@@ -26,13 +26,10 @@ exports.getAllProducts = async (req, res) => {
   try {
     const { category, limit, sellerId } = req.query;
 
-    console.log(`[DEBUG Server] getAllProducts received category query param:`, category);
-
     let filter = {}; 
 
     if (!sellerId) {
-        // SỬA Ở ĐÂY: Dùng regex để tìm 'approved' bất chấp khoảng trắng
-        filter.approvalStatus = /approved/i; 
+        filter.approvalStatus = 'approved';
     } else {
         filter.seller = sellerId;
     }
@@ -41,38 +38,50 @@ exports.getAllProducts = async (req, res) => {
       const childIds = await getAllChildCategoryIds(category);
       const allIds_String = [category, ...childIds];
       
-      console.log(`[DEBUG Server] Searching for category IDs containing:`, allIds_String);
+      const allIds_ObjectId = allIds_String
+        .filter(id => mongoose.Types.ObjectId.isValid(id))
+        .map(id => new mongoose.Types.ObjectId(id));
 
-      // SỬA Ở ĐÂY: Dùng regex để tìm category ID, bỏ qua vấn đề Type và ký tự ẩn
-      // Tạo một mảng các regex, mỗi regex cho một ID
-      const regexArray = allIds_String.map(id => new RegExp(id, 'i'));
-
-      // Tìm bất kỳ sản phẩm nào có trường category khớp với một trong các regex
-      filter.category = { $in: regexArray };
+      // Query bằng $or để chấp nhận cả String lẫn ObjectId
+      filter.$or = [
+          { category: { $in: allIds_String } },
+          { category: { $in: allIds_ObjectId } }
+      ];
     }
     
-    console.log('[DEBUG Server] Final product filter with REGEX:', filter); 
+    console.log('[DEBUG Server] Final product filter:', JSON.stringify(filter, null, 2)); 
 
-    let query = Product.find(filter).populate('category').sort({ createdAt: -1 });
+    // BỎ POPULATE TẠM THỜI ĐỂ DEBUG
+    // let query = Product.find(filter).populate('category').sort({ createdAt: -1 });
+    let query = Product.find(filter).sort({ createdAt: -1 });
+
 
     if (limit) {
       query = query.limit(parseInt(limit));
     }
 
-    let products = await query.exec();
+    // Dùng .lean() để lấy về object thuần túy, tránh các vấn đề của Mongoose document
+    let products = await query.lean().exec();
     
-    console.log(`[DEBUG Server] MongoDB returned ${products.length} products with REGEX query.`);
+    console.log(`[DEBUG Server] MongoDB returned ${products.length} products (raw).`);
 
-    // Phần còn lại giữ nguyên
+    // Kiểm tra dữ liệu thô
+    if (products.length > 0 && category) {
+        console.log(`[DEBUG Server] First raw product's category field:`, products[0].category, `(Type: ${typeof products[0].category})`);
+    }
+
+    // Phần lọc tồn kho giữ nguyên
     if (!sellerId) {
         products = products.filter(p => {
-            const isStockAvailable = p.totalStock > 0;
+            const isStockAvailable = (p.variantTable && p.variantTable.length > 0)
+                ? p.variantTable.reduce((sum, v) => sum + (v.stock || 0), 0) > 0
+                : (p.stock || 0) > 0;
             const needsConsultation = p.requiresConsultation === true;
             return isStockAvailable || needsConsultation;
         });
     }
     
-    console.log(`[DEBUG Server] Sending ${products.length} products to client after stock filtering.`);
+    console.log(`[DEBUG Server] Sending ${products.length} products to client after filtering.`);
 
     res.json(products);
 
