@@ -1,91 +1,83 @@
-// middlewares/authMiddleware.js
+// File: backend/middlewares/authMiddleware.js
+// PHIÊN BẢN SỬA LỖI - DÙNG toObject() ĐỂ ĐẢM BẢO AN TOÀN
+
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 const verifyToken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   
-  if (!authHeader) {
-    return res.status(401).json({ message: 'Chưa đăng nhập' });
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'Chưa đăng nhập hoặc thiếu token' });
   }
 
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader;
+  const token = authHeader.slice(7).trim();
   
   if (!token) {
-    return res.status(401).json({ message: 'Không có token' });
+    return res.status(401).json({ message: 'Token không hợp lệ' });
   }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.userId).select('-password');
+    
+    // BƯỚC 1: LẤY TOÀN BỘ USER OBJECT TỪ DB (BAO GỒM CẢ PASSWORD)
+    const user = await User.findById(decoded.userId).select('+password');
+    
     if (!user) {
-      return res.status(401).json({ message: 'User không tồn tại' });
+      return res.status(401).json({ message: 'Người dùng không tồn tại' });
     }
-    req.user = user;
-     next();
+    
+    // BƯỚC 2: CHUYỂN THÀNH PLAIN JAVASCRIPT OBJECT VÀ XÓA PASSWORD
+    const userObject = user.toObject();
+    delete userObject.password;
+    
+    // BƯỚC 3: GÁN OBJECT SẠCH VÀO req.user
+    req.user = userObject;
+    
+    next();
   } catch (err) {
-      return res.status(401).json({ message: err.name === 'TokenExpiredError' ? 'Token hết hạn' : 'Token không hợp lệ' });
+      if (err.name === 'TokenExpiredError') {
+        return res.status(401).json({ message: 'Phiên đăng nhập đã hết hạn' });
+      }
+      return res.status(401).json({ message: 'Token không hợp lệ hoặc sai' });
   }
 };
 
 const isAdmin = (req, res, next) => {
-  if (req.user.role !== 'admin') {
-    console.log('[isAdmin] Access denied for user:', req.user._id);
-    return res.status(403).json({ message: 'Bạn không có quyền admin' });
+  if (req.user && req.user.role === 'admin') {
+    next();
+  } else {
+    return res.status(403).json({ message: 'Yêu cầu quyền Quản trị viên' });
   }
-  next();
 };
-
-// Alias cho isAdmin
-const isAdminMiddleware = isAdmin;
-const verifyAdmin = isAdmin;
 
 const isSeller = (req, res, next) => {
-    // Hàm này chạy SAU KHI verifyToken đã chạy,
-    // nên chúng ta có thể tin tưởng rằng req.user đã tồn tại.
     if (req.user && req.user.role === 'seller') {
-        next(); // Nếu là seller, cho qua
+        next();
     } else {
-        res.status(403).json({ message: 'Yêu cầu quyền người bán (Seller)' });
+        res.status(403).json({ message: 'Yêu cầu quyền Người bán' });
     }
 };
 
-const protect = async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ message: 'Không có token, vui lòng đăng nhập' });
-  }
-
-  const token = authHeader.slice(7).trim();
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.userId).select('-password');
-    if (!user) {
-       return res.status(401).json({ message: 'User không tồn tại' });
-    }
-    req.user = user;
-    next();
-  } catch (err) {
-   return res.status(401).json({ message: err.name === 'TokenExpiredError' ? 'Token hết hạn' : 'Token không hợp lệ' });
-  }
-};
+// Hàm protect sẽ được làm nhất quán với verifyToken
+const protect = verifyToken;
 
 const restrictTo = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {
-    return res.status(403).json({ message: 'Bạn không có quyền truy cập' });
+      return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
     }
     next();
   };
 };
 
+
 module.exports = {
   verifyToken,
   isAdmin,
-  isAdminMiddleware,
-  verifyAdmin,
+  isSeller,
   protect,
   restrictTo,
-  isSeller,
+  isAdminMiddleware: isAdmin,
+  verifyAdmin: isAdmin,
 };
