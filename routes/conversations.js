@@ -158,9 +158,21 @@ router.get('/:id', verifyToken, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
             .populate('sellerId', 'name')
-            .populate('productId', 'name images price variantTable');
+            .populate('productId', 'name images price variantTable')
+            .lean(); // Dùng lean để có thể thêm thuộc tính
             
         if (!conversation) return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện' });
+
+        // TÌM ĐƠN HÀNG TƯ VẤN TƯƠNG ỨNG
+        const relatedOrder = await Order.findOne({
+            'items.productId': conversation.productId,
+            'user': conversation.customerId,
+            'consultationSellerId': conversation.sellerId,
+            'isConsultationOrder': true,
+        }).select('_id status').lean();
+
+        // Gắn thông tin đơn hàng vào kết quả trả về
+        conversation.relatedOrder = relatedOrder;
         
         res.json(conversation);
     } catch (err) {
