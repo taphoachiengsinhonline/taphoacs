@@ -3,6 +3,7 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const Conversation = require('../models/Conversation'); 
 const { safeNotify } = require('../utils/notificationMiddleware');
 const assignOrderToNearestShipper = require('../utils/assignOrderToNearestShipper');
 const { processOrderCompletionForFinance, reverseFinancialEntryForOrder } = require('./financeController');
