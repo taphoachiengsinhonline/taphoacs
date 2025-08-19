@@ -157,26 +157,41 @@ router.get('/', verifyToken, async (req, res) => {
 router.get('/:id', verifyToken, async (req, res) => {
     try {
         const conversation = await Conversation.findById(req.params.id)
-            .populate('sellerId', 'name')
+            .populate('sellerId', 'name') // Populate seller để hiển thị tên
             .populate('productId', 'name images price variantTable')
-            .lean(); // Dùng lean để có thể thêm thuộc tính
+            .lean(); // .lean() để tăng tốc độ và dễ dàng thêm thuộc tính
             
-        if (!conversation) return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện' });
+        if (!conversation) {
+            return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện' });
+        }
 
-        // TÌM ĐƠN HÀNG TƯ VẤN TƯƠNG ỨNG
-        const relatedOrder = await Order.findOne({
-            'items.productId': conversation.productId,
-            'user': conversation.customerId,
-            'consultationSellerId': conversation.sellerId,
-            'isConsultationOrder': true,
-        }).select('_id status').lean();
+        // --- BẮT ĐẦU SỬA LỖI ---
 
-        // Gắn thông tin đơn hàng vào kết quả trả về
+        // Kiểm tra xem các ID cần thiết có tồn tại không
+        const productId = conversation.productId?._id;
+        const customerId = conversation.customerId; // Đây đã là ObjectId
+        const sellerId = conversation.sellerId?._id; // Lấy _id từ seller đã populate
+
+        let relatedOrder = null;
+        if (productId && customerId && sellerId) {
+            // Chỉ tìm kiếm nếu có đủ thông tin
+            relatedOrder = await Order.findOne({
+                'items.productId': productId,
+                'user': customerId,
+                'consultationSellerId': sellerId,
+                'isConsultationOrder': true,
+                'status': { $in: ['Đang tư vấn', 'Chờ tư vấn', 'Chờ khách xác nhận'] } // Chỉ tìm các đơn hàng còn trong quá trình tư vấn
+            }).select('_id status').sort({ createdAt: -1 }).lean(); // Lấy đơn hàng mới nhất nếu có nhiều
+        }
+
+        // Gắn thông tin đơn hàng (có thể là null) vào kết quả trả về
         conversation.relatedOrder = relatedOrder;
+        
+        // --- KẾT THÚC SỬA LỖI ---
         
         res.json(conversation);
     } catch (err) {
-        console.error('[CONVERSATION GET DETAIL BY ID] Lỗi:', err.message);
+        console.error('[CONVERSATION GET DETAIL BY ID] Lỗi:', err.message, err.stack);
         res.status(500).json({ message: 'Lỗi server' });
     }
 });
