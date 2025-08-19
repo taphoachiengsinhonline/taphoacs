@@ -186,7 +186,10 @@ exports.createOrder = async (req, res) => {
 
 exports.acceptOrder = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id).populate('user', 'name fcmToken').populate('consultationSellerId', 'name fcmToken');
+    const order = await Order.findById(req.params.id)
+      .populate('user', 'name fcmToken')
+      .populate('consultationSellerId', 'name fcmToken');
+
     if (!order) {
       return res.status(404).json({ message: 'Đơn hàng không tồn tại' });
     }
@@ -198,35 +201,41 @@ exports.acceptOrder = async (req, res) => {
       return res.status(403).json({ message: 'Tài khoản không phải là shipper.' });
     }
     
-    // --- LOGIC MỚI: PHÂN NHÁNH CHO ĐƠN TƯ VẤN VÀ ĐƠN THƯỜNG ---
-     if (order.isConsultationOrder) {
-        // --- Bắt đầu logic tìm/tạo cuộc trò chuyện ---
+    if (order.isConsultationOrder) {
+        // --- BẮT ĐẦU SỬA LỖI LOGIC ---
+
+        // Lấy ID một cách an toàn
+        const customerId = order.user?._id;
+        const sellerId = order.consultationSellerId?._id;
+        const productId = order.items?.[0]?.productId;
+
+        // Kiểm tra xem tất cả ID có tồn tại không
+        if (!customerId || !sellerId || !productId) {
+            console.error('[Accept Order Error] Thiếu thông tin quan trọng trong đơn hàng tư vấn:', { customerId, sellerId, productId, orderId: order._id });
+            throw new Error('Đơn hàng tư vấn bị thiếu thông tin khách hàng, người bán hoặc sản phẩm.');
+        }
+
         const conversation = await Conversation.findOneAndUpdate(
-            { 
-                productId: order.items[0].productId, 
-                customerId: order.user._id, 
-                sellerId: order.consultationSellerId._id 
-            },
-            { $set: { updatedAt: new Date() } }, // Cập nhật để nó nổi lên trên
-            { new: true, upsert: true } // Tạo mới nếu chưa có
+            { productId, customerId, sellerId },
+            { $set: { updatedAt: new Date() } },
+            { new: true, upsert: true, runValidators: true }
         );
         const conversationId = conversation._id.toString();
-        // --- Kết thúc logic tìm/tạo cuộc trò chuyện ---
+        
+        // --- KẾT THÚC SỬA LỖI LOGIC ---
 
         order.status = 'Đang tư vấn';
-        order.shipper = req.user._id;
+        order.shipper = shipper._id;
         order.timestamps.acceptedAt = new Date();
         const updatedOrder = await order.save();
         
-        // Thông báo cho khách hàng (gửi kèm conversationId)
+        // Logic gửi thông báo giữ nguyên như cũ, vì nó đã dùng các object đã populate
+        // Thông báo cho khách hàng
         if (order.user && order.user.fcmToken) {
             safeNotify(order.user.fcmToken, { 
                 title: "Bắt đầu tư vấn", 
                 body: `Shipper đã nhận yêu cầu. Bạn có thể bắt đầu trò chuyện với ${order.consultationSellerId.name}.`,
-                data: {
-                    type: 'start_consultation', // Thêm type để app dễ xử lý
-                    conversationId: conversationId
-                }
+                data: { type: 'start_consultation', conversationId: conversationId }
             });
         }
         await Notification.create({ 
@@ -237,15 +246,12 @@ exports.acceptOrder = async (req, res) => {
             data: { conversationId: conversationId } 
         });
 
-        // Thông báo cho seller (gửi kèm conversationId)
+        // Thông báo cho seller
         if (order.consultationSellerId && order.consultationSellerId.fcmToken) {
             safeNotify(order.consultationSellerId.fcmToken, { 
                 title: "Khách hàng cần tư vấn", 
                 body: `Khách hàng ${order.user.name} đang chờ bạn tư vấn.`,
-                data: {
-                    type: 'new_consultation_request',
-                    conversationId: conversationId
-                }
+                data: { type: 'new_consultation_request', conversationId: conversationId }
             });
         }
         await Notification.create({ 
