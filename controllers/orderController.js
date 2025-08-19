@@ -656,20 +656,74 @@ exports.confirmPricedOrder = async (req, res) => {
         const { id: orderId } = req.params;
         const userId = req.user._id;
 
-        const order = await Order.findOne({ _id: orderId, user: userId, status: 'Chờ khách xác nhận' });
+        // Tìm đơn hàng, populate shipper và seller để gửi thông báo
+        const order = await Order.findOne({ 
+            _id: orderId, 
+            user: userId, 
+            status: 'Chờ khách xác nhận' 
+        }).populate('shipper', 'name fcmToken')
+          .populate('consultationSellerId', 'name fcmToken');
+
         if (!order) {
             return res.status(404).json({ message: "Đơn hàng không hợp lệ hoặc không tìm thấy." });
         }
 
-        order.status = 'Chờ xác nhận'; // Chuyển về luồng bình thường
+        // BƯỚC 1: CHUYỂN TRẠNG THÁI SANG "ĐANG XỬ LÝ"
+        order.status = 'Đang xử lý'; 
+        
+        // BƯỚC 2: CẬP NHẬT LẠI THU NHẬP CHO SHIPPER DỰA TRÊN BÁO GIÁ MỚI
+        const shipper = await User.findById(order.shipper._id); // Lấy thông tin đầy đủ của shipper
+        if (shipper && shipper.shipperProfile) {
+            const shareRate = (shipper.shipperProfile.shippingFeeShareRate || 0) / 100;
+            // Giả sử phí ship không đổi, nếu cần tính lại thì gọi hàm tính phí ship ở đây
+            const totalActualShippingFee = (order.shippingFeeActual || 0) + (order.extraSurcharge || 0);
+            const totalCommission = order.items.reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
+            const profitShareRate = (shipper.shipperProfile.profitShareRate || 0) / 100;
+            
+            order.shipperIncome = (totalActualShippingFee * shareRate) + (totalCommission * profitShareRate);
+        }
+
         await order.save();
         
-        // Bắt đầu quá trình tìm shipper
-        assignOrderToNearestShipper(order._id);
-        notifyAdmins(order);
+        // BƯỚC 3: GỬI THÔNG BÁO
+        const notificationTitle = "Đơn hàng đã được xác nhận!";
+        const notificationBody = `Khách hàng đã đồng ý với báo giá cho đơn hàng #${order._id.toString().slice(-6)}.`;
+
+        // Gửi cho Seller
+        if (order.consultationSellerId && order.consultationSellerId.fcmToken) {
+            await safeNotify(order.consultationSellerId.fcmToken, {
+                title: notificationTitle,
+                body: `${notificationBody} Vui lòng chuẩn bị hàng để giao.`,
+                data: { orderId: order._id.toString(), type: 'order_confirmed_by_customer' }
+            });
+        }
+        await Notification.create({
+            user: order.consultationSellerId._id,
+            title: notificationTitle,
+            message: `${notificationBody} Vui lòng chuẩn bị hàng để giao.`,
+            type: 'order',
+            data: { orderId: order._id.toString() }
+        });
+
+        // Gửi cho Shipper
+        if (order.shipper && order.shipper.fcmToken) {
+            await safeNotify(order.shipper.fcmToken, {
+                title: notificationTitle,
+                body: `${notificationBody} Vui lòng bắt đầu quy trình giao hàng.`,
+                data: { orderId: order._id.toString(), type: 'order_confirmed_by_customer' }
+            });
+        }
+        await Notification.create({
+            user: order.shipper._id,
+            title: notificationTitle,
+            message: `${notificationBody} Vui lòng bắt đầu quy trình giao hàng.`,
+            type: 'order',
+            data: { orderId: order._id.toString() }
+        });
 
         res.status(200).json({ message: "Đã xác nhận đơn hàng thành công!", order });
     } catch (error) {
-        res.status(500).json({ message: "Lỗi khi xác nhận đơn hàng." });
+        console.error("Lỗi khi xác nhận đơn hàng đã báo giá:", error);
+        res.status(500).json({ message: "Lỗi server khi xác nhận đơn hàng." });
     }
 };
