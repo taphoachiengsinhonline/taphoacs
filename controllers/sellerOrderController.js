@@ -45,19 +45,13 @@ exports.priceAndUpdateOrder = async (req, res) => {
         const enrichedItems = [];
         const sellerCommissionRate = req.user.commissionRate || 0;
         
-        // --- BẮT ĐẦU SỬA ĐỔI ---
-
-        // Lấy thông tin đầy đủ của sản phẩm tư vấn gốc
         const originalConsultationItem = order.items[0];
         const originalProduct = await Product.findById(originalConsultationItem.productId).select('category images');
         if (!originalProduct) {
             throw new Error("Không tìm thấy sản phẩm gốc để lấy thông tin.");
         }
-        // Lấy các thông tin cần thiết từ sản phẩm gốc
         const defaultCategoryId = originalProduct.category;
         const defaultImages = originalProduct.images;
-
-        // --- KẾT THÚC SỬA ĐỔI ---
 
         for (const item of items) {
             let currentProductId = item.productId;
@@ -71,20 +65,17 @@ exports.priceAndUpdateOrder = async (req, res) => {
                     name: item.name,
                     price: item.price,
                     seller: sellerId,
-                    // --- ÁP DỤNG CÁC YÊU CẦU MỚI ---
-                    category: defaultCategoryId,    // 1. Lấy đúng category
-                    stock: 5000,                    // 2. Stock mặc định 5000
-                    weight: 10,                     // 3. Trọng lượng mặc định 10g
-                    images: defaultImages,          // 4. Copy hình ảnh từ sản phẩm gốc
-                    description: item.name,         // 5. Mô tả là tên sản phẩm
-                    // ---
+                    category: defaultCategoryId,
+                    stock: 5000,
+                    weight: 10,
+                    images: defaultImages,
+                    description: item.name,
                     approvalStatus: 'approved',
                     requiresConsultation: false,
                 });
                 
                 const savedProduct = await newCustomProduct.save();
                 currentProductId = savedProduct._id;
-                console.log(`Đã tạo sản phẩm tùy chỉnh mới với ID: ${currentProductId}`);
             }
             
             if (!currentProductId) {
@@ -104,21 +95,53 @@ exports.priceAndUpdateOrder = async (req, res) => {
             });
         }
         
-        // Cập nhật đơn hàng (logic giữ nguyên)
+        // Tính lại phí ship dựa trên đơn hàng mới
+        const { shippingFeeActual, shippingFeeCustomerPaid } = await shippingController.calculateFeeForOrder(
+            order.shippingLocation,
+            itemsTotal
+        );
+
+        // Cập nhật tất cả thông tin cho đơn hàng
         order.items = enrichedItems;
         order.sellerNotes = sellerNotes;
-        const shippingFee = order.shippingFeeCustomerPaid || 0;
+        order.shippingFeeActual = shippingFeeActual;
+        order.shippingFeeCustomerPaid = shippingFeeCustomerPaid;
         const voucherDiscount = order.voucherDiscount || 0;
-        order.total = itemsTotal + shippingFee - voucherDiscount;
+        order.total = itemsTotal + shippingFeeCustomerPaid - voucherDiscount;
         order.status = 'Chờ khách xác nhận';
 
         const updatedOrder = await order.save();
+        
+        // Tạo tin nhắn báo giá trong cuộc trò chuyện
+        const conversation = await Conversation.findOne({
+            productId: originalConsultationItem.productId,
+            customerId: order.user,
+            sellerId: sellerId,
+        });
 
-        // Gửi thông báo cho khách hàng (logic giữ nguyên)
+        if (conversation) {
+            const quoteMessage = new Message({
+                conversationId: conversation._id,
+                senderId: sellerId,
+                messageType: 'quote_summary',
+                content: `Tôi đã tạo báo giá mới cho bạn. Tổng số tiền là ${order.total.toLocaleString()}đ.`,
+                data: {
+                    orderId: updatedOrder._id.toString(),
+                    itemsTotal: itemsTotal,
+                    shippingFee: shippingFeeCustomerPaid,
+                    total: order.total
+                }
+            });
+            await quoteMessage.save();
+            conversation.updatedAt = new Date();
+            await conversation.save();
+        }
+
+        // Gửi thông báo đẩy cho khách hàng
         const customer = await User.findById(order.user).select('fcmToken');
         if (customer) {
             const title = "Bạn có báo giá mới";
-            const body = `Người bán đã gửi báo giá cho đơn hàng #${order._id.toString().slice(-6)}. Vui lòng xác nhận.`;
+            const body = `Người bán đã gửi báo giá cho đơn hàng #${order._id.toString().slice(-6)}. Vui lòng vào ứng dụng để xác nhận.`;
             
             if (customer.fcmToken) {
                 await safeNotify(customer.fcmToken, {
