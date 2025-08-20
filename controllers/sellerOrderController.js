@@ -45,43 +45,47 @@ exports.priceAndUpdateOrder = async (req, res) => {
         const enrichedItems = [];
         const sellerCommissionRate = req.user.commissionRate || 0;
         
-        // Lấy category từ sản phẩm tư vấn gốc để gán cho sản phẩm tùy chỉnh mới
+        // --- BẮT ĐẦU SỬA ĐỔI ---
+
+        // Lấy thông tin đầy đủ của sản phẩm tư vấn gốc
         const originalConsultationItem = order.items[0];
-        const originalProduct = await Product.findById(originalConsultationItem.productId).select('category');
+        const originalProduct = await Product.findById(originalConsultationItem.productId).select('category images');
         if (!originalProduct) {
-            throw new Error("Không tìm thấy sản phẩm gốc để lấy thông tin danh mục.");
+            throw new Error("Không tìm thấy sản phẩm gốc để lấy thông tin.");
         }
+        // Lấy các thông tin cần thiết từ sản phẩm gốc
         const defaultCategoryId = originalProduct.category;
+        const defaultImages = originalProduct.images;
+
+        // --- KẾT THÚC SỬA ĐỔI ---
 
         for (const item of items) {
             let currentProductId = item.productId;
 
-            // --- LOGIC MỚI NẰM Ở ĐÂY ---
             if (item.isCustom && !currentProductId) {
                 if (!item.name || item.price == null) {
                     return res.status(400).json({ message: `Sản phẩm tùy chỉnh thiếu tên hoặc giá.` });
                 }
                 
-                // Tạo sản phẩm mới
                 const newCustomProduct = new Product({
                     name: item.name,
                     price: item.price,
                     seller: sellerId,
-                    category: defaultCategoryId, // Lấy category từ sản phẩm gốc
-                    approvalStatus: 'approved', // Tự động duyệt
-                    // Các giá trị mặc định khác
-                    stock: 0,
-                    weight: 0,
-                    description: '(Sản phẩm được tạo từ tư vấn, cần cập nhật chi tiết)',
-                    images: [],
+                    // --- ÁP DỤNG CÁC YÊU CẦU MỚI ---
+                    category: defaultCategoryId,    // 1. Lấy đúng category
+                    stock: 5000,                    // 2. Stock mặc định 5000
+                    weight: 10,                     // 3. Trọng lượng mặc định 10g
+                    images: defaultImages,          // 4. Copy hình ảnh từ sản phẩm gốc
+                    description: item.name,         // 5. Mô tả là tên sản phẩm
+                    // ---
+                    approvalStatus: 'approved',
                     requiresConsultation: false,
                 });
                 
                 const savedProduct = await newCustomProduct.save();
-                currentProductId = savedProduct._id; // Lấy ID của sản phẩm vừa tạo
+                currentProductId = savedProduct._id;
                 console.log(`Đã tạo sản phẩm tùy chỉnh mới với ID: ${currentProductId}`);
             }
-            // --- KẾT THÚC LOGIC MỚI ---
             
             if (!currentProductId) {
                  return res.status(400).json({ message: `Sản phẩm "${item.name}" không có ID hợp lệ.` });
@@ -91,17 +95,16 @@ exports.priceAndUpdateOrder = async (req, res) => {
             itemsTotal += itemValue;
 
             enrichedItems.push({
-                productId: currentProductId, // Luôn có productId hợp lệ
+                productId: currentProductId,
                 name: item.name,
                 price: item.price,
                 quantity: item.quantity,
                 sellerId: sellerId,
                 commissionAmount: itemValue * (sellerCommissionRate / 100)
-                // không cần isCustom nữa vì giờ nó đã là sản phẩm thật
             });
         }
         
-        // Cập nhật đơn hàng
+        // Cập nhật đơn hàng (logic giữ nguyên)
         order.items = enrichedItems;
         order.sellerNotes = sellerNotes;
         const shippingFee = order.shippingFeeCustomerPaid || 0;
@@ -111,7 +114,7 @@ exports.priceAndUpdateOrder = async (req, res) => {
 
         const updatedOrder = await order.save();
 
-        // Gửi thông báo cho khách hàng
+        // Gửi thông báo cho khách hàng (logic giữ nguyên)
         const customer = await User.findById(order.user).select('fcmToken');
         if (customer) {
             const title = "Bạn có báo giá mới";
@@ -133,6 +136,6 @@ exports.priceAndUpdateOrder = async (req, res) => {
 
     } catch (error) {
         console.error("Lỗi khi cập nhật và báo giá đơn hàng:", error);
-        res.status(500).json({ message: "Lỗi server khi cập nhật đơn hàng." });
+        res.status(500).json({ message: error.message || "Lỗi server khi cập nhật đơn hàng." });
     }
 };
