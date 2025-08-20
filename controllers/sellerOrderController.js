@@ -50,12 +50,13 @@ exports.priceAndUpdateOrder = async (req, res) => {
         const sellerCommissionRate = req.user.commissionRate || 0;
         
         const originalConsultationItem = order.items[0];
-        const originalProduct = await Product.findById(originalConsultationItem.productId).select('category images');
+        const originalProduct = await Product.findById(originalConsultationItem.productId).select('category images saleTimeFrames');
         if (!originalProduct) {
             throw new Error("Không tìm thấy sản phẩm gốc để lấy thông tin.");
         }
         const defaultCategoryId = originalProduct.category;
         const defaultImages = originalProduct.images;
+        const defaultSaleTimeFrames = originalProduct.saleTimeFrames;
 
         for (const item of items) {
             let currentProductId = item.productId;
@@ -74,6 +75,7 @@ exports.priceAndUpdateOrder = async (req, res) => {
                     weight: 10,
                     images: defaultImages,
                     description: item.name,
+                    saleTimeFrames: defaultSaleTimeFrames,
                     approvalStatus: 'approved',
                     requiresConsultation: false,
                 });
@@ -99,13 +101,11 @@ exports.priceAndUpdateOrder = async (req, res) => {
             });
         }
         
-        // Tính lại phí ship dựa trên đơn hàng mới
         const { shippingFeeActual, shippingFeeCustomerPaid } = await shippingController.calculateFeeForOrder(
             order.shippingLocation,
             itemsTotal
         );
 
-        // Cập nhật tất cả thông tin cho đơn hàng
         order.items = enrichedItems;
         order.sellerNotes = sellerNotes;
         order.shippingFeeActual = shippingFeeActual;
@@ -116,7 +116,6 @@ exports.priceAndUpdateOrder = async (req, res) => {
 
         const updatedOrder = await order.save();
         
-        // Tạo tin nhắn báo giá trong cuộc trò chuyện
         const conversation = await Conversation.findOne({
             productId: originalConsultationItem.productId,
             customerId: order.user,
@@ -141,7 +140,6 @@ exports.priceAndUpdateOrder = async (req, res) => {
             await conversation.save();
         }
 
-        // Gửi thông báo đẩy cho khách hàng
         const customer = await User.findById(order.user).select('fcmToken');
         if (customer) {
             const title = "Bạn có báo giá mới";
