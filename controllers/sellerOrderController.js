@@ -1,7 +1,11 @@
 const Order = require('../models/Order');
-const Product = require('../models/Product');
 const User = require('../models/User');
+const Product = require('../models/Product');
 const Notification = require('../models/Notification');
+// << TÔI ĐÃ THÊM LẠI CÁC IMPORT BỊ THIẾU Ở CÂU TRẢ LỜI TRƯỚC, GIỜ THÊM TIẾP >>
+const Message = require('../models/Message');
+const Conversation = require('../models/Conversation');
+const shippingController = require('./shippingController'); // <<< THÊM DÒNG NÀY VÀO ĐÂY
 const { safeNotify } = require('../utils/notificationMiddleware');
 
 // Seller lấy danh sách yêu cầu tư vấn
