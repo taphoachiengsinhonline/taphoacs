@@ -87,6 +87,10 @@ const orderSchema = new mongoose.Schema({
         ],
         default: 'Chờ xác nhận'
   },
+  customTitle: {
+      type: String,
+      trim: true
+  },
   isConsultationOrder: {
         type: Boolean,
         default: false
