@@ -13,7 +13,9 @@ const RETRY_DELAY = 35000;
 const MODAL_TIMEOUT = 30000;
 
 async function assignOrderToNearestShipper(orderId, retryCount = 0) {
-  console.log(`[LOG DEBUG assignShipper] - BẮT ĐẦU CHẠY. OrderId: ${orderId}, Lần thử: ${retryCount}`);
+  // Thêm log để xem kiểu dữ liệu của orderId
+  console.log(`[LOG DEBUG assignShipper] - BẮT ĐẦU CHẠY. OrderId: ${orderId} (Type: ${typeof orderId}), Lần thử: ${retryCount}`);
+  
   try {
     const order = await Order.findById(orderId);
     if (!order || order.status !== 'Chờ xác nhận') {
