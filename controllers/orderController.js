@@ -118,7 +118,6 @@ exports.createOrder = async (req, res) => {
         } else {
             const enrichedItems = [];
             let itemsTotal = 0;
-
             for (const item of items) {
                 const product = await Product.findById(item.productId).populate('seller').session(session);
                 if (!product) throw new Error(`Sản phẩm "${item.name}" không còn tồn tại.`);
@@ -188,20 +187,25 @@ exports.createOrder = async (req, res) => {
         session.endSession();
     }
 
+    // --- SỬA LỖI RACE CONDITION Ở ĐÂY ---
     if (savedOrder) {
         console.log(`[createOrder] Bắt đầu tác vụ nền cho đơn hàng #${savedOrder._id}.`);
-        if (savedOrder.isConsultationOrder) {
-            assignOrderToNearestShipper(savedOrder._id).catch(err => {
-                console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn tư vấn #${savedOrder._id}:`, err);
-            });
-        } else {
-            Promise.all([
-                assignOrderToNearestShipper(savedOrder._id),
-                notifyAdmins(savedOrder)
-            ]).catch(err => {
-                console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn thường #${savedOrder._id}:`, err);
-            });
-        }
+        
+        // Dùng setTimeout để trì hoãn việc tìm shipper, cho DB thời gian ghi dữ liệu
+        setTimeout(() => {
+            if (savedOrder.isConsultationOrder) {
+                assignOrderToNearestShipper(savedOrder._id).catch(err => {
+                    console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn tư vấn #${savedOrder._id}:`, err);
+                });
+            } else {
+                Promise.all([
+                    assignOrderToNearestShipper(savedOrder._id),
+                    notifyAdmins(savedOrder)
+                ]).catch(err => {
+                    console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn thường #${savedOrder._id}:`, err);
+                });
+            }
+        }, 1500); // Trễ 1.5 giây
     }
 };
 
