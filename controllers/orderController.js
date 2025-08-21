@@ -123,15 +123,14 @@ exports.createOrder = async (req, res) => {
             console.log("[LOG DEBUG] Transaction đã được COMMIT thành công.");
             
             if (savedOrder) {
-                console.log("[LOG DEBUG] Chuẩn bị gọi assignOrderToNearestShipper cho order ID:", savedOrder._id);
-                try {
+                console.log("[LOG DEBUG] Chuẩn bị gọi assignOrderToNearestShipper sau 1 giây nữa cho order ID:", savedOrder._id);
+                // Thêm một khoảng trễ nhỏ để đảm bảo DB đã ghi xong
+                setTimeout(() => {
                     assignOrderToNearestShipper(savedOrder._id).catch(err => {
                         console.error(`[BACKGROUND TASK ERROR] Lỗi bên trong assignOrderToNearestShipper cho đơn tư vấn #${savedOrder._id}:`, err);
                     });
-                    console.log("[LOG DEBUG] Đã KÍCH HOẠT hàm assignOrderToNearestShipper.");
-                } catch (taskError) {
-                    console.error("[LOG DEBUG] Lỗi ngay khi gọi assignOrderToNearestShipper:", taskError);
-                }
+                }, 1000); // Trễ 1 giây (1000ms)
+                console.log("[LOG DEBUG] Đã LÊN LỊCH hàm assignOrderToNearestShipper.");
             } else {
                 console.log("[LOG DEBUG] Biến savedOrder rỗng, không thể tìm shipper.");
             }
@@ -203,21 +202,24 @@ exports.createOrder = async (req, res) => {
             console.log("[LOG DEBUG] Transaction cho đơn hàng thường đã COMMIT thành công.");
             
             if (savedOrder) {
-                console.log("[LOG DEBUG] Chuẩn bị gọi tác vụ nền cho đơn hàng thường, ID:", savedOrder._id);
-                Promise.all([
-                    assignOrderToNearestShipper(savedOrder._id),
-                    notifyAdmins(savedOrder)
-                ]).catch(err => {
-                    console.error(`[BACKGROUND TASK ERROR] Lỗi trong tác vụ nền cho đơn hàng thường #${savedOrder._id}:`, err);
-                });
-                console.log("[LOG DEBUG] Đã KÍCH HOẠT tác vụ nền cho đơn hàng thường.");
+                console.log("[LOG DEBUG] Chuẩn bị gọi tác vụ nền sau 1 giây nữa cho đơn hàng thường, ID:", savedOrder._id);
+                 // Thêm một khoảng trễ nhỏ để đảm bảo DB đã ghi xong
+                setTimeout(() => {
+                    Promise.all([
+                        assignOrderToNearestShipper(savedOrder._id),
+                        notifyAdmins(savedOrder)
+                    ]).catch(err => {
+                        console.error(`[BACKGROUND TASK ERROR] Lỗi trong tác vụ nền cho đơn hàng thường #${savedOrder._id}:`, err);
+                    });
+                }, 1000);
+                 console.log("[LOG DEBUG] Đã LÊN LỊCH tác vụ nền cho đơn hàng thường.");
             }
             
             console.log("[LOG DEBUG] Chuẩn bị gửi response 201 cho đơn hàng thường.");
             res.status(201).json({ message: 'Tạo đơn thành công', order: { ...savedOrder.toObject(), timestamps: savedOrder.timestamps } });
         }
     } catch (err) {
-        console.error("[LOG DEBUG] LỖI TRONG BLOCK TRY...CATCH:", err);
+        console.error("[LOG DEBUG] LỖI TRONG BLOCK TRY...CATCH:", err.message);
         await session.abortTransaction();
         console.log("[LOG DEBUG] Transaction đã được ABORT do lỗi.");
         if (!res.headersSent) {
