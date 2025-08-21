@@ -133,7 +133,8 @@ exports.priceAndUpdateOrder = async (req, res) => {
                     orderId: updatedOrder._id.toString(),
                     itemsTotal: itemsTotal,
                     shippingFee: shippingFeeCustomerPaid,
-                    total: order.total
+                    total: order.total,
+                    status: updatedOrder.status
                 }
             });
             await quoteMessage.save();
