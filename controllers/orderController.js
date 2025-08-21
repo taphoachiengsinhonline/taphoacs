@@ -189,8 +189,7 @@ exports.createOrder = async (req, res) => {
     if (savedOrder && savedOrder._id) {
     // ---- BẮT ĐẦU SỬA LỖI ----
     const orderIdString = savedOrder._id.toString();
-    console.log(`[createOrder] Bắt đầu tác vụ nền cho đơn hàng ID (STRING): ${orderIdString}`);
-    
+   
     // Dùng setTimeout để đảm bảo DB có thời gian ghi
     setTimeout(() => {
         if (savedOrder.isConsultationOrder) {
