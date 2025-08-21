@@ -186,21 +186,28 @@ exports.createOrder = async (req, res) => {
         }
     }
 
-    if (savedOrder) {
-        console.log(`[createOrder] Bắt đầu tác vụ nền cho đơn hàng #${savedOrder._id}.`);
+    if (savedOrder && savedOrder._id) {
+    // ---- BẮT ĐẦU SỬA LỖI ----
+    const orderIdString = savedOrder._id.toString();
+    console.log(`[createOrder] Bắt đầu tác vụ nền cho đơn hàng ID (STRING): ${orderIdString}`);
+    
+    // Dùng setTimeout để đảm bảo DB có thời gian ghi
+    setTimeout(() => {
         if (savedOrder.isConsultationOrder) {
-            assignOrderToNearestShipper(savedOrder._id).catch(err => {
-                console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn tư vấn #${savedOrder._id}:`, err);
+            assignOrderToNearestShipper(orderIdString).catch(err => {
+                console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn tư vấn #${orderIdString}:`, err);
             });
         } else {
             Promise.all([
-                assignOrderToNearestShipper(savedOrder._id),
-                notifyAdmins(savedOrder)
+                assignOrderToNearestShipper(orderIdString), // Truyền chuỗi ID
+                notifyAdmins(savedOrder) // Hàm này có thể vẫn cần object đầy đủ
             ]).catch(err => {
-                console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn thường #${savedOrder._id}:`, err);
+                console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn thường #${orderIdString}:`, err);
             });
         }
-    }
+    }, 1500); // Giữ lại độ trễ 1.5 giây để chống race condition
+    // ---- KẾT THÚC SỬA LỖI ----
+}
 };
 
 exports.acceptOrder = async (req, res) => {
