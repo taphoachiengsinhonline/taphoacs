@@ -187,13 +187,11 @@ exports.createOrder = async (req, res) => {
         session.endSession();
     }
 
-    // --- SỬA LỖI RACE CONDITION Ở ĐÂY ---
     if (savedOrder) {
         console.log(`[createOrder] Bắt đầu tác vụ nền cho đơn hàng #${savedOrder._id}.`);
-        
-        // Dùng setTimeout để trì hoãn việc tìm shipper, cho DB thời gian ghi dữ liệu
         setTimeout(() => {
             if (savedOrder.isConsultationOrder) {
+                // <<< SỬA LỖI STATUS Ở ĐÂY >>>
                 assignOrderToNearestShipper(savedOrder._id).catch(err => {
                     console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn tư vấn #${savedOrder._id}:`, err);
                 });
@@ -205,7 +203,7 @@ exports.createOrder = async (req, res) => {
                     console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn thường #${savedOrder._id}:`, err);
                 });
             }
-        }, 1500); // Trễ 1.5 giây
+        }, 1500); // Giữ timeout, nhưng sẽ sửa assign để retry nếu không tìm thấy order
     }
 };
 
