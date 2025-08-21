@@ -155,17 +155,11 @@ exports.getConversationById = async (req, res) => {
                 'isConsultationOrder': true,
             };
 
-            console.log("======================================================");
-            console.log("[DEBUG] Searching for related order with CORRECTED query:");
-            console.log(JSON.stringify(searchQuery, null, 2));
-            console.log("======================================================");
-
             relatedOrder = await Order.findOne(searchQuery)
                 .select('_id status items customTitle total')
                 .sort({ createdAt: -1 })
                 .lean();
 
-            console.log("[DEBUG] Found related order:", relatedOrder);
         }
         // --- KẾT THÚC SỬA LỖI LOGIC ---
 
