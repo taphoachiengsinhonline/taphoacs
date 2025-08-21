@@ -112,13 +112,19 @@ exports.priceAndUpdateOrder = async (req, res) => {
         }
 
         // Cập nhật các trường khác như cũ
-        order.items = enrichedItems; // `enrichedItems` là mảng các sản phẩm đã được báo giá
+        order.items = enrichedItems; 
+        
+        // Gán các thông tin khác
         order.sellerNotes = sellerNotes;
         order.shippingFeeActual = shippingFeeActual;
         order.shippingFeeCustomerPaid = shippingFeeCustomerPaid;
-        const voucherDiscount = order.voucherDiscount || 0;
-        order.total = itemsTotal + shippingFeeCustomerPaid - voucherDiscount;
+        order.total = itemsTotal + shippingFeeCustomerPaid - (order.voucherDiscount || 0);
         order.status = 'Chờ khách xác nhận';
+        
+        // LƯU TIÊU ĐỀ MỚI VÀO TRƯỜNG RIÊNG
+        if (quoteTitle && quoteTitle.trim() !== '') {
+            order.customTitle = quoteTitle.trim();
+        }
 
         const updatedOrder = await order.save();
         
