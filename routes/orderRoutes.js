@@ -26,6 +26,7 @@ router.post('/', verifyToken, orderController.createOrder);
 
 // === CÁC ROUTE ĐỘNG (/:id) - PHẢI ĐẶT Ở CUỐI CÙNG ===
 
+router.get('/:id/chat-status', verifyToken, orderController.getOrderAndChatStatus);
 // Lấy chi tiết đơn hàng (dùng cho cả user, admin, shipper)
 router.get('/:id',        verifyToken,           orderController.getOrderById);
 
