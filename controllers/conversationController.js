@@ -139,19 +139,24 @@ exports.getConversationById = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện' });
         }
 
-        const { productId, customerId, sellerId } = conversation;
+        // --- BẮT ĐẦU SỬA LỖI LOGIC ---
+
+        const productIdValue = conversation.productId?._id;
+        const customerIdValue = conversation.customerId;
+        const sellerIdValue = conversation.sellerId?._id;
+        
         let relatedOrder = null;
-        if (productId?._id && customerId && sellerId?._id) {
-            // --- BẮT ĐẦU THÊM LOG DEBUG ---
+        if (productIdValue && customerIdValue && sellerIdValue) {
+            
             const searchQuery = {
-                'items.productId': productId,
-                'user': customerId,
-                'consultationSellerId': sellerId,
+                'items.productId': productIdValue, // << CHỈ DÙNG _id
+                'user': customerIdValue,
+                'consultationSellerId': sellerIdValue, // << CHỈ DÙNG _id
                 'isConsultationOrder': true,
             };
 
             console.log("======================================================");
-            console.log("[DEBUG] Searching for related order with query:");
+            console.log("[DEBUG] Searching for related order with CORRECTED query:");
             console.log(JSON.stringify(searchQuery, null, 2));
             console.log("======================================================");
 
@@ -161,8 +166,9 @@ exports.getConversationById = async (req, res) => {
                 .lean();
 
             console.log("[DEBUG] Found related order:", relatedOrder);
-            // --- KẾT THÚC THÊM LOG DEBUG ---
         }
+        // --- KẾT THÚC SỬA LỖI LOGIC ---
+
         conversation.relatedOrder = relatedOrder;
         
         res.json(conversation);
