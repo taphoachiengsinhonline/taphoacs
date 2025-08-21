@@ -13,12 +13,18 @@ const RETRY_DELAY = 35000;
 const MODAL_TIMEOUT = 30000;
 
 async function assignOrderToNearestShipper(orderId, retryCount = 0) {
-  
+  console.log(`[LOG DEBUG assignShipper] - BẮT ĐẦU CHẠY. OrderId: ${orderId}, Lần thử: ${retryCount}`);
   try {
     const order = await Order.findById(orderId);
     if (!order || order.status !== 'Chờ xác nhận') {
+      console.log(`[LOG DEBUG assignShipper] - Dừng: Không tìm thấy đơn hàng ${orderId}.`);
      
       return;
+    }
+    const validStatuses = ['Chờ xác nhận', 'Chờ tư vấn'];
+    if (!validStatuses.includes(order.status)) {
+       console.log(`[LOG DEBUG assignShipper] - Dừng: Đơn hàng ${orderId} có trạng thái "${order.status}", không hợp lệ để tìm shipper.`);
+       return;
     }
 
     if (retryCount >= MAX_RETRY) {
