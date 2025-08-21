@@ -54,6 +54,7 @@ exports.createOrder = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
     let savedOrder;
+    let conversationId; // Biến để lưu conversationId
 
     try {
         const {
@@ -86,7 +87,7 @@ exports.createOrder = async (req, res) => {
                     sellerId: productForCheck.seller._id 
                 }],
                 total: 0,
-                status: 'Chờ xác nhận', // Trạng thái ban đầu để shipper nhận
+                status: 'Chờ tư vấn',
                 isConsultationOrder: true,
                 consultationSellerId: productForCheck.seller._id,
                 customerName, phone, shippingAddress, shippingLocation,
@@ -98,6 +99,7 @@ exports.createOrder = async (req, res) => {
             res.status(201).json({ 
                 message: 'Yêu cầu của bạn đã được tạo và đang tìm shipper.', 
                 order: savedOrder,
+                conversationId: conversationId
             });
 
         } else {
@@ -174,13 +176,10 @@ exports.createOrder = async (req, res) => {
         session.endSession();
     }
 
-    if (savedOrder) {
-        console.log(`[createOrder] Bắt đầu tác vụ nền cho đơn hàng #${savedOrder._id}.`);
-        Promise.all([
-            assignOrderToNearestShipper(savedOrder._id),
-            notifyAdmins(savedOrder)
-        ]).catch(err => {
-            console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn hàng #${savedOrder._id}:`, err);
+    if (savedOrder && savedOrder.isConsultationOrder) {
+        // Tìm shipper ngay sau khi tạo đơn
+        assignOrderToNearestShipper(savedOrder._id).catch(err => {
+            console.error(`[createOrder] Lỗi khi tìm shipper cho đơn tư vấn #${savedOrder._id}:`, err);
         });
     }
 };
@@ -203,20 +202,17 @@ exports.acceptOrder = async (req, res) => {
     }
     
     if (order.isConsultationOrder) {
-        // --- BẮT ĐẦU SỬA LỖI LOGIC ---
-
-        // Lấy ID một cách an toàn
-        const customerId = order.user?._id;
-        const sellerId = order.consultationSellerId?._id;
-        const productId = order.items?.[0]?.productId;
-
-        // Kiểm tra xem tất cả ID có tồn tại không
-        if (!customerId || !sellerId || !productId) {
-            console.error('[Accept Order Error] Thiếu thông tin quan trọng trong đơn hàng tư vấn:', { customerId, sellerId, productId, orderId: order._id });
-            throw new Error('Đơn hàng tư vấn bị thiếu thông tin khách hàng, người bán hoặc sản phẩm.');
-        }
-
-        const conversation = await Conversation.findOneAndUpdate(
+            // Chỉ chấp nhận được đơn ở trạng thái "Chờ tư vấn"
+            if (order.status !== 'Chờ tư vấn') {
+                return res.status(400).json({ message: 'Yêu cầu tư vấn này đã có shipper nhận.' });
+            }
+            order.status = 'Đang tư vấn'; // << STATUS MỚI
+            order.shipper = shipper._id;
+            order.timestamps.acceptedAt = new Date();
+            const updatedOrder = await order.save();
+            
+            // Gửi thông báo "Mở khóa chat"
+            const conversation = await Conversation.findOne(
             { productId, customerId, sellerId },
             { $set: { updatedAt: new Date() } },
             { new: true, upsert: true, runValidators: true }
@@ -233,12 +229,12 @@ exports.acceptOrder = async (req, res) => {
         // Logic gửi thông báo giữ nguyên như cũ, vì nó đã dùng các object đã populate
         // Thông báo cho khách hàng
         if (order.user && order.user.fcmToken) {
-            safeNotify(order.user.fcmToken, { 
-                title: "Bắt đầu tư vấn", 
-                body: `Shipper đã nhận yêu cầu. Bạn có thể bắt đầu trò chuyện với ${order.consultationSellerId.name}.`,
-                data: { type: 'start_consultation', conversationId: conversationId }
-            });
-        }
+                safeNotify(order.user.fcmToken, { 
+                    title: "Đã tìm thấy người hỗ trợ!", 
+                    body: `Bạn có thể bắt đầu trò chuyện với ${order.consultationSellerId.name}.`,
+                    data: { type: 'consultation_unlocked', conversationId: conversationId }
+                });
+            }
         await Notification.create({ 
             user: order.user._id, 
             title: "Bắt đầu tư vấn", 
@@ -248,13 +244,13 @@ exports.acceptOrder = async (req, res) => {
         });
 
         // Thông báo cho seller
-        if (order.consultationSellerId && order.consultationSellerId.fcmToken) {
-            safeNotify(order.consultationSellerId.fcmToken, { 
-                title: "Khách hàng cần tư vấn", 
-                body: `Khách hàng ${order.user.name} đang chờ bạn tư vấn.`,
-                data: { type: 'new_consultation_request', conversationId: conversationId }
-            });
-        }
+       if (order.consultationSellerId && order.consultationSellerId.fcmToken) {
+                safeNotify(order.consultationSellerId.fcmToken, { 
+                    title: "Yêu cầu tư vấn mới", 
+                    body: `Khách hàng ${order.user.name} đang chờ bạn.`,
+                    data: { type: 'consultation_unlocked', conversationId: conversationId }
+                });
+            }
         await Notification.create({ 
             user: order.consultationSellerId._id, 
             title: "Khách hàng cần tư vấn", 
