@@ -187,24 +187,27 @@ exports.createOrder = async (req, res) => {
         session.endSession();
     }
 
-    if (savedOrder) {
-        console.log(`[createOrder] Bắt đầu tác vụ nền cho đơn hàng #${savedOrder._id}.`);
-        setTimeout(() => {
-            if (savedOrder.isConsultationOrder) {
-                // <<< SỬA LỖI STATUS Ở ĐÂY >>>
-                assignOrderToNearestShipper(savedOrder._id).catch(err => {
-                    console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn tư vấn #${savedOrder._id}:`, err);
-                });
-            } else {
-                Promise.all([
-                    assignOrderToNearestShipper(savedOrder._id),
-                    notifyAdmins(savedOrder)
-                ]).catch(err => {
-                    console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn thường #${savedOrder._id}:`, err);
-                });
-            }
-        }, 1500); // Giữ timeout, nhưng sẽ sửa assign để retry nếu không tìm thấy order
+    // --- SỬA LỖI RACE CONDITION Ở ĐÂY ---
+    if (savedOrder && savedOrder._id) {
+    // Chuyển ObjectId thành chuỗi để phá vỡ context của session
+    const orderIdString = savedOrder._id.toString(); 
+
+    console.log(`[createOrder] Bắt đầu tác vụ nền cho đơn hàng ID (string): ${orderIdString}`);
+    
+    // Bỏ setTimeout vì đây có thể không phải là vấn đề
+    if (savedOrder.isConsultationOrder) {
+        assignOrderToNearestShipper(orderIdString).catch(err => {
+            console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn tư vấn #${orderIdString}:`, err);
+        });
+    } else {
+        Promise.all([
+            assignOrderToNearestShipper(orderIdString),
+            notifyAdmins(savedOrder) // notifyAdmins có thể vẫn dùng object
+        ]).catch(err => {
+            console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn thường #${orderIdString}:`, err);
+        });
     }
+}
 };
 
 exports.acceptOrder = async (req, res) => {
