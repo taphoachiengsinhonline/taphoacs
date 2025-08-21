@@ -71,40 +71,51 @@ exports.createOrder = async (req, res) => {
         if (!phone || !shippingAddress || !shippingLocation) {
             throw new Error('Thiếu thông tin nhận hàng');
         }
-        
-        // --- LOGIC MỚI: PHÂN NHÁNH ĐƠN HÀNG THƯỜNG VÀ ĐƠN TƯ VẤN ---
+
         const firstItemInfo = items[0];
         const productForCheck = await Product.findById(firstItemInfo.productId).populate('seller').session(session);
-        if (!productForCheck) throw new Error(`Sản phẩm không còn tồn tại.`);
+        if (!productForCheck) {
+            throw new Error(`Sản phẩm không còn tồn tại.`);
+        }
         
         if (productForCheck.requiresConsultation) {
-            // Đây là đơn hàng tư vấn
             const consultationOrder = new Order({
                 user: userId,
-                items: [{ 
-                    productId: productForCheck._id, 
-                    name: `Yêu cầu tư vấn: ${productForCheck.name}`, 
+                items: [{
+                    productId: productForCheck._id,
+                    name: `Yêu cầu tư vấn: ${productForCheck.name}`,
                     price: 0,
-                    quantity: 1, 
-                    sellerId: productForCheck.seller._id 
+                    quantity: 1,
+                    sellerId: productForCheck.seller._id
                 }],
                 total: 0,
-                status: 'Chờ xác nhận', // Trạng thái ban đầu để shipper nhận
+                status: 'Chờ tư vấn',
                 isConsultationOrder: true,
                 consultationSellerId: productForCheck.seller._id,
                 customerName, phone, shippingAddress, shippingLocation,
             });
 
             savedOrder = await consultationOrder.save({ session });
+            
+            const conversation = await Conversation.findOneAndUpdate(
+                {
+                    productId: productForCheck._id,
+                    customerId: userId,
+                    sellerId: productForCheck.seller._id
+                },
+                { $set: { updatedAt: new Date() } },
+                { new: true, upsert: true, session: session }
+            );
+            
             await session.commitTransaction();
             
-            res.status(201).json({ 
-                message: 'Yêu cầu của bạn đã được tạo và đang tìm shipper.', 
+            res.status(201).json({
+                message: 'Yêu cầu của bạn đã được tạo và đang tìm shipper.',
                 order: savedOrder,
+                conversationId: conversation._id.toString()
             });
 
         } else {
-            // Đây là đơn hàng thường, xử lý như cũ
             const enrichedItems = [];
             let itemsTotal = 0;
 
@@ -179,12 +190,18 @@ exports.createOrder = async (req, res) => {
 
     if (savedOrder) {
         console.log(`[createOrder] Bắt đầu tác vụ nền cho đơn hàng #${savedOrder._id}.`);
-        Promise.all([
-            assignOrderToNearestShipper(savedOrder._id),
-            notifyAdmins(savedOrder)
-        ]).catch(err => {
-            console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn hàng #${savedOrder._id}:`, err);
-        });
+        if (savedOrder.isConsultationOrder) {
+            assignOrderToNearestShipper(savedOrder._id).catch(err => {
+                console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn tư vấn #${savedOrder._id}:`, err);
+            });
+        } else {
+            Promise.all([
+                assignOrderToNearestShipper(savedOrder._id),
+                notifyAdmins(savedOrder)
+            ]).catch(err => {
+                console.error(`[createOrder] Lỗi trong tác vụ nền cho đơn thường #${savedOrder._id}:`, err);
+            });
+        }
     }
 };
 
