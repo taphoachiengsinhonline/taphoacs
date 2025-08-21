@@ -126,19 +126,30 @@ exports.priceAndUpdateOrder = async (req, res) => {
         });
 
         if (conversation) {
+            // --- BẮT ĐẦU SỬA Ở ĐÂY ---
             const quoteMessage = new Message({
                 conversationId: conversation._id,
                 senderId: sellerId,
                 messageType: 'quote_summary',
-                content: `Báo giá cho đơn hàng #${updatedOrder._id.toString().slice(-6)} từ người bán. Tổng số tiền: ${order.total.toLocaleString()}đ.`,
+                // Sửa lại content mặc định
+                content: `Đơn hàng #${updatedOrder._id.toString().slice(-6)}. Tổng số tiền: ${order.total.toLocaleString()}đ.`,
                 data: {
                     orderId: updatedOrder._id.toString(),
                     itemsTotal: itemsTotal,
                     shippingFee: shippingFeeCustomerPaid,
                     total: order.total,
-                    status: updatedOrder.status
+                    status: updatedOrder.status,
+                    // THÊM 2 TRƯỜNG MỚI
+                    quoteTitle: order.customTitle || `Báo giá cho ${order.customerName}`, // Gửi kèm tiêu đề
+                    items: enrichedItems.map(item => ({ // Gửi kèm danh sách sản phẩm đã được rút gọn
+                        name: item.name,
+                        price: item.price,
+                        quantity: item.quantity
+                    }))
                 }
             });
+            // --- KẾT THÚC SỬA Ở ĐÂY ---
+
             await quoteMessage.save();
             conversation.updatedAt = new Date();
             await conversation.save();
