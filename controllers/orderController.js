@@ -319,19 +319,25 @@ exports.updateOrderStatusByShipper = async (req, res) => {
     try {
         const { status, cancelReason } = req.body;
         const orderId = req.params.id;
+
         const order = await Order.findOne({ _id: orderId, shipper: req.user._id }).populate('user', 'fcmToken');
+
         if (!order) {
             return res.status(404).json({ message: 'Đơn hàng không tồn tại hoặc bạn không phải shipper của đơn này.' });
         }
+
         const validTransitions = {
             'Đang xử lý': ['Đang giao', 'Đã huỷ'],
             'Đang giao': ['Đã giao', 'Đã huỷ']
         };
+
         if (!validTransitions[order.status]?.includes(status)) {
             return res.status(400).json({ message: `Không thể chuyển từ trạng thái "${order.status}" sang "${status}".` });
         }
+
         const now = new Date();
         order.status = status;
+
         if (status === 'Đang giao') {
             order.timestamps.deliveringAt = now;
         } else if (status === 'Đã giao') {
@@ -340,6 +346,7 @@ exports.updateOrderStatusByShipper = async (req, res) => {
             order.timestamps.canceledAt = now;
             order.cancelReason = cancelReason || 'Shipper đã hủy đơn';
         }
+
         const updatedOrder = await order.save();
         if (order.user) {
             let title = '';
@@ -371,9 +378,36 @@ exports.updateOrderStatusByShipper = async (req, res) => {
                 });
             }
         }
-        if (status === 'Đã giao') {
+       if (status === 'Đã giao') {
             await processOrderCompletionForFinance(updatedOrder._id);
+
+            // --- BẮT ĐẦU THÊM MỚI ---
+            // Nếu đây là đơn hàng tư vấn, cập nhật lại tin nhắn báo giá
+            if (updatedOrder.isConsultationOrder) {
+                await Message.findOneAndUpdate(
+                    { "data.orderId": updatedOrder._id.toString(), messageType: 'quote_summary' },
+                    { 
+                        $set: { "data.status": "Đã giao" },
+                        content: `Đơn hàng đã được giao thành công. Tổng tiền: ${updatedOrder.total.toLocaleString()}đ.`
+                    }
+                );
+                console.log(`[Message Update] Đã cập nhật tin nhắn báo giá cho đơn hàng ${updatedOrder._id} thành 'Đã giao'.`);
+            }
+            // --- KẾT THÚC THÊM MỚI ---
         }
+        
+        // --- THÊM LOGIC CẬP NHẬT TIN NHẮN KHI HỦY ---
+        if (status === 'Đã huỷ' && updatedOrder.isConsultationOrder) {
+            await Message.findOneAndUpdate(
+                { "data.orderId": updatedOrder._id.toString(), messageType: 'quote_summary' },
+                { 
+                    $set: { "data.status": "Đã huỷ" },
+                    content: `Đơn hàng đã bị hủy. Lý do: ${updatedOrder.cancelReason}`
+                }
+            );
+            console.log(`[Message Update] Đã cập nhật tin nhắn báo giá cho đơn hàng ${updatedOrder._id} thành 'Đã huỷ'.`);
+        }
+
         res.json({ message: 'Cập nhật trạng thái thành công', order: updatedOrder });
     } catch (error) {
         console.error(`Lỗi khi shipper cập nhật trạng thái:`, error);
