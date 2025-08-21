@@ -26,7 +26,7 @@ exports.getConsultationRequests = async (req, res) => {
 exports.priceAndUpdateOrder = async (req, res) => {
     try {
         const { id: orderId } = req.params;
-        const { items, sellerNotes } = req.body;
+        const { items, sellerNotes, quoteTitle } = req.body;
         const sellerId = req.user._id;
 
         if (!Array.isArray(items) || items.length === 0) {
@@ -105,8 +105,14 @@ exports.priceAndUpdateOrder = async (req, res) => {
             itemsTotal
         );
 
-        // Cập nhật tất cả thông tin cho đơn hàng
-        order.items = enrichedItems;
+         // THAY ĐỔI TÊN CỦA "SẢN PHẨM" GỐC TRONG ĐƠN HÀNG
+        // Nếu seller có nhập title mới, dùng nó. Nếu không, giữ tên cũ.
+       if (quoteTitle && quoteTitle.trim() !== '') {
+            order.items[0].name = quoteTitle.trim();
+        }
+
+        // Cập nhật các trường khác như cũ
+        order.items = enrichedItems; // `enrichedItems` là mảng các sản phẩm đã được báo giá
         order.sellerNotes = sellerNotes;
         order.shippingFeeActual = shippingFeeActual;
         order.shippingFeeCustomerPaid = shippingFeeCustomerPaid;
@@ -128,7 +134,8 @@ exports.priceAndUpdateOrder = async (req, res) => {
                 conversationId: conversation._id,
                 senderId: sellerId,
                 messageType: 'quote_summary',
-                content: `Tôi đã tạo báo giá mới cho bạn. Tổng số tiền là ${order.total.toLocaleString()}đ.`,
+                // SỬA LẠI CONTENT CỦA TIN NHẮN
+                content: `Báo giá cho đơn hàng #${updatedOrder._id.toString().slice(-6)} từ người bán. Tổng số tiền: ${order.total.toLocaleString()}đ.`,
                 data: {
                     orderId: updatedOrder._id.toString(),
                     itemsTotal: itemsTotal,
