@@ -150,13 +150,30 @@ exports.getSellerOrders = async (req, res) => {
         const sellerId = req.user._id;
         
         const orders = await Order.find({ 'items.sellerId': sellerId })
-            .select('customerName total status timestamps.createdAt items.name items.price items.quantity')
+            // Lấy thêm các trường cần thiết để tính toán
+            .select('customerName total status timestamps items') 
             .populate('user', 'name')
             .sort({ _id: -1 })
-            .lean();
+            .lean(); // Dùng .lean() để dễ dàng thêm thuộc tính
+
+        // TÍNH TOÁN LẠI DOANH THU CHO SELLER
+        const ordersWithSellerRevenue = orders.map(order => {
+            // Lọc ra các item của seller này trong đơn hàng
+            const sellerItems = order.items.filter(item => item.sellerId.equals(sellerId));
             
-        res.json(orders);
+            // Tính tổng tiền hàng của seller trong đơn hàng đó
+            const sellerItemsTotal = sellerItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            
+            // Trả về object order mới với trường `sellerRevenue`
+            return {
+                ...order,
+                sellerRevenue: sellerItemsTotal // << TRƯỜNG MỚI
+            };
+        });
+            
+        res.json(ordersWithSellerRevenue);
     } catch (error) {
+        console.error("Lỗi khi lấy đơn hàng của Seller:", error);
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
