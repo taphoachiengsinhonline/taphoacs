@@ -54,6 +54,7 @@ const notifyAdmins = async (order) => {
 };
 
 exports.createOrder = async (req, res) => {
+    console.log("[LOG DEBUG] ========= BẮT ĐẦU CREATE ORDER =========");
     const session = await mongoose.startSession();
     session.startTransaction();
     
@@ -64,6 +65,8 @@ exports.createOrder = async (req, res) => {
         } = req.body;
         const userId = req.user._id;
 
+        console.log("[LOG DEBUG] Request body received for user:", userId);
+
         if (!Array.isArray(items) || items.length === 0) {
             throw new Error('Giỏ hàng không được để trống');
         }
@@ -72,15 +75,20 @@ exports.createOrder = async (req, res) => {
         }
 
         const firstItemInfo = items[0];
+        console.log("[LOG DEBUG] First item productId:", firstItemInfo.productId);
+
         const productForCheck = await Product.findById(firstItemInfo.productId).populate('seller').session(session);
         if (!productForCheck || !productForCheck.seller?._id) {
             throw new Error(`Sản phẩm hoặc người bán không hợp lệ.`);
         }
+        console.log("[LOG DEBUG] Product found:", productForCheck.name);
 
         let savedOrder;
         let conversationId;
 
         if (productForCheck.requiresConsultation) {
+            console.log("[LOG DEBUG] Đây là đơn hàng TƯ VẤN.");
+            
             const consultationOrder = new Order({
                 user: new mongoose.Types.ObjectId(userId),
                 items: [{
@@ -97,6 +105,7 @@ exports.createOrder = async (req, res) => {
                 customerName, phone, shippingAddress, shippingLocation,
             });
             savedOrder = await consultationOrder.save({ session });
+            console.log("[LOG DEBUG] Đơn hàng tư vấn đã được lưu vào DB (chưa commit), ID:", savedOrder._id);
 
             const conversation = await Conversation.findOneAndUpdate(
                 {
@@ -108,17 +117,26 @@ exports.createOrder = async (req, res) => {
                 { new: true, upsert: true, session: session }
             );
             conversationId = conversation._id.toString();
+            console.log("[LOG DEBUG] Cuộc trò chuyện đã được tạo/cập nhật, ID:", conversationId);
 
-            await session.commitTransaction(); // << Commit transaction
+            await session.commitTransaction();
+            console.log("[LOG DEBUG] Transaction đã được COMMIT thành công.");
             
-            // --- BẮT ĐẦU TÌM SHIPPER NGAY SAU KHI COMMIT THÀNH CÔNG ---
             if (savedOrder) {
-                assignOrderToNearestShipper(savedOrder._id).catch(err => {
-                    console.error(`[BACKGROUND TASK ERROR] Lỗi khi tìm shipper cho đơn tư vấn #${savedOrder._id}:`, err);
-                });
+                console.log("[LOG DEBUG] Chuẩn bị gọi assignOrderToNearestShipper cho order ID:", savedOrder._id);
+                try {
+                    assignOrderToNearestShipper(savedOrder._id).catch(err => {
+                        console.error(`[BACKGROUND TASK ERROR] Lỗi bên trong assignOrderToNearestShipper cho đơn tư vấn #${savedOrder._id}:`, err);
+                    });
+                    console.log("[LOG DEBUG] Đã KÍCH HOẠT hàm assignOrderToNearestShipper.");
+                } catch (taskError) {
+                    console.error("[LOG DEBUG] Lỗi ngay khi gọi assignOrderToNearestShipper:", taskError);
+                }
+            } else {
+                console.log("[LOG DEBUG] Biến savedOrder rỗng, không thể tìm shipper.");
             }
             
-            // Gửi response về cho client
+            console.log("[LOG DEBUG] Chuẩn bị gửi response 201 về cho client.");
             res.status(201).json({
                 message: 'Yêu cầu của bạn đã được tạo và đang tìm shipper.',
                 order: savedOrder,
@@ -126,44 +144,90 @@ exports.createOrder = async (req, res) => {
             });
 
         } else {
-            // Logic cho đơn hàng thường
+            console.log("[LOG DEBUG] Đây là đơn hàng THÔNG THƯỜNG.");
             const enrichedItems = [];
             let itemsTotal = 0;
-            // ... (Vòng lặp for để xử lý items giữ nguyên)
-            for (const item of items) { /* ... */ }
-
-            // ... (Code tính phí ship, voucher giữ nguyên)
-            
-            const order = new Order({ /* ... */ });
+            for (const item of items) {
+                const product = await Product.findById(item.productId).populate('seller').session(session);
+                if (!product) throw new Error(`Sản phẩm "${item.name}" không còn tồn tại.`);
+                if (!product.seller) throw new Error(`Sản phẩm "${product.name}" không có thông tin người bán.`);
+                if (!validateSaleTime(product)) {
+                    const timeFramesString = product.saleTimeFrames.map(f => `${f.start}-${f.end}`).join(', ');
+                    throw new Error(`Sản phẩm "${product.name}" chỉ bán trong khung giờ: ${timeFramesString}.`);
+                }
+                let stock;
+                if (product.variantTable && product.variantTable.length > 0) {
+                    const variant = product.variantTable.find(v => v.combination === item.combination);
+                    if (!variant) throw new Error(`Biến thể của sản phẩm "${item.name}" không tồn tại.`);
+                    stock = variant.stock;
+                } else {
+                    stock = product.stock;
+                }
+                if (stock < item.quantity) {
+                    throw new Error(`Sản phẩm "${product.name}" không đủ hàng trong kho.`);
+                }
+                const itemValue = item.price * item.quantity;
+                itemsTotal += itemValue;
+                const commissionRate = product.seller.commissionRate || 0;
+                const commissionAmount = itemValue * (commissionRate / 100);
+                enrichedItems.push({ ...item, sellerId: product.seller._id, commissionAmount: commissionAmount });
+                if (product.variantTable && product.variantTable.length > 0) {
+                    const variantIndex = product.variantTable.findIndex(v => v.combination === item.combination);
+                    product.variantTable[variantIndex].stock -= item.quantity;
+                } else {
+                    product.stock -= item.quantity;
+                }
+                await product.save({ session });
+            }
+            const { shippingFeeActual, shippingFeeCustomerPaid } = await shippingController.calculateFeeForOrder(shippingLocation, itemsTotal);
+            const finalTotal = itemsTotal + shippingFeeCustomerPaid - (voucherDiscount || 0);
+            if (voucherCode && voucherDiscount > 0) {
+                const voucher = await Voucher.findOne({ code: voucherCode.toUpperCase() }).session(session);
+                if (!voucher) throw new Error(`Mã voucher "${voucherCode}" không tồn tại.`);
+                const userVoucher = await UserVoucher.findOne({ user: userId, voucher: voucher._id, isUsed: false }).session(session);
+                if (!userVoucher) throw new Error(`Bạn không sở hữu voucher "${voucherCode}" hoặc đã sử dụng nó.`);
+                userVoucher.isUsed = true;
+                await userVoucher.save({ session });
+            }
+            const order = new Order({
+                user: userId, items: enrichedItems, total: finalTotal, customerName, phone, shippingAddress,
+                shippingLocation, paymentMethod: paymentMethod || 'COD', shippingFeeActual: shippingFeeActual,
+                shippingFeeCustomerPaid: shippingFeeCustomerPaid, extraSurcharge: 0,
+                voucherDiscount: voucherDiscount || 0, voucherCode, status: 'Chờ xác nhận',
+                isConsultationOrder: false,
+            });
             const [createdOrder] = await Order.create([order], { session });
             savedOrder = createdOrder;
             
-            await session.commitTransaction(); // << Commit transaction
-
-            // --- BẮT ĐẦU TÌM SHIPPER & THÔNG BÁO ADMIN NGAY SAU KHI COMMIT THÀNH CÔNG ---
+            await session.commitTransaction();
+            console.log("[LOG DEBUG] Transaction cho đơn hàng thường đã COMMIT thành công.");
+            
             if (savedOrder) {
+                console.log("[LOG DEBUG] Chuẩn bị gọi tác vụ nền cho đơn hàng thường, ID:", savedOrder._id);
                 Promise.all([
                     assignOrderToNearestShipper(savedOrder._id),
                     notifyAdmins(savedOrder)
                 ]).catch(err => {
                     console.error(`[BACKGROUND TASK ERROR] Lỗi trong tác vụ nền cho đơn hàng thường #${savedOrder._id}:`, err);
                 });
+                console.log("[LOG DEBUG] Đã KÍCH HOẠT tác vụ nền cho đơn hàng thường.");
             }
             
-            // Gửi response về cho client
+            console.log("[LOG DEBUG] Chuẩn bị gửi response 201 cho đơn hàng thường.");
             res.status(201).json({ message: 'Tạo đơn thành công', order: { ...savedOrder.toObject(), timestamps: savedOrder.timestamps } });
         }
     } catch (err) {
+        console.error("[LOG DEBUG] LỖI TRONG BLOCK TRY...CATCH:", err);
         await session.abortTransaction();
-        console.error('Lỗi khi tạo đơn hàng:', err);
+        console.log("[LOG DEBUG] Transaction đã được ABORT do lỗi.");
         if (!res.headersSent) {
             const statusCode = err.message.includes('tồn tại') || err.message.includes('đủ hàng') || err.message.includes('voucher') ? 400 : 500;
             return res.status(statusCode).json({ message: err.message || 'Lỗi server' });
         }
     } finally {
         session.endSession();
+        console.log("[LOG DEBUG] ========= KẾT THÚC CREATE ORDER =========");
     }
-    // << XÓA HOÀN TOÀN LOGIC IF(SAVEDORDER) Ở NGOÀI NÀY >>
 };
 
 exports.acceptOrder = async (req, res) => {
