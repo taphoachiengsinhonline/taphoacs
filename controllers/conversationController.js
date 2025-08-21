@@ -161,7 +161,7 @@ exports.getConversationById = async (req, res) => {
             console.log("======================================================");
 
             relatedOrder = await Order.findOne(searchQuery)
-                .select('_id status')
+                .select('_id status items customTitle')
                 .sort({ createdAt: -1 })
                 .lean();
 
