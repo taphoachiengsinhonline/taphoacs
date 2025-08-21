@@ -702,3 +702,50 @@ exports.confirmPricedOrder = async (req, res) => {
         res.status(500).json({ message: "Lỗi server khi xác nhận đơn hàng." });
     }
 };
+
+exports.getOrderAndChatStatus = async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id)
+            .select('status items user consultationSellerId')
+            .lean(); // Dùng lean để nhanh hơn
+
+        if (!order) {
+            return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        }
+
+        let messageCount = 0;
+        // Chỉ tìm số lượng tin nhắn nếu đây là đơn hàng tư vấn
+        if (order.isConsultationOrder) {
+            const conversation = await Conversation.findOne({
+                // Dùng các trường từ order để tìm đúng conversation
+                productId: order.items[0].productId,
+                customerId: order.user,
+                sellerId: order.consultationSellerId,
+            }).select('_id');
+            
+            if (conversation) {
+                messageCount = await Message.countDocuments({ conversationId: conversation._id });
+            }
+        }
+        
+        res.status(200).json({ 
+            status: order.status,
+            messageCount: messageCount 
+        });
+
+    } catch (error) {
+        console.error("Lỗi khi lấy getOrderAndChatStatus:", error);
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+};
+
+// Giữ lại hàm cũ để tránh lỗi nếu có nơi khác đang dùng
+exports.getOrderStatus = async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id).select('status');
+        if (!order) return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        res.status(200).json({ status: order.status });
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+};
