@@ -50,12 +50,13 @@ exports.priceAndUpdateOrder = async (req, res) => {
         const sellerCommissionRate = req.user.commissionRate || 0;
         
         const originalConsultationItem = order.items[0];
-        const originalProduct = await Product.findById(originalConsultationItem.productId).select('category images');
+        const originalProduct = await Product.findById(originalConsultationItem.productId).select('category images saleTimeFrames');
         if (!originalProduct) {
             throw new Error("Không tìm thấy sản phẩm gốc để lấy thông tin.");
         }
         const defaultCategoryId = originalProduct.category;
         const defaultImages = originalProduct.images;
+        const defaultSaleTimeFrames = originalProduct.saleTimeFrames;
 
         for (const item of items) {
             let currentProductId = item.productId;
@@ -74,6 +75,7 @@ exports.priceAndUpdateOrder = async (req, res) => {
                     weight: 10,
                     images: defaultImages,
                     description: item.name,
+                    saleTimeFrames: defaultSaleTimeFrames,
                     approvalStatus: 'approved',
                     requiresConsultation: false,
                 });
@@ -99,36 +101,24 @@ exports.priceAndUpdateOrder = async (req, res) => {
             });
         }
         
-        // Tính lại phí ship dựa trên đơn hàng mới
         const { shippingFeeActual, shippingFeeCustomerPaid } = await shippingController.calculateFeeForOrder(
             order.shippingLocation,
             itemsTotal
         );
 
-         // THAY ĐỔI TÊN CỦA "SẢN PHẨM" GỐC TRONG ĐƠN HÀNG
-        // Nếu seller có nhập title mới, dùng nó. Nếu không, giữ tên cũ.
-       if (quoteTitle && quoteTitle.trim() !== '') {
-            order.items[0].name = quoteTitle.trim();
-        }
-
-        // Cập nhật các trường khác như cũ
-        order.items = enrichedItems; 
-        
-        // Gán các thông tin khác
+        order.items = enrichedItems;
         order.sellerNotes = sellerNotes;
         order.shippingFeeActual = shippingFeeActual;
         order.shippingFeeCustomerPaid = shippingFeeCustomerPaid;
         order.total = itemsTotal + shippingFeeCustomerPaid - (order.voucherDiscount || 0);
         order.status = 'Chờ khách xác nhận';
         
-        // LƯU TIÊU ĐỀ MỚI VÀO TRƯỜNG RIÊNG
         if (quoteTitle && quoteTitle.trim() !== '') {
             order.customTitle = quoteTitle.trim();
         }
 
         const updatedOrder = await order.save();
         
-        // Tạo tin nhắn báo giá trong cuộc trò chuyện
         const conversation = await Conversation.findOne({
             productId: originalConsultationItem.productId,
             customerId: order.user,
@@ -140,7 +130,6 @@ exports.priceAndUpdateOrder = async (req, res) => {
                 conversationId: conversation._id,
                 senderId: sellerId,
                 messageType: 'quote_summary',
-                // SỬA LẠI CONTENT CỦA TIN NHẮN
                 content: `Báo giá cho đơn hàng #${updatedOrder._id.toString().slice(-6)} từ người bán. Tổng số tiền: ${order.total.toLocaleString()}đ.`,
                 data: {
                     orderId: updatedOrder._id.toString(),
@@ -155,7 +144,6 @@ exports.priceAndUpdateOrder = async (req, res) => {
             await conversation.save();
         }
 
-        // Gửi thông báo đẩy cho khách hàng
         const customer = await User.findById(order.user).select('fcmToken');
         if (customer) {
             const title = "Bạn có báo giá mới";
@@ -172,8 +160,23 @@ exports.priceAndUpdateOrder = async (req, res) => {
                 data: { orderId: updatedOrder._id.toString() }
             });
         }
+
+        const finalRelatedOrder = await Order.findById(updatedOrder._id)
+            .select('_id status items customTitle total')
+            .lean();
+
+        const finalConversation = await Conversation.findById(conversation._id)
+            .populate('sellerId', 'name')
+            .populate('productId', 'name images price variantTable requiresConsultation')
+            .lean();
         
-        res.json({ message: "Đã gửi báo giá cho khách hàng thành công.", order: updatedOrder });
+        finalConversation.relatedOrder = finalRelatedOrder;
+        
+        res.json({ 
+            message: "Đã gửi báo giá cho khách hàng thành công.", 
+            order: updatedOrder,
+            conversation: finalConversation
+        });
 
     } catch (error) {
         console.error("Lỗi khi cập nhật và báo giá đơn hàng:", error);
