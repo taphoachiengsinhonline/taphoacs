@@ -142,15 +142,27 @@ exports.getConversationById = async (req, res) => {
         const { productId, customerId, sellerId } = conversation;
         let relatedOrder = null;
         if (productId?._id && customerId && sellerId?._id) {
-            relatedOrder = await Order.findOne({
-                'items.productId': productId._id,
+            // --- BẮT ĐẦU THÊM LOG DEBUG ---
+            const searchQuery = {
+                'items.productId': productId,
                 'user': customerId,
-                'consultationSellerId': sellerId._id,
+                'consultationSellerId': sellerId,
                 'isConsultationOrder': true,
-                'status': { $in: ['Đang tư vấn', 'Chờ tư vấn', 'Chờ khách xác nhận'] }
-            }).select('_id status').sort({ createdAt: -1 }).lean();
-        }
+            };
 
+            console.log("======================================================");
+            console.log("[DEBUG] Searching for related order with query:");
+            console.log(JSON.stringify(searchQuery, null, 2));
+            console.log("======================================================");
+
+            relatedOrder = await Order.findOne(searchQuery)
+                .select('_id status')
+                .sort({ createdAt: -1 })
+                .lean();
+
+            console.log("[DEBUG] Found related order:", relatedOrder);
+            // --- KẾT THÚC THÊM LOG DEBUG ---
+        }
         conversation.relatedOrder = relatedOrder;
         
         res.json(conversation);
