@@ -35,8 +35,11 @@ exports.getAllProducts = async (req, res) => {
     }
     
     let query = Product.find(filter)
-        .populate('category') // Dùng lại populate, bây giờ nó đã an toàn
-        .sort({ createdAt: -1 });
+      .populate('category')
+      // SỬ DỤNG .select() ĐỂ ĐẢM BẢO LẤY ĐỦ CÁC TRƯỜỜNG CẦN THIẾT
+      // Dấu cộng (+) có nghĩa là "bắt buộc lấy trường này"
+      .select('+saleTimeFrames +totalStock') 
+      .sort({ createdAt: -1 });
 
     if (limit) {
       query = query.limit(parseInt(limit));
