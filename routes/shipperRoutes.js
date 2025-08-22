@@ -58,6 +58,7 @@ router.post('/change-password', shipperController.changePassword);
 router.get('/notifications', shipperController.getAllNotifications);
 router.patch('/notifications/:id/read', shipperController.markNotificationAsRead);
 router.delete('/notifications/:id', shipperController.deleteNotification);
+router.get('/notifications/unread-count', verifyToken, shipperController.getUnreadNotificationCount);
 
 // --- Các route báo cáo và tài chính ---
 // Route cho HomeScreen để lấy dữ liệu nhanh trong ngày
