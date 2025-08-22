@@ -11,51 +11,61 @@ const { safeNotify } = require('../utils/notificationMiddleware');
 
 // --- BẮT ĐẦU HÀM LỌC NÂNG CAO ---
 
-// Từ điển các từ khóa số
-const numberWords = [
-    'không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín',
-    'khong', 'mot', 'bon', 'sau', 'bay',
-    'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'
-];
+// --- BỘ LỌC SỐ ĐIỆN THOẠI NÂNG CAO ---
+
+// Hàm bỏ dấu tiếng Việt
+const removeVietnameseTones = (str) => {
+    str = str.replace(/à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ/g, "a");
+    str = str.replace(/è|é|ẹ|ẻ|ẽ|ê|ề|ế|ệ|ể|ễ/g, "e");
+    str = str.replace(/ì|í|ị|ỉ|ĩ/g, "i");
+    str = str.replace(/ò|ó|ọ|ỏ|õ|ô|ồ|ố|ộ|ổ|ỗ|ơ|ờ|ớ|ợ|ở|ỡ/g, "o");
+    str = str.replace(/ù|ú|ụ|ủ|ũ|ư|ừ|ứ|ự|ử|ữ/g, "u");
+    str = str.replace(/ỳ|ý|ỵ|ỷ|ỹ/g, "y");
+    str = str.replace(/đ/g, "d");
+    return str;
+};
+
+// Từ điển "dịch" chữ sang số
+const wordToDigitMap = {
+    'khong': '0', 'không': '0', 'zero': '0',
+    'mot': '1', 'một': '1', 'one': '1',
+    'hai': '2', 'two': '2',
+    'ba': '3', 'three': '3',
+    'bon': '4', 'bốn': '4', 'tu': '4', 'tư': '4', 'four': '4',
+    'nam': '5', 'năm': '5', 'five': '5',
+    'sau': '6', 'sáu': '6', 'six': '6',
+    'bay': '7', 'bảy': '7', 'seven': '7',
+    'tam': '8', 'tám': '8', 'eight': '8',
+    'chin': '9', 'chín': '9', 'nine': '9'
+};
 
 const containsPhoneNumber = (text) => {
-    // 1. Chuẩn hóa chuỗi đầu vào:
-    // - Chuyển thành chữ thường
-    // - Loại bỏ toàn bộ dấu câu, dấu cách, ký tự đặc biệt
-    const normalizedText = text.toLowerCase().replace(/[\s.-]/g, '');
-
-    // 2. Regex để tìm chuỗi số điện thoại (đã được chuẩn hóa)
-    // Tìm chuỗi 9-11 chữ số bắt đầu bằng 0, 84, hoặc +84
-    const phoneRegex = /(?:\+?84|0)(?:\d{9,10})\b/g;
-    if (phoneRegex.test(normalizedText)) {
-        console.log(`[Phone Filter] Detected by Regex: ${normalizedText}`);
-        return true;
-    }
-
-    // 3. Logic phát hiện số viết bằng chữ
-    // Đếm số lượng từ khóa số xuất hiện
-    let wordCount = 0;
-    for (const word of numberWords) {
-        if (normalizedText.includes(word)) {
-            wordCount++;
-        }
-    }
-
-    // Nếu có ít nhất 4-5 từ khóa số khác nhau, khả năng cao là SĐT
-    if (wordCount >= 5) {
-        console.log(`[Phone Filter] Detected by Word Count: ${wordCount} words`);
-        return true;
-    }
-
-    // 4. Logic kết hợp: Tìm các đoạn số ngắn
-    const shortDigitRegex = /\d{2,4}/g; // Tìm các cụm 2-4 chữ số
-    const digitChunks = normalizedText.match(shortDigitRegex) || [];
+    // 1. Chuẩn hóa: chữ thường, bỏ dấu cách, bỏ dấu tiếng Việt
+    let processedText = removeVietnameseTones(text.toLowerCase());
     
-    // Nếu tổng độ dài của các cụm số >= 9 và có ít nhất 2 từ khóa số
-    const totalDigitLength = digitChunks.join('').length;
-    if (totalDigitLength >= 9 && wordCount >= 2) {
-        console.log(`[Phone Filter] Detected by Hybrid method: ${totalDigitLength} digits and ${wordCount} words`);
-        return true;
+    // 2. "Dịch" chữ sang số
+    for (const word in wordToDigitMap) {
+        // Dùng regex với global flag 'g' để thay thế tất cả các lần xuất hiện
+        processedText = processedText.replace(new RegExp(word, 'g'), wordToDigitMap[word]);
+    }
+
+    // 3. Làm sạch cuối cùng: chỉ giữ lại số
+    const onlyDigits = processedText.replace(/\D/g, '');
+
+    // 4. Kiểm tra bằng Regex trên chuỗi số đã được "dịch"
+    // Regex tìm SĐT Việt Nam (10 chữ số, bắt đầu bằng 0)
+    const phoneRegex = /^0\d{9}$/;
+    
+    // Nếu chuỗi số dài hơn 9 và chứa một SĐT hợp lệ
+    if (onlyDigits.length >= 10) {
+        // Thử tìm các chuỗi con 10 chữ số
+        for (let i = 0; i <= onlyDigits.length - 10; i++) {
+            const sub = onlyDigits.substring(i, i + 10);
+            if (phoneRegex.test(sub)) {
+                console.log(`[Phone Filter] Detected phone number: ${sub} from text: "${text}"`);
+                return true;
+            }
+        }
     }
 
     return false;
@@ -121,7 +131,7 @@ router.post('/', verifyToken, async (req, res) => {
         }
 
         // ÁP DỤNG BỘ LỌC MỚI
-        if ((!messageType || messageType === 'text') && containsPhoneNumber(content)) {
+       if ((!messageType || messageType === 'text') && containsPhoneNumber(content)) {
             content = "[Thông tin liên lạc đã được ẩn để đảm bảo an toàn cho giao dịch của bạn]";
         }
 
@@ -161,7 +171,6 @@ router.post('/', verifyToken, async (req, res) => {
         }
 
         const populatedMessage = await Message.findById(message._id).populate('senderId', 'name role');
-        
         res.status(201).json(populatedMessage);
 
     } catch (err) {
