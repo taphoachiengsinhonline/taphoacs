@@ -48,7 +48,7 @@ const notifyAdmins = async (order) => {
                 data: { orderId: order._id.toString(), shipperView: "true" }
             });
         }
-    } catch (e) {
+    } catch (err) {
         console.error(`[notify admin] error for admin:`, e);
     }
 };
@@ -689,40 +689,39 @@ exports.confirmPricedOrder = async (req, res) => {
             return res.status(404).json({ message: "Đơn hàng không hợp lệ hoặc không tìm thấy." });
         }
 
-        order.status = 'Đang xử lý';
+        order.status = 'Đang xử lý'; 
+        
         const shipper = await User.findById(order.shipper._id);
         if (shipper && shipper.shipperProfile) {
             const shareRate = (shipper.shipperProfile.shippingFeeShareRate || 0) / 100;
             const totalActualShippingFee = (order.shippingFeeActual || 0) + (order.extraSurcharge || 0);
             const totalCommission = order.items.reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
             const profitShareRate = (shipper.shipperProfile.profitShareRate || 0) / 100;
+            
             order.shipperIncome = (totalActualShippingFee * shareRate) + (totalCommission * profitShareRate);
         }
+
         await order.save();
+        
         const updatedMessage = await Message.findOneAndUpdate(
             { "data.orderId": orderId, messageType: 'quote_summary' },
             { 
                 $set: { "data.status": "Đang xử lý" },
                 content: `Khách hàng đã chấp nhận báo giá. Tổng tiền: ${order.total.toLocaleString()}đ.`
             },
-            { new: true } // Lấy về document đã được cập nhật
+            { new: true }
         );
 
-        // Tăng bộ đếm cho Seller nếu tìm thấy tin nhắn và cuộc trò chuyện
         if (updatedMessage) {
             await Conversation.updateOne(
                 { _id: updatedMessage.conversationId },
                 { $inc: { unreadBySeller: 1 }, $set: { updatedAt: new Date() } }
             );
-        
-         await Message.findOneAndUpdate(
-            { "data.orderId": orderId, messageType: 'quote_summary' },
-            { $set: { "data.status": "Đang xử lý" } }
-        );
+        }
 
         const notificationTitle = "Đơn hàng đã được xác nhận!";
         const notificationBody = `Khách hàng đã đồng ý với báo giá cho đơn hàng #${order._id.toString().slice(-6)}.`;
-        
+
         if (order.consultationSellerId && order.consultationSellerId.fcmToken) {
             await safeNotify(order.consultationSellerId.fcmToken, {
                 title: notificationTitle,
