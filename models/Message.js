@@ -1,26 +1,50 @@
 // models/Message.js
+// PHIÊN BẢN HOÀN CHỈNH
+
 const mongoose = require('mongoose');
+
 const messageSchema = new mongoose.Schema({
-  conversationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', required: true },
-  senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  content: { type: String, required: true },
+  conversationId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Conversation', 
+    required: true,
+    index: true // Thêm index để query nhanh hơn
+  },
+  senderId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User', 
+    required: true 
+  },
+  content: { 
+    type: String, 
+    required: true,
+    trim: true
+  },
   
-  // --- THÊM CÁC TRƯỜNG MỚI ---
   messageType: {
     type: String,
-    enum: ['text', 'system', 'quote_summary', 'image'], // 'text' là tin nhắn thường
+    enum: ['text', 'system', 'quote_summary', 'image'],
     default: 'text'
   },
-  // Dữ liệu bổ sung cho các tin nhắn đặc biệt
+  
+  // Dữ liệu bổ sung cho các loại tin nhắn đặc biệt
   data: {
-    type: Object, 
-    default: {}
+    quoteTitle: String,
+    items: Array,
+    total: Number,
+    shippingFee: Number,
+    itemsTotal: Number,
+    status: String,
+    orderId: String,
+    caption: String, // Chú thích cho ảnh
   },
-  // --- KẾT THÚC THÊM ---
-
-  isRead: { type: Boolean, default: false },
+  
+  isRead: { 
+    type: Boolean, 
+    default: false 
+  },
 }, {
-  timestamps: true
+  timestamps: true // Tự động thêm createdAt và updatedAt
 });
 
 module.exports = mongoose.model('Message', messageSchema);
