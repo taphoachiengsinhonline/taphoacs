@@ -18,23 +18,52 @@ const Message = require('../models/Message'); // THÊM IMPORT NÀY
 
 const validateSaleTime = (product) => {
     if (!product.saleTimeFrames || product.saleTimeFrames.length === 0) {
-        return true;
+        console.log(`[SaleTime] No time frames for product "${product.name}". Allowing sale.`);
+        return true; // Cho phép bán nếu không có khung giờ nào được đặt
     }
-    const nowInVietnam = moment().tz('Asia/Ho_Chi_Minh');
-    const nowMin = nowInVietnam.hours() * 60 + nowInVietnam.minutes();
-    const toMin = (timeString) => {
-        const [h, m] = timeString.split(':').map(Number);
-        return h * 60 + m;
-    };
+
+    // Lấy thời gian hiện tại ở múi giờ Việt Nam
+    const now = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Ho_Chi_Minh"}));
+
+    console.log(`[SaleTime] Current VN Time: ${now.getHours()}:${now.getMinutes()}`);
+
+    // Kiểm tra xem thời gian hiện tại có nằm trong BẤT KỲ khung giờ nào không
     const isWithinAnyFrame = product.saleTimeFrames.some(frame => {
-        const start = toMin(frame.start);
-        const end = toMin(frame.end);
-        if (start <= end) {
-            return nowMin >= start && nowMin <= end;
+        if (!frame.start || !frame.end) return false;
+
+        const [startHour, startMinute] = frame.start.split(':').map(Number);
+        const [endHour, endMinute] = frame.end.split(':').map(Number);
+        
+        // Tạo đối tượng Date cho ngày hôm nay với giờ bắt đầu và kết thúc
+        const startTime = new Date(now.getTime());
+        startTime.setHours(startHour, startMinute, 0, 0);
+
+        const endTime = new Date(now.getTime());
+        endTime.setHours(endHour, endMinute, 0, 0);
+
+        console.log(`[SaleTime] Checking frame: ${frame.start} - ${frame.end}. Now is between ${startTime.toLocaleTimeString()} and ${endTime.toLocaleTimeString()}?`);
+
+        // Xử lý trường hợp qua ngày (ví dụ: 22:00 - 02:00)
+        if (startTime > endTime) {
+            // Nếu qua ngày, điều kiện đúng là: (now >= start) HOẶC (now <= end)
+            // Ví dụ: Bán từ 10h tối đến 2h sáng.
+            // Lúc 11h tối (now > start) -> OK
+            // Lúc 1h sáng (now < end) -> OK
+            const result = now >= startTime || now <= endTime;
+            console.log(`[SaleTime] Overnight frame. Result: ${result}`);
+            return result;
         } else {
-            return nowMin >= start || nowMin <= end;
+            // Xử lý trường hợp trong ngày (ví dụ: 07:00 - 19:30)
+            const result = now >= startTime && now <= endTime;
+            console.log(`[SaleTime] Same-day frame. Result: ${result}`);
+            return result;
         }
     });
+
+    if (!isWithinAnyFrame) {
+        console.warn(`[SaleTime] Product "${product.name}" is OUTSIDE of all sale time frames.`);
+    }
+
     return isWithinAnyFrame;
 };
 
