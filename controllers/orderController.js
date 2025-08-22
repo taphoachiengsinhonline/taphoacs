@@ -547,6 +547,21 @@ exports.cancelOrder = async (req, res) => {
         const updated = await order.save();
 
         if (order.isConsultationOrder) {
+            const updatedMessage = await Message.findOneAndUpdate(
+            { "data.orderId": orderId, messageType: 'quote_summary' },
+            { 
+                $set: { "data.status": "Đã huỷ" },
+                content: `Khách hàng đã từ chối báo giá.`
+            },
+            { new: true }
+        );
+
+        if (updatedMessage) {
+            await Conversation.updateOne(
+                { _id: updatedMessage.conversationId },
+                { $inc: { unreadBySeller: 1 }, $set: { updatedAt: new Date() } }
+            );
+        }
             await Message.findOneAndUpdate(
             { "data.orderId": orderId, messageType: 'quote_summary' },
             { $set: { "data.status": "Đã huỷ" } }
@@ -684,6 +699,21 @@ exports.confirmPricedOrder = async (req, res) => {
             order.shipperIncome = (totalActualShippingFee * shareRate) + (totalCommission * profitShareRate);
         }
         await order.save();
+        const updatedMessage = await Message.findOneAndUpdate(
+            { "data.orderId": orderId, messageType: 'quote_summary' },
+            { 
+                $set: { "data.status": "Đang xử lý" },
+                content: `Khách hàng đã chấp nhận báo giá. Tổng tiền: ${order.total.toLocaleString()}đ.`
+            },
+            { new: true } // Lấy về document đã được cập nhật
+        );
+
+        // Tăng bộ đếm cho Seller nếu tìm thấy tin nhắn và cuộc trò chuyện
+        if (updatedMessage) {
+            await Conversation.updateOne(
+                { _id: updatedMessage.conversationId },
+                { $inc: { unreadBySeller: 1 }, $set: { updatedAt: new Date() } }
+            );
         
          await Message.findOneAndUpdate(
             { "data.orderId": orderId, messageType: 'quote_summary' },
