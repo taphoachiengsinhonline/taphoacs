@@ -8,7 +8,7 @@ const messageSchema = new mongoose.Schema({
   // --- THÊM CÁC TRƯỜNG MỚI ---
   messageType: {
     type: String,
-    enum: ['text', 'system', 'quote_summary'], // 'text' là tin nhắn thường
+    enum: ['text', 'system', 'quote_summary', 'image'], // 'text' là tin nhắn thường
     default: 'text'
   },
   // Dữ liệu bổ sung cho các tin nhắn đặc biệt
