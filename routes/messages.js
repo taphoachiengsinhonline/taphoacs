@@ -1,5 +1,5 @@
 // File: backend/routes/messages.js
-// PHIÊN BẢN 100% ĐẦY ĐỦ
+// PHIÊN BẢN NÂNG CẤP - Lọc SĐT nâng cao
 
 const express = require('express');
 const router = express.Router();
@@ -9,14 +9,57 @@ const User = require('../models/User');
 const { verifyToken } = require('../middlewares/authMiddleware');
 const { safeNotify } = require('../utils/notificationMiddleware');
 
-// Hàm regex để tìm số điện thoại Việt Nam, linh hoạt hơn
-const containsPhoneNumber = (text) => {
-    // Regex này tìm các chuỗi 9-11 chữ số, có thể bắt đầu bằng 0, +84, 84
-    // và có thể có dấu cách, chấm, gạch ngang ở giữa.
-    const phoneRegex = /(?:(?:\(?(?:0|\+84|84)\)?)(?:[\s.-]?\d{2,}){4,})/g;
-    return phoneRegex.test(text);
-};
+// --- BẮT ĐẦU HÀM LỌC NÂNG CAO ---
 
+// Từ điển các từ khóa số
+const numberWords = [
+    'không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín',
+    'khong', 'mot', 'bon', 'sau', 'bay',
+    'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'
+];
+
+const containsPhoneNumber = (text) => {
+    // 1. Chuẩn hóa chuỗi đầu vào:
+    // - Chuyển thành chữ thường
+    // - Loại bỏ toàn bộ dấu câu, dấu cách, ký tự đặc biệt
+    const normalizedText = text.toLowerCase().replace(/[\s.-]/g, '');
+
+    // 2. Regex để tìm chuỗi số điện thoại (đã được chuẩn hóa)
+    // Tìm chuỗi 9-11 chữ số bắt đầu bằng 0, 84, hoặc +84
+    const phoneRegex = /(?:\+?84|0)(?:\d{9,10})\b/g;
+    if (phoneRegex.test(normalizedText)) {
+        console.log(`[Phone Filter] Detected by Regex: ${normalizedText}`);
+        return true;
+    }
+
+    // 3. Logic phát hiện số viết bằng chữ
+    // Đếm số lượng từ khóa số xuất hiện
+    let wordCount = 0;
+    for (const word of numberWords) {
+        if (normalizedText.includes(word)) {
+            wordCount++;
+        }
+    }
+
+    // Nếu có ít nhất 4-5 từ khóa số khác nhau, khả năng cao là SĐT
+    if (wordCount >= 5) {
+        console.log(`[Phone Filter] Detected by Word Count: ${wordCount} words`);
+        return true;
+    }
+
+    // 4. Logic kết hợp: Tìm các đoạn số ngắn
+    const shortDigitRegex = /\d{2,4}/g; // Tìm các cụm 2-4 chữ số
+    const digitChunks = normalizedText.match(shortDigitRegex) || [];
+    
+    // Nếu tổng độ dài của các cụm số >= 9 và có ít nhất 2 từ khóa số
+    const totalDigitLength = digitChunks.join('').length;
+    if (totalDigitLength >= 9 && wordCount >= 2) {
+        console.log(`[Phone Filter] Detected by Hybrid method: ${totalDigitLength} digits and ${wordCount} words`);
+        return true;
+    }
+
+    return false;
+};
 // --- Route để lấy tin nhắn của một cuộc trò chuyện ---
 router.get('/:conversationId', verifyToken, async (req, res) => {
     try {
@@ -54,10 +97,9 @@ router.get('/:conversationId', verifyToken, async (req, res) => {
     }
 });
 
-// --- Route để gửi tin nhắn mới ---
+// --- Route để gửi tin nhắn mới (ÁP DỤNG BỘ LỌC) ---
 router.post('/', verifyToken, async (req, res) => {
     try {
-        // Lấy thêm messageType và data từ body
         let { conversationId, content, messageType, data } = req.body;
         const sender = req.user;
 
@@ -78,17 +120,17 @@ router.post('/', verifyToken, async (req, res) => {
             return res.status(403).json({ message: 'Bạn không có quyền gửi tin nhắn vào cuộc trò chuyện này.' });
         }
 
-        // --- LOGIC LỌC SỐ ĐIỆN THOẠI ---
+        // ÁP DỤNG BỘ LỌC MỚI
         if ((!messageType || messageType === 'text') && containsPhoneNumber(content)) {
-            content = "[Chúng tôi đã ẩn thông tin liên lạc để đảm bảo an toàn cho giao dịch của bạn]";
+            content = "[Thông tin liên lạc đã được ẩn để đảm bảo an toàn cho giao dịch của bạn]";
         }
 
         const message = new Message({ 
             conversationId, 
             senderId: sender._id, 
             content, 
-            messageType: messageType || 'text', // Mặc định là 'text'
-            data: data || {} // Lưu data nếu có
+            messageType: messageType || 'text',
+            data: data || {}
         });
         await message.save();
 
@@ -114,10 +156,7 @@ router.post('/', verifyToken, async (req, res) => {
             await safeNotify(recipient.fcmToken, {
                 title: `Tin nhắn mới từ ${sender.name}`,
                 body: notificationBody,
-                data: {
-                    type: 'new_message',
-                    conversationId: conversationId.toString()
-                }
+                data: { type: 'new_message', conversationId: conversationId.toString() }
             });
         }
 
