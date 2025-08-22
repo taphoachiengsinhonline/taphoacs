@@ -471,6 +471,16 @@ exports.sendCODRemittanceReminder = async () => {
         console.error("CRON JOB ERROR: Lỗi khi gửi thông báo nhắc nợ:", error);
     }
 };
+exports.getUnreadNotificationCount = async (req, res) => {
+    try {
+        const shipperId = req.user._id;
+        const count = await Notification.countDocuments({ user: shipperId, isRead: false });
+        res.status(200).json({ count });
+    } catch (error) {
+        console.error("[Shipper] Lỗi đếm thông báo:", error);
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+};
 
 // Hàm confirmRemittance không còn dùng đến, có thể xóa hoặc giữ lại để báo lỗi
 exports.confirmRemittance = async (req, res) => {
