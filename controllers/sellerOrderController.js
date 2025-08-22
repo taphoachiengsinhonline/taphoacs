@@ -151,6 +151,7 @@ exports.priceAndUpdateOrder = async (req, res) => {
             // --- KẾT THÚC SỬA Ở ĐÂY ---
 
             await quoteMessage.save();
+            conversation.unreadByCustomer = (conversation.unreadByCustomer || 0) + 1;
             conversation.updatedAt = new Date();
             await conversation.save();
         }
