@@ -548,12 +548,9 @@ exports.cancelOrder = async (req, res) => {
 
         if (order.isConsultationOrder) {
             await Message.findOneAndUpdate(
-                { "data.orderId": orderId, messageType: 'quote_summary' },
-                { 
-                    $set: { "data.status": "Đã huỷ" },
-                    content: `Khách hàng đã từ chối báo giá.`
-                }
-            );
+            { "data.orderId": orderId, messageType: 'quote_summary' },
+            { $set: { "data.status": "Đã huỷ" } }
+        );
         }
 
         res.json({ message: 'Huỷ đơn thành công', order: updated });
@@ -688,12 +685,9 @@ exports.confirmPricedOrder = async (req, res) => {
         }
         await order.save();
         
-        await Message.findOneAndUpdate(
+         await Message.findOneAndUpdate(
             { "data.orderId": orderId, messageType: 'quote_summary' },
-            { 
-                $set: { "data.status": "Đang xử lý" },
-                content: `Khách hàng đã chấp nhận báo giá. Tổng tiền: ${order.total.toLocaleString()}đ.`
-            }
+            { $set: { "data.status": "Đang xử lý" } }
         );
 
         const notificationTitle = "Đơn hàng đã được xác nhận!";
