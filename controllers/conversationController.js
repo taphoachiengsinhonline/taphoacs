@@ -66,34 +66,92 @@ exports.getGroupedConversations = async (req, res) => {
         const userId = req.user._id;
         const userRole = req.user.role;
 
-        const matchStage = userRole === 'seller' 
-            ? { sellerId: new mongoose.Types.ObjectId(userId) }
-            : { customerId: new mongoose.Types.ObjectId(userId) };
-            
-        const otherUserField = userRole === 'seller' ? '$customerId' : '$sellerId';
-        const unreadField = userRole === 'seller' ? '$unreadBySeller' : '$unreadByCustomer';
+        let matchStage, otherUserField, unreadField;
+
+        if (userRole === 'seller') {
+            matchStage = { sellerId: new mongoose.Types.ObjectId(userId) };
+            otherUserField = '$customerId';
+            unreadField = '$unreadBySeller';
+        } else { // customer
+            matchStage = { customerId: new mongoose.Types.ObjectId(userId) };
+            otherUserField = '$sellerId';
+            unreadField = '$unreadByCustomer';
+        }
 
         const pipeline = [
-            { $match: matchStage }, { $sort: { updatedAt: -1 } },
-            { $group: { _id: otherUserField, totalUnread: { $sum: unreadField }, lastConversation: { $first: '$$ROOT' } } },
+            { $match: matchStage },
+            { $sort: { updatedAt: -1 } },
+            {
+                $group: {
+                    _id: otherUserField,
+                    totalUnread: { $sum: unreadField },
+                    lastConversation: { $first: '$$ROOT' }
+                }
+            },
             { $sort: { 'lastConversation.updatedAt': -1 } },
             { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'otherUser' } },
-            { $unwind: '$otherUser' },
+            { $unwind: { path: '$otherUser', preserveNullAndEmptyArrays: true } },
             { $lookup: { from: 'messages', localField: 'lastConversation._id', foreignField: 'conversationId', as: 'messages' } },
             { $addFields: { lastMessageObject: { $last: '$messages' } } },
-            { $project: {
-                _id: 1, totalUnread: 1,
-                lastMessageContent: { $ifNull: ['$lastMessageObject.content', 'Bắt đầu trò chuyện'] },
-                lastUpdatedAt: '$lastConversation.updatedAt',
-                'otherUser._id': 1, 'otherUser.name': 1, 'otherUser.avatar': 1
-            }}
+            
+            // --- BẮT ĐẦU SỬA ĐỔI ---
+            {
+                $project: {
+                    _id: 1,
+                    totalUnread: 1,
+                    lastUpdatedAt: '$lastConversation.updatedAt',
+                    'otherUser._id': 1,
+                    'otherUser.name': 1,
+                    'otherUser.avatar': 1,
+                    
+                    // Logic tùy chỉnh nội dung tin nhắn cuối cùng
+                    lastMessageContent: {
+                        $let: {
+                            vars: {
+                                msg: "$lastMessageObject"
+                            },
+                            in: {
+                                $cond: {
+                                    if: { $eq: ["$$msg.messageType", "quote_summary"] },
+                                    // Nếu là tin nhắn báo giá
+                                    then: {
+                                        $cond: {
+                                            if: { $eq: ["$$msg.senderId", new mongoose.Types.ObjectId(userId)] },
+                                            // Nếu mình là người gửi (seller)
+                                            then: "Bạn đã gửi một báo giá",
+                                            // Nếu mình là người nhận (customer)
+                                            else: "Bạn đã nhận được một báo giá"
+                                        }
+                                    },
+                                    // Nếu là tin nhắn ảnh
+                                    else: {
+                                        $cond: {
+                                            if: { $eq: ["$$msg.messageType", "image"] },
+                                            then: {
+                                                $cond: {
+                                                    if: { $eq: ["$$msg.senderId", new mongoose.Types.ObjectId(userId)] },
+                                                    then: "Bạn đã gửi một hình ảnh",
+                                                    else: "Bạn đã nhận được một hình ảnh"
+                                                }
+                                            },
+                                            // Nếu là tin nhắn text hoặc không xác định
+                                            else: { $ifNull: ["$$msg.content", "Bắt đầu trò chuyện"] }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // --- KẾT THÚC SỬA ĐỔI ---
         ];
 
         const groupedConversations = await Conversation.aggregate(pipeline);
         res.json(groupedConversations);
 
     } catch (err) {
-        console.error('[CONVERSATION GROUPED GET] Lỗi:', err);
+        console.error('[CONVERSATION GROUPED GET] LỖI CHI TIẾT:', err);
         res.status(500).json({ message: 'Lỗi server khi gom nhóm trò chuyện.' });
     }
 };
