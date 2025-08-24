@@ -253,10 +253,16 @@ exports.processRemittanceRequest = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
-        const request = await RemittanceRequest.findById(requestId).session(session);
+        const request = await RemittanceRequest.findById(requestId)
+            .populate('shipper', 'fcmToken name') // << THÊM populate('shipper')
+            .session(session);
+            
         if (!request || request.status !== 'pending') {
             throw new Error("Yêu cầu không hợp lệ hoặc đã được xử lý.");
         }
+        
+        let notificationTitle = '';
+        let notificationBody = '';
 
         if (action === 'approve') {
             if (request.isForOldDebt) {
@@ -300,8 +306,12 @@ exports.processRemittanceRequest = async (req, res) => {
                 );
             }
             request.status = 'approved';
+            notificationTitle = "Yêu cầu nộp tiền đã được duyệt";
+            notificationBody = `Yêu cầu xác nhận nộp ${request.amount.toLocaleString()}đ của bạn đã được Admin chấp nhận.`;
         } else if (action === 'reject') {
             request.status = 'rejected';
+            notificationTitle = "Yêu cầu nộp tiền bị từ chối";
+            notificationBody = `Yêu cầu xác nhận nộp ${request.amount.toLocaleString()}đ của bạn đã bị từ chối. Lý do: ${adminNotes || 'Không có ghi chú'}`;
         } else {
             throw new Error("Hành động không hợp lệ.");
         }
@@ -311,8 +321,46 @@ exports.processRemittanceRequest = async (req, res) => {
         request.approvedBy = adminId;
         await request.save({ session });
         
-        await session.commitTransaction();
+        await session.commitTransaction(); // Commit trước khi gửi thông báo
+
+        // --- BẮT ĐẦU LOGIC GỬI THÔNG BÁO CHO SHIPPER ---
+        // Chạy bất đồng bộ để không làm chậm response trả về cho Admin
+        (async () => {
+            try {
+                const shipper = request.shipper;
+                if (shipper) {
+                    // 1. Lưu vào DB
+                    await Notification.create({
+                        user: shipper._id,
+                        title: notificationTitle,
+                        message: notificationBody,
+                        type: 'finance', // Hoặc 'remittance' nếu bạn muốn
+                        data: {
+                            screen: 'Report', // Gợi ý mở màn hình báo cáo
+                            remittanceRequestId: request._id.toString()
+                        }
+                    });
+
+                    // 2. Gửi Push Notification
+                    if (shipper.fcmToken) {
+                        await safeNotify(shipper.fcmToken, {
+                            title: notificationTitle,
+                            body: notificationBody,
+                            data: {
+                                type: 'remittance_processed',
+                                screen: 'Report'
+                            }
+                        });
+                    }
+                }
+            } catch(e) {
+                console.error("Lỗi khi gửi thông báo xử lý nộp tiền cho shipper:", e);
+            }
+        })();
+        // --- KẾT THÚC LOGIC ---
+        
         res.status(200).json({ message: `Đã ${action === 'approve' ? 'xác nhận' : 'từ chối'} yêu cầu thành công.` });
+
     } catch (error) {
         await session.abortTransaction();
         console.error("[processRemittanceRequest] Lỗi:", error);
