@@ -12,6 +12,7 @@ const SalaryPayment = require('../models/SalaryPayment');
 const Product = require('../models/Product');
 const Notification = require('../models/Notification'); // Đảm bảo đã import Notification Model
 const { safeNotify } = require('../utils/notificationMiddleware');
+
 // ==============================================================
 // === CÁC HÀM CŨ CỦA BẠN - GIỮ NGUYÊN HOÀN TOÀN              ===
 // ==============================================================
@@ -379,7 +380,6 @@ exports.processRemittanceRequest = async (req, res) => {
 exports.payShipperSalary = async (req, res) => {
     try {
         const { shipperId } = req.params;
-        // <<< SỬA: Chỉ cần amount và notes từ body >>>
         const { amount, notes } = req.body;
         const adminId = req.user._id;
 
@@ -387,18 +387,55 @@ exports.payShipperSalary = async (req, res) => {
             return res.status(400).json({ message: "Số tiền thanh toán không hợp lệ." });
         }
         
-        // <<< SỬA: paymentDate sẽ là ngày hiện tại >>>
         const paymentDate = new Date();
 
         const newPayment = new SalaryPayment({
             shipper: shipperId,
             amount: amount,
-            paymentDate: paymentDate, // Ngày trả lương là ngày admin bấm nút
+            paymentDate: paymentDate,
             paidBy: adminId,
             notes: notes
         });
 
         await newPayment.save();
+        
+        // --- BẮT ĐẦU LOGIC GỬI THÔNG BÁO ---
+        (async () => {
+            try {
+                const shipper = await User.findById(shipperId).select('fcmToken');
+                if (shipper) {
+                    const title = "Bạn vừa nhận được lương";
+                    const body = `Admin đã thanh toán lương cho bạn số tiền ${amount.toLocaleString('vi-VN')}đ.`;
+                    
+                    // 1. Lưu vào DB
+                    await Notification.create({
+                        user: shipperId,
+                        title: title,
+                        message: body,
+                        type: 'finance', // Dùng chung type finance
+                        data: { 
+                            screen: 'Report', // Gợi ý mở màn hình báo cáo
+                            salaryAmount: amount 
+                        }
+                    });
+                    
+                    // 2. Gửi Push Notification
+                    if (shipper.fcmToken) {
+                        await safeNotify(shipper.fcmToken, {
+                            title,
+                            body,
+                            data: { 
+                                type: 'salary_received',
+                                screen: 'Report'
+                            }
+                        });
+                    }
+                }
+            } catch (notificationError) {
+                console.error("[payShipperSalary] Lỗi khi gửi thông báo:", notificationError);
+            }
+        })();
+        // --- KẾT THÚC LOGIC ---
         
         res.status(201).json({ message: 'Thanh toán lương thành công!', payment: newPayment });
 
@@ -684,31 +721,39 @@ exports.payToSeller = async (req, res) => {
             seller: sellerId,
             type: 'debit',
             amount,
-            description: notes || `Admin thanh toán cho seller`,
+            description: notes || `Admin thanh toán cho bạn`,
             balanceAfter: newBalance,
         });
 
-        // --- BẮT ĐẦU THÊM LOGIC THÔNG BÁO ---
+        // --- BẮT ĐẦU LOGIC GỬI THÔNG BÁO ---
         (async () => {
             try {
                 const seller = await User.findById(sellerId).select('fcmToken');
                 if (seller) {
-                    const title = "Nhận thanh toán thành công";
-                    const body = `Admin vừa thanh toán cho bạn số tiền ${amount.toLocaleString('vi-VN')}đ. Số dư của bạn đã được cập nhật.`;
+                    const title = "Bạn vừa nhận được thanh toán";
+                    const body = `Admin đã thanh toán cho bạn số tiền ${amount.toLocaleString('vi-VN')}đ. Số dư của bạn đã được cập nhật.`;
                     
+                    // 1. Lưu vào DB
                     await Notification.create({
                         user: sellerId,
                         title: title,
                         message: body,
-                        type: 'payout',
-                        data: { screen: 'Finance' }
+                        type: 'payout', // Type riêng cho thanh toán
+                        data: { 
+                            screen: 'Finance', // Gợi ý mở màn hình tài chính
+                            payoutAmount: amount 
+                        }
                     });
                     
+                    // 2. Gửi Push Notification
                     if (seller.fcmToken) {
                         await safeNotify(seller.fcmToken, {
                             title,
                             body,
-                            data: { screen: 'Finance' }
+                            data: { 
+                                type: 'payout_received',
+                                screen: 'Finance' 
+                            }
                         });
                     }
                 }
@@ -716,7 +761,7 @@ exports.payToSeller = async (req, res) => {
                 console.error("[payToSeller] Lỗi khi gửi thông báo:", notificationError);
             }
         })();
-        // --- KẾT THÚC THÊM LOGIC THÔNG BÁO ---
+        // --- KẾT THÚC LOGIC ---
 
         res.status(201).json({ message: 'Đã ghi nhận thanh toán cho seller thành công!' });
     } catch (error) {
