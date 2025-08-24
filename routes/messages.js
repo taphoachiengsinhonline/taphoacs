@@ -8,7 +8,7 @@ const Conversation = require('../models/Conversation');
 const User = require('../models/User');
 const { verifyToken } = require('../middlewares/authMiddleware');
 const { safeNotify } = require('../utils/notificationMiddleware');
-
+const { sendMessage } = require('../services/messageService');
 // --- BẮT ĐẦU HÀM LỌC NÂNG CAO ---
 
 // --- BỘ LỌC SỐ ĐIỆN THOẠI NÂNG CAO ---
@@ -110,71 +110,23 @@ router.get('/:conversationId', verifyToken, async (req, res) => {
 // --- Route để gửi tin nhắn mới (ÁP DỤNG BỘ LỌC) ---
 router.post('/', verifyToken, async (req, res) => {
     try {
-        let { conversationId, content, messageType, data } = req.body;
-        const sender = req.user;
+        const { conversationId, content, messageType, data } = req.body;
+        const senderId = req.user._id;
 
-        if (!conversationId || !content) {
-            return res.status(400).json({ message: 'Thiếu thông tin cuộc trò chuyện hoặc nội dung.' });
-        }
-        
-        const conversation = await Conversation.findById(conversationId)
-            .populate('customerId', 'name fcmToken')
-            .populate('sellerId', 'name fcmToken');
-            
-        if (!conversation) {
-            return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện.' });
-        }
-
-        const isParticipant = conversation.customerId._id.equals(sender._id) || conversation.sellerId._id.equals(sender._id);
-        if (!isParticipant) {
-            return res.status(403).json({ message: 'Bạn không có quyền gửi tin nhắn vào cuộc trò chuyện này.' });
-        }
-
-        // ÁP DỤNG BỘ LỌC MỚI
-       if ((!messageType || messageType === 'text') && containsPhoneNumber(content)) {
-            content = "[Thông tin liên lạc đã được ẩn để đảm bảo an toàn cho giao dịch của bạn]";
-        }
-
-        const message = new Message({ 
-            conversationId, 
-            senderId: sender._id, 
-            content, 
-            messageType: messageType || 'text',
-            data: data || {}
+        // Gọi hàm service để xử lý tất cả logic
+        const message = await sendMessage({
+            conversationId,
+            senderId,
+            content,
+            messageType,
+            data
         });
-        await message.save();
-
-        let recipient;
-        if (conversation.customerId._id.equals(sender._id)) {
-            recipient = conversation.sellerId;
-            conversation.unreadBySeller = (conversation.unreadBySeller || 0) + 1;
-        } else {
-            recipient = conversation.customerId;
-            conversation.unreadByCustomer = (conversation.unreadByCustomer || 0) + 1;
-        }
-        conversation.updatedAt = new Date();
-        await conversation.save();
         
-        if (recipient && recipient.fcmToken) {
-            let notificationBody = content;
-            if (messageType === 'image') {
-                notificationBody = `${sender.name} đã gửi một hình ảnh.`;
-            } else if (notificationBody.length > 100) {
-                notificationBody = notificationBody.substring(0, 97) + '...';
-            }
-
-            await safeNotify(recipient.fcmToken, {
-                title: `Tin nhắn mới từ ${sender.name}`,
-                body: notificationBody,
-                data: { type: 'new_message', conversationId: conversationId.toString() }
-            });
-        }
-
         const populatedMessage = await Message.findById(message._id).populate('senderId', 'name role');
         res.status(201).json(populatedMessage);
 
     } catch (err) {
-        console.error('[MESSAGE POST] Lỗi nghiêm trọng:', err.message, err.stack);
+        console.error('[MESSAGE POST Route] Lỗi:', err.message);
         res.status(500).json({ message: 'Lỗi server khi gửi tin nhắn' });
     }
 });
