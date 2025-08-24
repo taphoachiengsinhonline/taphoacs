@@ -145,7 +145,8 @@ exports.priceAndUpdateOrder = async (req, res) => {
                         name: item.name,
                         price: item.price,
                         quantity: item.quantity
-                    }))
+                    })),
+                    sellerNotes: updatedOrder.sellerNotes || '' // Gửi kèm ghi chú
                 }
             });
             // --- KẾT THÚC SỬA Ở ĐÂY ---
