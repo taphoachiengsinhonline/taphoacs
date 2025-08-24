@@ -16,45 +16,41 @@ exports.findOrCreateConversation = async (req, res) => {
             return res.status(400).json({ message: 'Thiếu thông tin sản phẩm hoặc người bán.' });
         }
         
-        // Dùng findOne + save thay vì findOneAndUpdate để biết là tạo mới hay không
         let conversation = await Conversation.findOne({ productId, customerId, sellerId });
-        let isNew = false;
+        let isNewConversation = false;
+
         if (!conversation) {
+            isNewConversation = true;
             conversation = new Conversation({ productId, customerId, sellerId });
-            isNew = true;
         }
+        
         conversation.updatedAt = new Date();
         await conversation.save();
         
-        // --- BẮT ĐẦU LOGIC GỬI TIN NHẮN TỰ ĐỘNG ---
+        // --- BẮT ĐẦU SỬA LỖI ---
         // Chỉ gửi khi đây là cuộc trò chuyện hoàn toàn mới
         if (isNewConversation) {
-            (async () => {
-                try {
-                    const seller = await User.findById(sellerId).select('sellerProfile.autoResponseMessage');
-                    const autoMessageContent = seller?.sellerProfile?.autoResponseMessage;
+            const seller = await User.findById(sellerId).select('sellerProfile.autoResponseMessage');
+            const autoMessageContent = seller?.sellerProfile?.autoResponseMessage;
 
-                    if (autoMessageContent && autoMessageContent.trim() !== '') {
-                        const autoMessage = new Message({
-                            conversationId: conversation._id,
-                            senderId: sellerId,
-                            content: autoMessageContent,
-                            messageType: 'text',
-                        });
-                        await autoMessage.save();
+            if (autoMessageContent && autoMessageContent.trim() !== '') {
+                const autoMessage = new Message({
+                    conversationId: conversation._id,
+                    senderId: sellerId,
+                    content: autoMessageContent,
+                    messageType: 'text',
+                });
+                await autoMessage.save();
 
-                        // Cập nhật lại updatedAt và tăng bộ đếm cho khách hàng
-                        await Conversation.updateOne(
-                            { _id: conversation._id },
-                            { $set: { updatedAt: new Date() }, $inc: { unreadByCustomer: 1 } }
-                        );
-                    }
-                } catch (e) {
-                    console.error("Lỗi khi gửi tin nhắn tự động:", e);
-                }
-            })();
+                // Cập nhật lại updatedAt và tăng bộ đếm cho khách hàng
+                await Conversation.updateOne(
+                    { _id: conversation._id },
+                    { $set: { updatedAt: new Date() }, $inc: { unreadByCustomer: 1 } }
+                );
+                console.log(`Đã gửi tin nhắn tự động cho conversation: ${conversation._id}`);
+            }
         }
-        // --- KẾT THÚC LOGIC ---
+        // --- KẾT THÚC SỬA LỖI ---
         
         res.status(isNewConversation ? 201 : 200).json(conversation);
 
