@@ -374,3 +374,53 @@ exports.markNotificationAsRead = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server.' });
     }
 };
+
+exports.updateAutoResponseMessage = async (req, res) => {
+    try {
+        const { message } = req.body;
+        const sellerId = req.user._id;
+
+        if (typeof message !== 'string') {
+            return res.status(400).json({ message: "Dữ liệu không hợp lệ." });
+        }
+
+        // Tìm và cập nhật user
+        const updatedSeller = await User.findByIdAndUpdate(
+            sellerId,
+            { $set: { 'sellerProfile.autoResponseMessage': message.trim() } },
+            { new: true, runValidators: true }
+        ).select('sellerProfile');
+
+        if (!updatedSeller) {
+            return res.status(404).json({ message: "Không tìm thấy người bán." });
+        }
+
+        res.status(200).json({
+            message: "Đã cập nhật tin nhắn tự động thành công.",
+            autoResponseMessage: updatedSeller.sellerProfile.autoResponseMessage
+        });
+
+    } catch (error) {
+        console.error("Lỗi khi cập nhật tin nhắn tự động:", error);
+        res.status(500).json({ message: "Lỗi server." });
+    }
+};
+
+// --- HÀM MỚI ---
+exports.getAutoResponseMessage = async (req, res) => {
+    try {
+        const sellerId = req.user._id;
+        const seller = await User.findById(sellerId).select('sellerProfile.autoResponseMessage');
+        
+        if (!seller) {
+            return res.status(404).json({ message: "Không tìm thấy người bán." });
+        }
+        
+        res.status(200).json({
+            autoResponseMessage: seller.sellerProfile?.autoResponseMessage || ''
+        });
+    } catch (error) {
+        console.error("Lỗi khi lấy tin nhắn tự động:", error);
+        res.status(500).json({ message: "Lỗi server." });
+    }
+};
