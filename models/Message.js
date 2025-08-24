@@ -48,4 +48,5 @@ const messageSchema = new mongoose.Schema({
   timestamps: true // Tự động thêm createdAt và updatedAt
 });
 
+messageSchema.index({ createdAt: 1 }, { expireAfterSeconds: 15552000 });
 module.exports = mongoose.model('Message', messageSchema);
