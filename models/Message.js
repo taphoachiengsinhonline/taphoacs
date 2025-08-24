@@ -37,6 +37,7 @@ const messageSchema = new mongoose.Schema({
     status: String,
     orderId: String,
     caption: String, // Chú thích cho ảnh
+    sellerNotes: String,
   },
   
   isRead: { 
