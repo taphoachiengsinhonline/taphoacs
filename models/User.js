@@ -120,6 +120,13 @@ rejectionReason: String,
     accountNumber: { type: String, trim: true },
   },
 
+  sellerProfile: {
+      autoResponseMessage: {
+          type: String,
+          trim: true,
+          maxLength: [500, 'Tin nhắn tự động không được quá 500 ký tự.']
+      }
+  }
   
 }, {
   timestamps: true,
