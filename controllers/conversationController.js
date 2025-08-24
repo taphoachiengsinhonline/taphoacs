@@ -5,6 +5,7 @@ const Message = require('../models/Message');
 const Order = require('../models/Order'); // Import Order model
 const User = require('../models/User'); // Import User model
 const mongoose = require('mongoose');
+const { sendMessage } = require('../services/messageService');
 
 // API để Khách hàng hoặc Seller tạo/tìm cuộc trò chuyện
 exports.findOrCreateConversation = async (req, res) => {
@@ -34,26 +35,17 @@ exports.findOrCreateConversation = async (req, res) => {
             const autoMessageContent = seller?.sellerProfile?.autoResponseMessage;
 
             if (autoMessageContent && autoMessageContent.trim() !== '') {
-                const autoMessage = new Message({
+                 await sendMessage({
                     conversationId: conversation._id,
                     senderId: sellerId,
                     content: autoMessageContent,
-                    messageType: 'text',
+                    messageType: 'text'
                 });
-                await autoMessage.save();
-
-                // Cập nhật lại updatedAt và tăng bộ đếm cho khách hàng
-                await Conversation.updateOne(
-                    { _id: conversation._id },
-                    { $set: { updatedAt: new Date() }, $inc: { unreadByCustomer: 1 } }
-                );
-                console.log(`Đã gửi tin nhắn tự động cho conversation: ${conversation._id}`);
+                console.log(`Đã gửi tin nhắn tự động (qua service) cho conversation: ${conversation._id}`);
             }
         }
-        // --- KẾT THÚC SỬA LỖI ---
         
         res.status(isNewConversation ? 201 : 200).json(conversation);
-
     } catch (err) {
         console.error('[CONVERSATION POST] Lỗi:', err.message);
         res.status(500).json({ message: 'Lỗi server' });
