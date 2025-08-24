@@ -232,7 +232,7 @@ exports.getConversationById = async (req, res) => {
             };
 
             relatedOrder = await Order.findOne(searchQuery)
-                .select('_id status items customTitle total')
+                .select('_id status items customTitle total sellerNotes')
                 .sort({ createdAt: -1 })
                 .lean();
 
