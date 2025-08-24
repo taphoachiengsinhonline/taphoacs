@@ -26,7 +26,37 @@ exports.findOrCreateConversation = async (req, res) => {
         conversation.updatedAt = new Date();
         await conversation.save();
         
-        res.status(isNew ? 201 : 200).json(conversation);
+        // --- BẮT ĐẦU LOGIC GỬI TIN NHẮN TỰ ĐỘNG ---
+        // Chỉ gửi khi đây là cuộc trò chuyện hoàn toàn mới
+        if (isNewConversation) {
+            (async () => {
+                try {
+                    const seller = await User.findById(sellerId).select('sellerProfile.autoResponseMessage');
+                    const autoMessageContent = seller?.sellerProfile?.autoResponseMessage;
+
+                    if (autoMessageContent && autoMessageContent.trim() !== '') {
+                        const autoMessage = new Message({
+                            conversationId: conversation._id,
+                            senderId: sellerId,
+                            content: autoMessageContent,
+                            messageType: 'text',
+                        });
+                        await autoMessage.save();
+
+                        // Cập nhật lại updatedAt và tăng bộ đếm cho khách hàng
+                        await Conversation.updateOne(
+                            { _id: conversation._id },
+                            { $set: { updatedAt: new Date() }, $inc: { unreadByCustomer: 1 } }
+                        );
+                    }
+                } catch (e) {
+                    console.error("Lỗi khi gửi tin nhắn tự động:", e);
+                }
+            })();
+        }
+        // --- KẾT THÚC LOGIC ---
+        
+        res.status(isNewConversation ? 201 : 200).json(conversation);
 
     } catch (err) {
         console.error('[CONVERSATION POST] Lỗi:', err.message);
