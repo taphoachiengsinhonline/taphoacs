@@ -38,6 +38,8 @@ router.get('/monthly-remittance', sellerController.getMonthlyRemittanceDetails);
 router.get('/notifications', sellerController.getNotifications);
 router.get('/notifications/unread-count', sellerController.getUnreadNotificationCount);
 router.patch('/notifications/:notificationId/read', sellerController.markNotificationAsRead);
-
+// --- ROUTE MỚI CHO TIN NHẮN TỰ ĐỘNG ---
+router.get('/settings/auto-message', sellerController.getAutoResponseMessage);
+router.put('/settings/auto-message', sellerController.updateAutoResponseMessage);
 
 module.exports = router;
