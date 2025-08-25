@@ -76,34 +76,45 @@ router.get('/:conversationId', verifyToken, async (req, res) => {
         const { conversationId } = req.params;
         const userId = req.user._id;
 
+        // 1. Kiểm tra xem cuộc trò chuyện có tồn tại không
         const conversation = await Conversation.findById(conversationId);
         if (!conversation) {
             return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện.' });
         }
 
+        // 2. Kiểm tra xem người dùng hiện tại có phải là thành viên của cuộc trò chuyện không
         const isParticipant = conversation.customerId.equals(userId) || conversation.sellerId.equals(userId);
         if (!isParticipant) {
             return res.status(403).json({ message: 'Bạn không có quyền xem cuộc trò chuyện này.' });
         }
 
-        // Sắp xếp theo thời gian tạo, mới nhất ở cuối
-        const messages = await Message.find({ conversationId }).sort({ createdAt: 'asc' }).populate('senderId', 'name role');
+        // 3. Lấy tất cả tin nhắn và populate thông tin người gửi
+        const messages = await Message.find({ conversationId })
+            .sort({ createdAt: 'asc' }) // Sắp xếp theo thời gian tăng dần (tin cũ -> mới)
+            .populate('senderId', 'name role avatar shopProfile.avatar'); // Lấy thêm avatar
 
-        // Khi người dùng vào xem, đánh dấu tất cả tin nhắn là đã đọc cho họ
+        // 4. Đánh dấu các tin nhắn là đã đọc cho người dùng hiện tại
+        // (Logic này rất quan trọng để reset badge đếm tin nhắn)
         if (conversation.customerId.equals(userId)) {
-            conversation.unreadByCustomer = 0;
+            // Nếu người dùng là khách hàng, reset unreadByCustomer
+            if (conversation.unreadByCustomer > 0) {
+                conversation.unreadByCustomer = 0;
+                await conversation.save();
+            }
         } else if (conversation.sellerId.equals(userId)) {
-            conversation.unreadBySeller = 0;
+            // Nếu người dùng là người bán, reset unreadBySeller
+            if (conversation.unreadBySeller > 0) {
+                conversation.unreadBySeller = 0;
+                await conversation.save();
+            }
         }
-        await conversation.save();
 
-        // API trả về messages theo thứ tự asc (cũ trước, mới sau)
-        // Client sẽ phải reverse() nếu muốn hiển thị ngược lại
+        // 5. Trả về danh sách tin nhắn cho client
         res.json(messages);
 
     } catch (err) {
         console.error("Lỗi khi lấy tin nhắn:", err.message);
-        res.status(500).json({ message: 'Lỗi server khi lấy tin nhắn' });
+        res.status(500).json({ message: 'Lỗi server' });
     }
 });
 
