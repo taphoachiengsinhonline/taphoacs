@@ -206,10 +206,13 @@ exports.getConversationsList = async (req, res) => {
 // API lấy chi tiết một cuộc trò chuyện
 exports.getConversationById = async (req, res) => {
     try {
+        // --- BẮT ĐẦU SỬA Ở ĐÂY ---
         const conversation = await Conversation.findById(req.params.id)
-            .populate('sellerId', 'name')
+            .populate('sellerId', 'name avatar shopProfile.avatar') // << Thêm avatar
+            .populate('customerId', 'name avatar') // << Thêm avatar
             .populate('productId', 'name images price variantTable')
             .lean();
+        // --- KẾT THÚC SỬA Ở ĐÂY ---
             
         if (!conversation) {
             return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện' });
