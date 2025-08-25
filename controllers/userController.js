@@ -207,14 +207,29 @@ exports.getPersonalizedRecommendations = async (req, res) => {
 exports.getSellerPublicProfile = async (req, res) => {
     try {
         const { sellerId } = req.params;
+
+        // --- BẮT ĐẦU SỬA ---
         const seller = await User.findById(sellerId)
-            .select('name shopProfile.shopDescription shopProfile.avatar shopProfile.coverPhoto'); // Chỉ lấy các trường công khai
+            .select('name role shopProfile.shopDescription shopProfile.avatar shopProfile.coverPhoto'); // <<< THÊM 'role' VÀO ĐÂY
+        // --- KẾT THÚC SỬA ---
 
         if (!seller || seller.role !== 'seller') {
+            // Log để gỡ lỗi nếu cần
+            if (!seller) {
+                console.log(`[getSellerPublicProfile] Không tìm thấy user với ID: ${sellerId}`);
+            } else {
+                console.log(`[getSellerPublicProfile] User ${sellerId} được tìm thấy nhưng role là '${seller.role}', không phải 'seller'.`);
+            }
             return res.status(404).json({ message: 'Không tìm thấy người bán này.' });
         }
+        
         res.status(200).json(seller);
+        
     } catch (error) {
+        // Xử lý trường hợp ID không hợp lệ
+        if (error.kind === 'ObjectId') {
+            return res.status(400).json({ message: 'ID người bán không hợp lệ.' });
+        }
         console.error("Lỗi khi lấy thông tin public của seller:", error);
         res.status(500).json({ message: 'Lỗi server' });
     }
