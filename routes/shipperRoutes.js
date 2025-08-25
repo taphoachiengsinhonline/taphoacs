@@ -70,4 +70,7 @@ router.put('/me/payment-info', shipperController.updatePaymentInfo);
 router.post('/remittance-request', shipperController.createRemittanceRequest);
 router.post('/orders/:id/request-transfer', orderController.requestOrderTransfer);
 
+router.post('/me/payment-info/request-update', shipperController.requestUpdatePaymentInfo);
+router.post('/me/payment-info/verify-update', shipperController.verifyUpdatePaymentInfo);
+
 module.exports = router;
