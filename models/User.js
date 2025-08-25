@@ -119,6 +119,10 @@ rejectionReason: String,
     accountHolderName: { type: String, trim: true },
     accountNumber: { type: String, trim: true },
   },
+   avatar: {
+    type: String,
+    trim: true,
+  },
   shopProfile: {
     shopDescription: { type: String, trim: true, default: 'Chào mừng đến với cửa hàng' },
     avatar: { type: String, trim: true },
