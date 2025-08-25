@@ -465,6 +465,44 @@ exports.sendCODRemittanceReminder = async () => {
         console.error("CRON JOB ERROR: Lỗi khi gửi thông báo nhắc nợ:", error);
     }
 };
+
+exports.updatePaymentInfo = async (req, res) => {
+    try {
+        const shipperId = req.user._id; // Lấy ID từ token đã xác thực
+        const { bankName, accountHolderName, accountNumber } = req.body;
+
+        // Kiểm tra dữ liệu đầu vào
+        if (!bankName || !accountHolderName || !accountNumber) {
+            return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin thanh toán.' });
+        }
+
+        // Tìm và cập nhật user (chỉ shipper mới có quyền cập nhật cho chính mình)
+        const updatedShipper = await User.findByIdAndUpdate(
+            shipperId,
+            {
+                $set: {
+                    'paymentInfo.bankName': bankName,
+                    'paymentInfo.accountHolderName': accountHolderName,
+                    'paymentInfo.accountNumber': accountNumber,
+                }
+            },
+            { new: true, runValidators: true } // Trả về document đã cập nhật và chạy validation
+        ).select('paymentInfo'); // Chỉ trả về thông tin đã cập nhật
+
+        if (!updatedShipper) {
+            return res.status(404).json({ message: 'Không tìm thấy tài khoản shipper.' });
+        }
+
+        res.status(200).json({
+            message: 'Cập nhật thông tin thanh toán thành công!',
+            paymentInfo: updatedShipper.paymentInfo
+        });
+
+    } catch (error) {
+        console.error('[Shipper Update Payment Info] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server khi cập nhật thông tin.' });
+    }
+};
 exports.getUnreadNotificationCount = async (req, res) => {
     try {
         const shipperId = req.user._id;
