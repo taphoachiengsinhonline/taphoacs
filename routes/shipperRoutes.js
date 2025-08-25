@@ -65,6 +65,7 @@ router.get('/notifications/unread-count', verifyToken, shipperController.getUnre
 router.get('/dashboard-summary', shipperController.getDashboardSummary);
 // Route cho RevenueReportScreen để lấy báo cáo chi tiết theo tháng
 router.get('/monthly-report', shipperController.getMonthlyFinancialReport);
+router.put('/me/payment-info', shipperController.updatePaymentInfo);
 // Route để shipper xác nhận đã nộp tiền
 router.post('/remittance-request', shipperController.createRemittanceRequest);
 router.post('/orders/:id/request-transfer', orderController.requestOrderTransfer);
