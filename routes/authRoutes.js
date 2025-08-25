@@ -157,6 +157,7 @@ router.post('/login', async (req, res) => {
     
     if (user.role === 'shipper') {
         userResponse.shipperProfile = user.shipperProfile;
+        userResponse.paymentInfo = user.paymentInfo;
     }
     if (user.role === 'seller') {
         userResponse.commissionRate = user.commissionRate;
