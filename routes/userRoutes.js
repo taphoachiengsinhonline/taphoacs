@@ -23,7 +23,8 @@ router.use(protect);
 
 // === QUẢN LÝ THÔNG TIN USER ===
 // Cập nhật thông tin user (cần `protect` để biết đang cập nhật cho ai)
-router.put('/:id', userController.updateUserProfile); 
+router.put('/:id', userController.updateUserProfile);
+router.put('/me/avatar', userController.updateAvatar);
 
 // Đổi mật khẩu (cần `protect` để biết ai đang đổi mật khẩu)
 router.post('/change-password', userController.changePassword);
