@@ -63,9 +63,13 @@ exports.getAllProducts = async (req, res) => {
 };
 exports.getProductById = async (req, res) => {
   try {
+    // --- BẮT ĐẦU SỬA ĐỔI ---
     const product = await Product.findById(req.params.id)
         .populate('category')
-        .populate('seller', 'name avatar');
+        // Sửa lại chuỗi select để lấy đúng các trường cần thiết từ shopProfile
+        .populate('seller', 'name shopProfile.avatar'); 
+    // --- KẾT THÚC SỬA ĐỔI ---
+
     if (!product) {
       return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
     }
