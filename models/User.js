@@ -120,7 +120,7 @@ rejectionReason: String,
     accountNumber: { type: String, trim: true },
   },
   shopProfile: {
-    shopDescription: { type: String, trim: true, default: 'Chào mừng đến với cửa hàng của chúng tôi!' },
+    shopDescription: { type: String, trim: true, default: 'Chào mừng đến với cửa hàng' },
     avatar: { type: String, trim: true },
     coverPhoto: { type: String, trim: true },
   },
