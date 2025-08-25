@@ -119,7 +119,13 @@ rejectionReason: String,
     accountHolderName: { type: String, trim: true },
     accountNumber: { type: String, trim: true },
   },
-
+  shopProfile: {
+    shopDescription: { type: String, trim: true, default: 'Chào mừng đến với cửa hàng của chúng tôi!' },
+    coverPhoto: { type: String, trim: true },
+    // CÁC TRƯỜNG KHÁC CÓ THỂ THÊM SAU:
+    // lastActive: Date,
+    // totalProducts: Number,
+  },
   sellerProfile: {
       autoResponseMessage: {
           type: String,
