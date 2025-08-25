@@ -8,7 +8,9 @@ const mongoose = require('mongoose');
 const { safeNotify } = require('../utils/notificationMiddleware');
 const RemittanceRequest = require('../models/RemittanceRequest');
 const SalaryPayment = require('../models/SalaryPayment');
-
+const PendingUpdate = require('../models/PendingUpdate'); // Model của bạn
+const { sendOtpSms } = require('../utils/sms'); 
+const crypto = require('crypto');
 exports.updateLocation = async (req, res) => {
     try {
         const { latitude, longitude } = req.body;
@@ -511,6 +513,96 @@ exports.getUnreadNotificationCount = async (req, res) => {
     } catch (error) {
         console.error("[Shipper] Lỗi đếm thông báo:", error);
         res.status(500).json({ message: 'Lỗi server' });
+    }
+};
+// HÀM 1: Yêu cầu cập nhật và gửi OTP
+exports.requestUpdatePaymentInfo = async (req, res) => {
+    try {
+        const shipper = req.user; // Lấy thông tin user từ middleware verifyToken
+        const { bankName, accountHolderName, accountNumber } = req.body;
+
+        if (!bankName || !accountHolderName || !accountNumber) {
+            return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin thanh toán.' });
+        }
+
+        const otp = crypto.randomInt(100000, 999999).toString();
+
+        // Xóa các yêu cầu cũ của user này
+        await PendingUpdate.deleteMany({ userId: shipper._id, type: 'paymentInfo' });
+
+        // Tạo bản ghi chờ xác thực mới
+        await PendingUpdate.create({
+            userId: shipper._id,
+            type: 'paymentInfo',
+            otp,
+            payload: { bankName, accountHolderName, accountNumber }
+        });
+
+        // Gửi SMS OTP
+        await sendOtpSms(shipper.phone, otp);
+
+        res.status(200).json({ message: 'Mã xác thực đã được gửi đến số điện thoại của bạn.' });
+
+    } catch (error) {
+        console.error("[Shipper Request Update] Lỗi:", error);
+        res.status(500).json({ message: 'Lỗi server khi yêu cầu cập nhật.' });
+    }
+};
+
+// HÀM 2: Xác thực OTP và hoàn tất cập nhật
+exports.verifyUpdatePaymentInfo = async (req, res) => {
+    try {
+        const shipperId = req.user._id;
+        const { otp } = req.body;
+
+        if (!otp || otp.length !== 6) {
+            return res.status(400).json({ message: 'Vui lòng nhập mã OTP gồm 6 chữ số.' });
+        }
+
+        const pendingRequest = await PendingUpdate.findOne({
+            userId: shipperId,
+            otp,
+            type: 'paymentInfo',
+            expiresAt: { $gt: new Date() } // Đảm bảo chưa hết hạn
+        });
+
+        if (!pendingRequest) {
+            return res.status(400).json({ message: 'Mã OTP không hợp lệ hoặc đã hết hạn.' });
+        }
+
+        const { bankName, accountHolderName, accountNumber } = pendingRequest.payload;
+        
+        const updatedUser = await User.findByIdAndUpdate(
+            shipperId,
+            { $set: { 
+                'paymentInfo.bankName': bankName, 
+                'paymentInfo.accountHolderName': accountHolderName, 
+                'paymentInfo.accountNumber': accountNumber 
+            }},
+            { new: true, runValidators: true }
+        ).select('-password');
+
+        // Xóa yêu cầu đã thành công
+        await PendingUpdate.findByIdAndDelete(pendingRequest._id);
+
+        res.status(200).json({
+            message: 'Cập nhật thông tin thanh toán thành công!',
+            // Trả về user đã cập nhật để client refresh context
+            user: {
+                 _id: updatedUser._id,
+                 name: updatedUser.name,
+                 email: updatedUser.email,
+                 phone: updatedUser.phone,
+                 address: updatedUser.address,
+                 role: updatedUser.role,
+                 paymentInfo: updatedUser.paymentInfo,
+                 shipperProfile: updatedUser.shipperProfile
+            }
+        });
+
+    } catch (error) {
+        console.error("[Shipper Verify Update] Lỗi:", error);
+        res.status(500).json({ message: 'Lỗi server khi xác thực OTP.' });
     }
 };
 
