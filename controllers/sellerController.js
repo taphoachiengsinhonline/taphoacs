@@ -424,3 +424,30 @@ exports.getAutoResponseMessage = async (req, res) => {
         res.status(500).json({ message: "Lỗi server." });
     }
 };
+
+exports.updateShopProfile = async (req, res) => {
+    try {
+        const sellerId = req.user._id;
+        const { shopDescription, avatar, coverPhoto } = req.body;
+
+        const updateData = {};
+        if (shopDescription) updateData['shopProfile.shopDescription'] = shopDescription;
+        if (avatar) updateData['shopProfile.avatar'] = avatar;
+        if (coverPhoto) updateData['shopProfile.coverPhoto'] = coverPhoto;
+
+        if (Object.keys(updateData).length === 0) {
+            return res.status(400).json({ message: 'Không có thông tin nào để cập nhật.' });
+        }
+
+        const updatedSeller = await User.findByIdAndUpdate(sellerId, { $set: updateData }, { new: true });
+
+        res.status(200).json({
+            message: 'Cập nhật thông tin cửa hàng thành công!',
+            user: updatedSeller // Trả về user đã cập nhật để client refresh context
+        });
+
+    } catch (error) {
+        console.error("Lỗi khi cập nhật shop profile:", error);
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+};
