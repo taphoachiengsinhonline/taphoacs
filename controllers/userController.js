@@ -234,3 +234,32 @@ exports.getSellerPublicProfile = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
+exports.updateAvatar = async (req, res) => {
+    try {
+        const { avatarUrl } = req.body;
+        const userId = req.user._id;
+
+        if (!avatarUrl) {
+            return res.status(400).json({ message: 'Vui lòng cung cấp URL của ảnh đại diện.' });
+        }
+
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            { $set: { avatar: avatarUrl } },
+            { new: true, runValidators: true }
+        ).select('-password'); // Không trả về mật khẩu
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: 'Không tìm thấy người dùng.' });
+        }
+
+        res.status(200).json({
+            message: 'Cập nhật ảnh đại diện thành công!',
+            user: updatedUser
+        });
+
+    } catch (error) {
+        console.error("Lỗi khi cập nhật avatar:", error);
+        res.status(500).json({ message: 'Lỗi server.' });
+    }
+};
