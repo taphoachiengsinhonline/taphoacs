@@ -82,29 +82,62 @@ exports.updateCategory = async (req, res) => {
 
 // Logic cho route: GET /by-seller
 exports.getCategoriesBySeller = async (req, res) => {
-  try {
-      const { sellerId } = req.query;
-      if (!sellerId) {
-          return res.status(400).json({ message: 'Vui lòng cung cấp ID của người bán.' });
-      }
+    try {
+        const { sellerId } = req.query;
+        if (!sellerId) {
+            return res.status(400).json({ message: 'Vui lòng cung cấp ID của người bán.' });
+        }
 
-      const distinctCategoryIds = await Product.distinct('category', { 
-          seller: sellerId,
-          approvalStatus: 'approved'
-      });
-      
-      if (distinctCategoryIds.length === 0) {
-          return res.json([]);
-      }
+        // Sử dụng Aggregate Pipeline để thực hiện tất cả trong 1 truy vấn, hiệu quả hơn
+        const categoriesWithCount = await Product.aggregate([
+            // Lọc các sản phẩm của seller và đã được duyệt
+            {
+                $match: {
+                    seller: new mongoose.Types.ObjectId(sellerId),
+                    approvalStatus: 'approved'
+                }
+            },
+            // Gom nhóm theo danh mục và đếm số lượng
+            {
+                $group: {
+                    _id: '$category',
+                    productCount: { $sum: 1 }
+                }
+            },
+            // Kết (lookup) với collection 'categories' để lấy thông tin tên danh mục
+            {
+                $lookup: {
+                    from: 'categories',
+                    localField: '_id',
+                    foreignField: '_id',
+                    as: 'categoryDetails'
+                }
+            },
+            // "Mở" mảng categoryDetails
+            {
+                $unwind: '$categoryDetails'
+            },
+            // Định hình lại output cuối cùng
+            {
+                $project: {
+                    _id: '$categoryDetails._id',
+                    name: '$categoryDetails.name',
+                    parent: '$categoryDetails.parent',
+                    productCount: '$productCount'
+                }
+            },
+            // Sắp xếp theo tên
+            {
+                $sort: {
+                    name: 1
+                }
+            }
+        ]);
 
-      const categories = await Category.find({
-          _id: { $in: distinctCategoryIds }
-      }).select('name parent').lean(); // Dùng lean() để tối ưu
+        res.json(categoriesWithCount);
 
-      res.json(categories);
-
-  } catch (error) {
-      console.error('Lỗi khi lấy danh mục theo người bán:', error);
-      res.status(500).json({ message: 'Lỗi server' });
-  }
+    } catch (error) {
+        console.error('Lỗi khi lấy danh mục theo người bán:', error);
+        res.status(500).json({ message: 'Lỗi server' });
+    }
 };
