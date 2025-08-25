@@ -41,5 +41,6 @@ router.patch('/notifications/:notificationId/read', sellerController.markNotific
 // --- ROUTE MỚI CHO TIN NHẮN TỰ ĐỘNG ---
 router.get('/settings/auto-message', sellerController.getAutoResponseMessage);
 router.put('/settings/auto-message', sellerController.updateAutoResponseMessage);
+router.put('/me/shop-profile', sellerController.updateShopProfile);
 
 module.exports = router;
