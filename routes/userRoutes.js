@@ -21,5 +21,5 @@ router.delete('/notifications/:id', userController.deleteNotification);
 
 // === GỢI Ý CÁ NHÂN HÓA ===
 router.get('/me/recommendations', userController.getPersonalizedRecommendations);
-
+router.get('/seller-profile/:sellerId', userController.getSellerPublicProfile);
 module.exports = router;
