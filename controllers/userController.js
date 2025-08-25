@@ -204,3 +204,18 @@ exports.getPersonalizedRecommendations = async (req, res) => {
         res.status(500).json({ error: 'Lỗi server' });
     }
 };
+exports.getSellerPublicProfile = async (req, res) => {
+    try {
+        const { sellerId } = req.params;
+        const seller = await User.findById(sellerId)
+            .select('name shopProfile.shopDescription shopProfile.avatar shopProfile.coverPhoto'); // Chỉ lấy các trường công khai
+
+        if (!seller || seller.role !== 'seller') {
+            return res.status(404).json({ message: 'Không tìm thấy người bán này.' });
+        }
+        res.status(200).json(seller);
+    } catch (error) {
+        console.error("Lỗi khi lấy thông tin public của seller:", error);
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+};
