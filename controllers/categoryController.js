@@ -1,5 +1,5 @@
 // /controllers/categoryController.js
-
+const mongoose = require('mongoose');
 const Category = require('../models/Category');
 const Product = require('../models/Product'); // Import Product model để dùng ở hàm mới
 
