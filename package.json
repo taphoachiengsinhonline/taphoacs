@@ -24,6 +24,8 @@
     "moment-timezone": "^0.6.0",
     "mongoose": "^7.0.4",
     "mongoose-paginate-v2": "^1.8.0",
+    "nodemailer": "^7.0.5",
     "twilio": "^5.2.2"
   }
 }
+
