@@ -1,13 +1,22 @@
+// File: backend/controllers/shipperController.js
+
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const Remittance = require('../models/Remittance');
-const bcrypt = require('bcryptjs'); // Sửa lại import
+const bcrypt = require('bcryptjs');
 const moment = require('moment-timezone');
 const mongoose = require('mongoose');
 const { safeNotify } = require('../utils/notificationMiddleware');
 const RemittanceRequest = require('../models/RemittanceRequest');
 const SalaryPayment = require('../models/SalaryPayment');
+const { sendOtpEmail } = require('../utils/mailer');
+const crypto = require('crypto');
+const PendingUpdate = require('../models/PendingUpdate'); // Thêm import này
+
+// ===============================================
+// === CÁC HÀM CŨ - GIỮ NGUYÊN 100% ===
+// ===============================================
 
 exports.updateLocation = async (req, res) => {
     try {
@@ -257,12 +266,6 @@ exports.getDashboardSummary = async (req, res) => {
     }
 };
 
-// <<< BẮT ĐẦU SỬA LỖI >>>
-// XÓA ĐOẠN CODE BỊ LẠC KHỎI ĐÂY
-// const shipperId = req.user._id;
-// const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
-// const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
-
 exports.createRemittanceRequest = async (req, res) => {
     try {
         const shipperId = req.user._id;
@@ -299,7 +302,7 @@ exports.createRemittanceRequest = async (req, res) => {
                             message: notificationBody,
                             type: 'remittance',
                             data: {
-                                screen: 'RemittanceApproval', // << THÊM SCREEN
+                                screen: 'RemittanceApproval',
                                 remittanceRequestId: newRequest._id.toString()
                             }
                         });
@@ -309,7 +312,7 @@ exports.createRemittanceRequest = async (req, res) => {
                                 body: notificationBody,
                                 data: {
                                     type: 'new_remittance_request',
-                                    screen: 'RemittanceApproval' // << THÊM SCREEN
+                                    screen: 'RemittanceApproval'
                                 }
                             });
                         }
@@ -466,43 +469,6 @@ exports.sendCODRemittanceReminder = async () => {
     }
 };
 
-exports.updatePaymentInfo = async (req, res) => {
-    try {
-        const shipperId = req.user._id; // Lấy ID từ token đã xác thực
-        const { bankName, accountHolderName, accountNumber } = req.body;
-
-        // Kiểm tra dữ liệu đầu vào
-        if (!bankName || !accountHolderName || !accountNumber) {
-            return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin thanh toán.' });
-        }
-
-        // Tìm và cập nhật user (chỉ shipper mới có quyền cập nhật cho chính mình)
-        const updatedShipper = await User.findByIdAndUpdate(
-            shipperId,
-            {
-                $set: {
-                    'paymentInfo.bankName': bankName,
-                    'paymentInfo.accountHolderName': accountHolderName,
-                    'paymentInfo.accountNumber': accountNumber,
-                }
-            },
-            { new: true, runValidators: true } // Trả về document đã cập nhật và chạy validation
-        ).select('paymentInfo'); // Chỉ trả về thông tin đã cập nhật
-
-        if (!updatedShipper) {
-            return res.status(404).json({ message: 'Không tìm thấy tài khoản shipper.' });
-        }
-
-        res.status(200).json({
-            message: 'Cập nhật thông tin thanh toán thành công!',
-            paymentInfo: updatedShipper.paymentInfo
-        });
-
-    } catch (error) {
-        console.error('[Shipper Update Payment Info] Lỗi:', error);
-        res.status(500).json({ message: 'Lỗi server khi cập nhật thông tin.' });
-    }
-};
 exports.getUnreadNotificationCount = async (req, res) => {
     try {
         const shipperId = req.user._id;
@@ -513,45 +479,91 @@ exports.getUnreadNotificationCount = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
-// HÀM MỚI: Cập nhật thông tin thanh toán (Sau khi client đã xác thực OTP)
-exports.updatePaymentInfo = async (req, res) => {
+
+// =============================================================
+// === CÁC HÀM MỚI VÀ ĐƯỢC CẬP NHẬT CHO LUỒNG OTP QUA EMAIL ===
+// =============================================================
+
+// HÀM 1: Yêu cầu cập nhật và gửi OTP qua Email
+exports.requestUpdatePaymentInfo = async (req, res) => {
     try {
-        const shipperId = req.user._id; // Lấy ID từ token JWT đã xác thực
+        const user = req.user;
         const { bankName, accountHolderName, accountNumber } = req.body;
 
         if (!bankName || !accountHolderName || !accountNumber) {
             return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin thanh toán.' });
         }
 
-        const updatedShipper = await User.findByIdAndUpdate(
-            shipperId,
-            {
-                $set: {
-                    'paymentInfo.bankName': bankName,
-                    'paymentInfo.accountHolderName': accountHolderName,
-                    'paymentInfo.accountNumber': accountNumber,
-                }
-            },
-            { new: true, runValidators: true }
-        ).select('-password');
-
-        if (!updatedShipper) {
-            return res.status(404).json({ message: 'Không tìm thấy tài khoản shipper.' });
-        }
+        const otp = crypto.randomInt(100000, 999999).toString();
         
-        // Trả về user object đầy đủ để client cập nhật context
-        res.status(200).json({
-            message: 'Cập nhật thông tin thanh toán thành công!',
-            user: updatedShipper 
+        await PendingUpdate.deleteMany({ userId: user._id, type: 'paymentInfo' });
+        
+        await PendingUpdate.create({
+            userId: user._id,
+            type: 'paymentInfo',
+            otp,
+            payload: { bankName, accountHolderName, accountNumber }
         });
 
+        const emailSent = await sendOtpEmail(user.email, otp);
+        if (!emailSent) {
+            return res.status(500).json({ message: 'Không thể gửi email xác thực. Vui lòng thử lại.' });
+        }
+
+        res.status(200).json({ message: 'Mã xác thực đã được gửi đến email của bạn.' });
     } catch (error) {
-        console.error('[Shipper Update Payment Info] Lỗi:', error);
-        res.status(500).json({ message: 'Lỗi server khi cập nhật thông tin.' });
+        console.error("[Request Update Payment Info] Lỗi:", error);
+        res.status(500).json({ message: 'Lỗi server khi yêu cầu cập nhật.' });
     }
 };
 
-// Hàm confirmRemittance không còn dùng đến, có thể xóa hoặc giữ lại để báo lỗi
+// HÀM 2: Xác thực OTP và hoàn tất cập nhật
+exports.verifyUpdatePaymentInfo = async (req, res) => {
+    try {
+        const shipperId = req.user._id;
+        const { otp } = req.body;
+
+        if (!otp || otp.length !== 6) {
+            return res.status(400).json({ message: 'Vui lòng nhập mã OTP gồm 6 chữ số.' });
+        }
+
+        const pendingRequest = await PendingUpdate.findOne({
+            userId: shipperId,
+            otp,
+            type: 'paymentInfo',
+            expiresAt: { $gt: new Date() }
+        });
+
+        if (!pendingRequest) {
+            return res.status(400).json({ message: 'Mã OTP không hợp lệ hoặc đã hết hạn.' });
+        }
+
+        const { bankName, accountHolderName, accountNumber } = pendingRequest.payload;
+        
+        const updatedUser = await User.findByIdAndUpdate(
+            shipperId,
+            { $set: { 
+                'paymentInfo.bankName': bankName, 
+                'paymentInfo.accountHolderName': accountHolderName, 
+                'paymentInfo.accountNumber': accountNumber 
+            }},
+            { new: true, runValidators: true }
+        ).select('-password');
+
+        await PendingUpdate.findByIdAndDelete(pendingRequest._id);
+
+        res.status(200).json({
+            message: 'Cập nhật thông tin thanh toán thành công!',
+            user: updatedUser
+        });
+
+    } catch (error) {
+        console.error("[Verify Update Payment Info] Lỗi:", error);
+        res.status(500).json({ message: 'Lỗi server khi xác thực OTP.' });
+    }
+};
+
+// Hàm confirmRemittance không còn dùng đến
 exports.confirmRemittance = async (req, res) => {
     return res.status(410).json({ message: "This endpoint is deprecated." });
 };
