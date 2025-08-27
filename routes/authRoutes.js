@@ -222,13 +222,17 @@ router.post('/refresh-token', async (req, res) => {
 // Lấy thông tin người dùng hiện tại
 router.get('/me', verifyToken, async (req, res) => {
     try {
+        // --- BẮT ĐẦU SỬA ---
+        // Yêu cầu lấy tất cả các trường cần thiết
         const user = await User.findById(req.user._id)
-            .select('+role +phone +address +name +email +shipperProfile +commissionRate +paymentInfo');
+            .select('+role +phone +address +name +email +avatar +shopProfile +shipperProfile +commissionRate +paymentInfo');
+        // --- KẾT THÚC SỬA ---
         
         if (!user) {
             return res.status(404).json({ status: 'error', message: 'Không tìm thấy người dùng' });
         }
-
+        
+        // --- BẮT ĐẦU SỬA ---
         const userResponse = {
             _id: user._id,
             name: user.name,
@@ -237,15 +241,13 @@ router.get('/me', verifyToken, async (req, res) => {
             address: user.address,
             role: user.role,
             isAdmin: user.role === 'admin',
+            avatar: user.avatar,
+            shopProfile: user.shopProfile,
+            shipperProfile: user.shipperProfile,
+            commissionRate: user.commissionRate,
+            paymentInfo: user.paymentInfo,
         };
-
-        if (user.role === 'shipper') {
-            userResponse.shipperProfile = user.shipperProfile;
-        }
-        if (user.role === 'seller') {
-            userResponse.commissionRate = user.commissionRate;
-            userResponse.paymentInfo = user.paymentInfo;
-        }
+        // --- KẾT THÚC SỬA ---
 
         res.status(200).json({
             status: 'success',
