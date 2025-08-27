@@ -150,6 +150,8 @@ router.post('/login', async (req, res) => {
 
     const { accessToken, refreshToken } = generateTokens(user._id);
     
+    // --- BẮT ĐẦU SỬA LỖI ---
+    // Xây dựng userResponse một cách đầy đủ và không có điều kiện thiếu sót
     const userResponse = {
         _id: user._id,
         name: user.name,
@@ -158,16 +160,15 @@ router.post('/login', async (req, res) => {
         address: user.address,
         role: user.role,
         isAdmin: user.role === 'admin',
+        
+        // Luôn gửi các trường này về nếu chúng tồn tại trong document
+        avatar: user.avatar, 
+        shopProfile: user.shopProfile, 
+        shipperProfile: user.shipperProfile, 
+        commissionRate: user.commissionRate,
+        paymentInfo: user.paymentInfo,
     };
-    
-    if (user.role === 'shipper') {
-        userResponse.shipperProfile = user.shipperProfile;
-        userResponse.paymentInfo = user.paymentInfo;
-    }
-    if (user.role === 'seller') {
-        userResponse.commissionRate = user.commissionRate;
-        userResponse.paymentInfo = user.paymentInfo;
-    }
+    // --- KẾT THÚC SỬA LỖI ---
     
     res.status(200).json({
       status: 'success',
