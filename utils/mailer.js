@@ -1,42 +1,56 @@
-// File: backend/utils/mailer.js
 const nodemailer = require('nodemailer');
 
-// Cấu hình transporter để sử dụng Gmail SMTP
+// Cấu hình transporter cho Gmail SMTP
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 587, // Dùng port 587 cho TLS (khuyến nghị), hoặc 465 cho SSL
+    secure: false, // true cho port 465, false cho port 587
     auth: {
-        user: process.env.GMAIL_USER,       // Email của bạn
-        pass: process.env.GMAIL_APP_PASSWORD // Mật khẩu ứng dụng 16 ký tự
-    }
+        user: process.env.EMAIL_USER, // Email Gmail của bạn (VD: example@gmail.com)
+        pass: process.env.EMAIL_PASS  // App Password từ Gmail
+    },
+    // Thêm timeout và kiểm tra kết nối
+    connectionTimeout: 10000, // 10 giây
+    greetingTimeout: 10000,
+    socketTimeout: 10000
 });
 
-/**
- * Gửi email chứa mã OTP đến người dùng.
- * @param {string} toEmail - Địa chỉ email của người nhận.
- * @param {string} otp - Mã OTP cần gửi.
- * @returns {Promise<boolean>} - Trả về true nếu gửi thành công, false nếu thất bại.
- */
-exports.sendOtpEmail = async (toEmail, otp) => {
-    const mailOptions = {
-        from: `"Bách Hóa Giao Ngay" <${process.env.GMAIL_USER}>`, // Tên người gửi và email
-        to: toEmail,
-        subject: `[Bách Hóa Giao Ngay] Mã xác thực OTP của bạn là ${otp}`,
-        html: `
-            <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px; border: 1px solid #ddd; border-radius: 8px; max-width: 450px; margin: auto;">
-                <h2 style="color: #333;">Xác nhận thay đổi thông tin</h2>
-                <p style="color: #555;">Mã OTP của bạn là:</p>
-                <h1 style="font-size: 38px; letter-spacing: 8px; color: #2e7d32; background-color: #f0f0f0; padding: 12px 20px; border-radius: 5px; display: inline-block;">${otp}</h1>
-                <p style="color: #555; margin-top: 20px;">Mã này có hiệu lực trong 5 phút. Vì lý do bảo mật, vui lòng không chia sẻ mã này cho bất kỳ ai.</p>
-            </div>
-        `
-    };
-
+// Hàm gửi email OTP
+const sendOtpEmail = async (to, otp) => {
     try {
-        await transporter.sendMail(mailOptions);
-        console.log(`Đã gửi OTP đến email (qua Gmail): ${toEmail}`);
+        const mailOptions = {
+            from: `"Bách Hoá Giao Ngay" <${process.env.EMAIL_USER}>`,
+            to,
+            subject: 'Mã OTP Xác Thực Cập Nhật Thông Tin Thanh Toán',
+            html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <h2 style="color: #333;">Xác Thực OTP</h2>
+                    <p>Xin chào,</p>
+                    <p>Bạn đã yêu cầu cập nhật thông tin thanh toán. Mã OTP của bạn là:</p>
+                    <h3 style="color: #4CAF50; font-size: 24px; text-align: center;">${otp}</h3>
+                    <p>Mã này có hiệu lực trong 5 phút. Vui lòng nhập mã vào ứng dụng để xác nhận.</p>
+                    <p>Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email.</p>
+                    <p>Trân trọng,<br>Đội ngũ Bách Hoá Giao Ngay</p>
+                </div>
+            `
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log('Email OTP sent:', info.messageId);
         return true;
     } catch (error) {
-        console.error("Lỗi khi gửi email OTP qua Gmail:", error);
+        console.error('Error sending OTP email:', error);
         return false;
     }
 };
+
+// Kiểm tra kết nối SMTP khi server khởi động
+transporter.verify((error, success) => {
+    if (error) {
+        console.error('SMTP connection error:', error);
+    } else {
+        console.log('SMTP server is ready to send emails');
+    }
+});
+
+module.exports = { sendOtpEmail };
