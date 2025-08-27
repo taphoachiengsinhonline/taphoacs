@@ -3,6 +3,7 @@ const Product = require('../models/Product');
 const Order = require('../models/Order');
 const User = require('../models/User');
 const PendingUpdate = require('../models/PendingUpdate');
+const { sendOtpEmail } = require('../utils/mailer');
 const crypto = require('crypto');
 const moment = require('moment-timezone');
 const Conversation = require('../models/Conversation');
