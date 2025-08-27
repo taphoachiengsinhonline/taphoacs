@@ -6,8 +6,8 @@ const transporter = nodemailer.createTransport({
     port: 587, // Dùng port 587 cho TLS (khuyến nghị), hoặc 465 cho SSL
     secure: false, // true cho port 465, false cho port 587
     auth: {
-        user: process.env.EMAIL_USER, // Email Gmail của bạn (VD: example@gmail.com)
-        pass: process.env.EMAIL_PASS  // App Password từ Gmail
+        user: process.env.GMAIL_USER, // Email Gmail của bạn (VD: example@gmail.com)
+        pass: process.env.GMAIL_APP_PASSWORD  // App Password từ Gmail
     },
     // Thêm timeout và kiểm tra kết nối
     connectionTimeout: 10000, // 10 giây
@@ -19,7 +19,7 @@ const transporter = nodemailer.createTransport({
 const sendOtpEmail = async (to, otp) => {
     try {
         const mailOptions = {
-            from: `"Bách Hoá Giao Ngay" <${process.env.EMAIL_USER}>`,
+            from: `"Bách Hoá Giao Ngay" <${process.env.GMAIL_USER}>`,
             to,
             subject: 'Mã OTP Xác Thực Cập Nhật Thông Tin Thanh Toán',
             html: `
