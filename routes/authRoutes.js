@@ -118,7 +118,7 @@ router.post('/login', async (req, res) => {
     }
 
     const user = await User.findOne({ email: email.toLowerCase().trim() })
-        .select('+password +role +phone +address +name +email +shipperProfile +commissionRate +paymentInfo');
+        .select('+password +role +phone +address +name +email +avatar +shopProfile +shipperProfile +commissionRate +paymentInfo');
     
    if (!user) {
       return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
