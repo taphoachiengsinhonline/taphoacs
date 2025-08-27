@@ -191,48 +191,71 @@ exports.updateFcmToken = async (req, res) => {
 
 exports.requestUpdatePaymentInfo = async (req, res) => {
     try {
+        const user = req.user;
         const { bankName, accountHolderName, accountNumber } = req.body;
         if (!bankName || !accountHolderName || !accountNumber) {
             return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin thanh toán.' });
         }
+        if (!user.email) {
+            return res.status(400).json({ message: 'Email không tồn tại trong hồ sơ người dùng.' });
+        }
         const otp = crypto.randomInt(100000, 999999).toString();
-        await PendingUpdate.deleteMany({ userId: req.user._id, type: 'paymentInfo' });
-        await PendingUpdate.create({
-            userId: req.user._id,
+        await PendingUpdate.deleteMany({ userId: user._id, type: 'paymentInfo' });
+        const pendingUpdate = await PendingUpdate.create({
+            userId: user._id,
             type: 'paymentInfo',
             otp,
-            payload: { bankName, accountHolderName, accountNumber }
+            payload: { bankName, accountHolderName, accountNumber },
+            expiresAt: new Date(Date.now() + 5 * 60 * 1000)
         });
-        await sendOtpSms(req.user.phone, otp);
-        res.status(200).json({ message: 'Mã xác thực đã được gửi đến số điện thoại của bạn.' });
+        const emailSent = await sendOtpEmail(user.email, otp);
+        if (!emailSent) {
+            await PendingUpdate.findByIdAndDelete(pendingUpdate._id);
+            return res.status(500).json({ 
+                message: 'Không thể gửi email xác thực. Vui lòng thử lại sau.' 
+            });
+        }
+        res.status(200).json({ message: `Mã xác thực đã được gửi đến ${user.email}.` });
     } catch (error) {
-        console.error("Lỗi khi yêu cầu cập nhật thông tin thanh toán:", error);
-        res.status(500).json({ message: 'Lỗi server khi yêu cầu cập nhật.' });
+        console.error("[Seller Request Update Payment Info] Lỗi:", error.message);
+        res.status(500).json({ message: 'Lỗi server khi yêu cầu cập nhật: ' + error.message });
     }
 };
 
 exports.verifyUpdatePaymentInfo = async (req, res) => {
     try {
+        const sellerId = req.user._id;
         const { otp } = req.body;
-        if (!otp || otp.length !== 6) return res.status(400).json({ message: 'Vui lòng nhập mã OTP gồm 6 chữ số.' });
+        if (!otp || otp.length !== 6) {
+            return res.status(400).json({ message: 'Vui lòng nhập mã OTP gồm 6 chữ số.' });
+        }
         const pendingRequest = await PendingUpdate.findOne({
-            userId: req.user._id,
+            userId: sellerId,
             otp,
             type: 'paymentInfo',
             expiresAt: { $gt: new Date() }
         });
-        if (!pendingRequest) return res.status(400).json({ message: 'Mã OTP không hợp lệ hoặc đã hết hạn.' });
+        if (!pendingRequest) {
+            return res.status(400).json({ message: 'Mã OTP không hợp lệ hoặc đã hết hạn.' });
+        }
         const { bankName, accountHolderName, accountNumber } = pendingRequest.payload;
         const updatedUser = await User.findByIdAndUpdate(
-            req.user._id,
-            { $set: { 'paymentInfo.bankName': bankName, 'paymentInfo.accountHolderName': accountHolderName, 'paymentInfo.accountNumber': accountNumber } },
+            sellerId,
+            { $set: { 
+                'paymentInfo.bankName': bankName, 
+                'paymentInfo.accountHolderName': accountHolderName, 
+                'paymentInfo.accountNumber': accountNumber 
+            }},
             { new: true, runValidators: true }
         ).select('-password');
         await PendingUpdate.findByIdAndDelete(pendingRequest._id);
-        res.status(200).json({ message: 'Cập nhật thông tin thanh toán thành công!', user: updatedUser });
+        res.status(200).json({
+            message: 'Cập nhật thông tin thanh toán thành công!',
+            user: updatedUser
+        });
     } catch (error) {
-        console.error("Lỗi khi xác thực OTP:", error);
-        res.status(500).json({ message: 'Lỗi server khi xác thực OTP.' });
+        console.error("[Seller Verify Update Payment Info] Lỗi:", error.message);
+        res.status(500).json({ message: 'Lỗi server khi xác thực OTP: ' + error.message });
     }
 };
 
