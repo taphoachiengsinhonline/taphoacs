@@ -1,5 +1,3 @@
-// File: backend/controllers/shipperController.js
-
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
@@ -472,10 +470,6 @@ exports.getUnreadNotificationCount = async (req, res) => {
     }
 };
 
-// =============================================================
-// === CÁC HÀM CHO LUỒNG OTP QUA EMAIL (GIỮ NGUYÊN) ===
-// =============================================================
-
 exports.requestUpdatePaymentInfo = async (req, res) => {
     try {
         const user = req.user;
@@ -483,22 +477,29 @@ exports.requestUpdatePaymentInfo = async (req, res) => {
         if (!bankName || !accountHolderName || !accountNumber) {
             return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin thanh toán.' });
         }
+        if (!user.email) {
+            return res.status(400).json({ message: 'Email không tồn tại trong hồ sơ người dùng.' });
+        }
         const otp = crypto.randomInt(100000, 999999).toString();
         await PendingUpdate.deleteMany({ userId: user._id, type: 'paymentInfo' });
-        await PendingUpdate.create({
+        const pendingUpdate = await PendingUpdate.create({
             userId: user._id,
             type: 'paymentInfo',
             otp,
-            payload: { bankName, accountHolderName, accountNumber }
+            payload: { bankName, accountHolderName, accountNumber },
+            expiresAt: new Date(Date.now() + 5 * 60 * 1000) // OTP hết hạn sau 5 phút
         });
         const emailSent = await sendOtpEmail(user.email, otp);
         if (!emailSent) {
-            return res.status(500).json({ message: 'Không thể gửi email xác thực. Vui lòng thử lại.' });
+            await PendingUpdate.findByIdAndDelete(pendingUpdate._id); // Xóa nếu gửi email thất bại
+            return res.status(500).json({ 
+                message: 'Không thể gửi email xác thực. Vui lòng kiểm tra cấu hình email hoặc thử lại sau.' 
+            });
         }
-        res.status(200).json({ message: 'Mã xác thực đã được gửi đến email của bạn.' });
+        res.status(200).json({ message: `Mã xác thực đã được gửi đến ${user.email}.` });
     } catch (error) {
-        console.error("[Request Update Payment Info] Lỗi:", error);
-        res.status(500).json({ message: 'Lỗi server khi yêu cầu cập nhật.' });
+        console.error("[Request Update Payment Info] Lỗi:", error.message);
+        res.status(500).json({ message: 'Lỗi server khi yêu cầu cập nhật: ' + error.message });
     }
 };
 
@@ -534,8 +535,8 @@ exports.verifyUpdatePaymentInfo = async (req, res) => {
             user: updatedUser
         });
     } catch (error) {
-        console.error("[Verify Update Payment Info] Lỗi:", error);
-        res.status(500).json({ message: 'Lỗi server khi xác thực OTP.' });
+        console.error("[Verify Update Payment Info] Lỗi:", error.message);
+        res.status(500).json({ message: 'Lỗi server khi xác thực OTP: ' + error.message });
     }
 };
 
