@@ -1,23 +1,76 @@
 const nodemailer = require('nodemailer');
+const net = require('net');
 
-// Cấu hình transporter cho Gmail SMTP
+// Hàm kiểm tra kết nối SMTP
+const testSmtpConnection = async (host, port) => {
+    return new Promise((resolve) => {
+        const socket = new net.Socket();
+        socket.setTimeout(10000);
+        socket.on('connect', () => {
+            console.log(`Successfully connected to ${host}:${port}`);
+            socket.destroy();
+            resolve(true);
+        });
+        socket.on('timeout', () => {
+            console.error(`Connection to ${host}:${port} timed out`);
+            socket.destroy();
+            resolve(false);
+        });
+        socket.on('error', (error) => {
+            console.error(`Error connecting to ${host}:${port}:`, error.message);
+            socket.destroy();
+            resolve(false);
+        });
+        socket.connect(port, host);
+    });
+};
+
+// Transporter cho port 587 (TLS)
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 587, // Dùng port 587 cho TLS (khuyến nghị), hoặc 465 cho SSL
-    secure: false, // true cho port 465, false cho port 587
+    port: 587,
+    secure: false,
     auth: {
-        user: process.env.GMAIL_USER, // Email Gmail của bạn (VD: example@gmail.com)
-        pass: process.env.GMAIL_APP_PASSWORD  // App Password từ Gmail
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD
     },
-    // Thêm timeout và kiểm tra kết nối
-    connectionTimeout: 10000, // 10 giây
+    connectionTimeout: 10000,
     greetingTimeout: 10000,
-    socketTimeout: 10000
+    socketTimeout: 10000,
+    logger: true,
+    debug: true
+});
+
+// Transporter cho port 465 (SSL)
+const fallbackTransporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
+    logger: true,
+    debug: true
 });
 
 // Hàm gửi email OTP
 const sendOtpEmail = async (to, otp) => {
     try {
+        console.log(`Checking SMTP connection to smtp.gmail.com:587`);
+        const smtp587Ok = await testSmtpConnection('smtp.gmail.com', 587);
+        if (!smtp587Ok) {
+            console.log(`Falling back to smtp.gmail.com:465`);
+            const smtp465Ok = await testSmtpConnection('smtp.gmail.com', 465);
+            if (!smtp465Ok) {
+                throw new Error('Both SMTP ports 587 and 465 are unreachable');
+            }
+        }
+
+        console.log(`Sending OTP email to ${to} with OTP ${otp}`);
         const mailOptions = {
             from: `"Bách Hoá Giao Ngay" <${process.env.GMAIL_USER}>`,
             to,
@@ -35,9 +88,16 @@ const sendOtpEmail = async (to, otp) => {
             `
         };
 
-        const info = await transporter.sendMail(mailOptions);
-        console.log('Email OTP sent:', info.messageId);
-        return true;
+        try {
+            const info = await transporter.sendMail(mailOptions);
+            console.log('Email OTP sent with port 587:', info.messageId);
+            return true;
+        } catch (error) {
+            console.error('Failed to send email with port 587:', error);
+            const info = await fallbackTransporter.sendMail(mailOptions);
+            console.log('Email OTP sent with port 465:', info.messageId);
+            return true;
+        }
     } catch (error) {
         console.error('Error sending OTP email:', error);
         return false;
@@ -47,10 +107,18 @@ const sendOtpEmail = async (to, otp) => {
 // Kiểm tra kết nối SMTP khi server khởi động
 transporter.verify((error, success) => {
     if (error) {
-        console.error('SMTP connection error:', error);
+        console.error('SMTP (port 587) connection error:', error);
     } else {
-        console.log('SMTP server is ready to send emails');
+        console.log('SMTP (port 587) server is ready to send emails');
     }
 });
 
-module.exports = { sendOtpEmail };
+fallbackTransporter.verify((error, success) => {
+    if (error) {
+        console.error('SMTP (port 465) connection error:', error);
+    } else {
+        console.log('SMTP (port 465) server is ready to send emails');
+    }
+});
+
+module.exports = { sendOtpEmail, testSmtpConnection };
