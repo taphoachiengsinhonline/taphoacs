@@ -80,10 +80,15 @@ router.post('/register', async (req, res) => {
         _id: user._id,
         name: user.name,
         email: user.email,
-        address: user.address,
         phone: user.phone,
+        address: user.address,
         role: user.role,
-        isAdmin: user.role === 'admin'
+        isAdmin: user.role === 'admin',
+        avatar: user.avatar, // Luôn gửi avatar nếu có
+        shopProfile: user.shopProfile, // Luôn gửi shopProfile nếu có
+        shipperProfile: user.shipperProfile, // Luôn gửi shipperProfile nếu có
+        commissionRate: user.commissionRate,
+        paymentInfo: user.paymentInfo,
     };
     
     if (user.role === 'shipper') {
