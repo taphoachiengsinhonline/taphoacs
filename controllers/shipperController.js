@@ -12,11 +12,7 @@ const RemittanceRequest = require('../models/RemittanceRequest');
 const SalaryPayment = require('../models/SalaryPayment');
 const { sendOtpEmail } = require('../utils/mailer');
 const crypto = require('crypto');
-const PendingUpdate = require('../models/PendingUpdate'); // Thêm import này
-
-// ===============================================
-// === CÁC HÀM CŨ - GIỮ NGUYÊN 100% ===
-// ===============================================
+const PendingUpdate = require('../models/PendingUpdate');
 
 exports.updateLocation = async (req, res) => {
     try {
@@ -442,20 +438,16 @@ exports.sendCODRemittanceReminder = async () => {
     try {
         const todayStart = moment().tz('Asia/Ho_Chi_Minh').startOf('day').toDate();
         const todayEnd = moment().tz('Asia/Ho_Chi_Minh').endOf('day').toDate();
-
         const activeShippers = await Order.distinct('shipper', { status: 'Đã giao', 'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd } });
         if (activeShippers.length === 0) { console.log("CRON JOB: Không có shipper nào hoạt động hôm nay."); return; }
-
         for (const shipperId of activeShippers) {
             const shipper = await User.findById(shipperId);
             if (!shipper || !shipper.fcmToken) continue;
-
             const orders = await Order.find({ shipper: shipperId, status: 'Đã giao', 'timestamps.deliveredAt': { $gte: todayStart, $lte: todayEnd } });
             const totalCOD = orders.reduce((sum, order) => sum + order.total, 0);
             const remittance = await Remittance.findOne({ shipper: shipperId, remittanceDate: { $gte: todayStart, $lte: todayEnd }, status: 'completed' });
             const amountRemitted = remittance ? remittance.amount : 0;
             const amountToRemit = totalCOD - amountRemitted;
-
             if (amountToRemit > 0) {
                 const message = `Bạn cần nộp ${amountToRemit.toLocaleString()}đ tiền thu hộ (COD) cho ngày hôm nay. Vui lòng hoàn thành trước khi bắt đầu ca làm việc tiếp theo.`;
                 await safeNotify(shipper.fcmToken, { title: '📢 Nhắc nhở nộp tiền COD', body: message, data: { type: 'remittance_reminder' } });
@@ -481,35 +473,28 @@ exports.getUnreadNotificationCount = async (req, res) => {
 };
 
 // =============================================================
-// === CÁC HÀM MỚI VÀ ĐƯỢC CẬP NHẬT CHO LUỒNG OTP QUA EMAIL ===
+// === CÁC HÀM CHO LUỒNG OTP QUA EMAIL (GIỮ NGUYÊN) ===
 // =============================================================
 
-// HÀM 1: Yêu cầu cập nhật và gửi OTP qua Email
 exports.requestUpdatePaymentInfo = async (req, res) => {
     try {
         const user = req.user;
         const { bankName, accountHolderName, accountNumber } = req.body;
-
         if (!bankName || !accountHolderName || !accountNumber) {
             return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin thanh toán.' });
         }
-
         const otp = crypto.randomInt(100000, 999999).toString();
-        
         await PendingUpdate.deleteMany({ userId: user._id, type: 'paymentInfo' });
-        
         await PendingUpdate.create({
             userId: user._id,
             type: 'paymentInfo',
             otp,
             payload: { bankName, accountHolderName, accountNumber }
         });
-
         const emailSent = await sendOtpEmail(user.email, otp);
         if (!emailSent) {
             return res.status(500).json({ message: 'Không thể gửi email xác thực. Vui lòng thử lại.' });
         }
-
         res.status(200).json({ message: 'Mã xác thực đã được gửi đến email của bạn.' });
     } catch (error) {
         console.error("[Request Update Payment Info] Lỗi:", error);
@@ -517,29 +502,23 @@ exports.requestUpdatePaymentInfo = async (req, res) => {
     }
 };
 
-// HÀM 2: Xác thực OTP và hoàn tất cập nhật
 exports.verifyUpdatePaymentInfo = async (req, res) => {
     try {
         const shipperId = req.user._id;
         const { otp } = req.body;
-
         if (!otp || otp.length !== 6) {
             return res.status(400).json({ message: 'Vui lòng nhập mã OTP gồm 6 chữ số.' });
         }
-
         const pendingRequest = await PendingUpdate.findOne({
             userId: shipperId,
             otp,
             type: 'paymentInfo',
             expiresAt: { $gt: new Date() }
         });
-
         if (!pendingRequest) {
             return res.status(400).json({ message: 'Mã OTP không hợp lệ hoặc đã hết hạn.' });
         }
-
         const { bankName, accountHolderName, accountNumber } = pendingRequest.payload;
-        
         const updatedUser = await User.findByIdAndUpdate(
             shipperId,
             { $set: { 
@@ -549,21 +528,17 @@ exports.verifyUpdatePaymentInfo = async (req, res) => {
             }},
             { new: true, runValidators: true }
         ).select('-password');
-
         await PendingUpdate.findByIdAndDelete(pendingRequest._id);
-
         res.status(200).json({
             message: 'Cập nhật thông tin thanh toán thành công!',
             user: updatedUser
         });
-
     } catch (error) {
         console.error("[Verify Update Payment Info] Lỗi:", error);
         res.status(500).json({ message: 'Lỗi server khi xác thực OTP.' });
     }
 };
 
-// Hàm confirmRemittance không còn dùng đến
 exports.confirmRemittance = async (req, res) => {
     return res.status(410).json({ message: "This endpoint is deprecated." });
 };
