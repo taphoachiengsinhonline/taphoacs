@@ -183,8 +183,10 @@ exports.updateProduct = async (req, res) => {
     const oldValues = {
       name: product.name,
       description: product.description,
-      category: product.category,
+      category: product.category.toString(),
       images: JSON.stringify(product.images.sort()),
+      // Lưu lại giá trị cũ của saleTimeFrames để so sánh
+      saleTimeFrames: JSON.stringify(product.saleTimeFrames), 
     };
 
     const { 
@@ -216,8 +218,10 @@ exports.updateProduct = async (req, res) => {
       const hasSignificantChange = 
         product.name !== oldValues.name ||
         product.description !== oldValues.description ||
-        product.category.toString() !== oldValues.category.toString() ||
-        JSON.stringify(product.images.sort()) !== oldValues.images;
+        product.category.toString() !== oldValues.category ||
+        JSON.stringify(product.images.sort()) !== oldValues.images ||
+        // Thêm điều kiện kiểm tra sự thay đổi của saleTimeFrames
+        JSON.stringify(product.saleTimeFrames) !== oldValues.saleTimeFrames;
 
       if (hasSignificantChange) {
         product.approvalStatus = 'pending_approval';
