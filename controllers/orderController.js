@@ -241,7 +241,7 @@ exports.createOrder = async (req, res) => {
 exports.acceptOrder = async (req, res) => {
     try {
         const order = await Order.findById(req.params.id)
-            .populate('user', 'name fcmToken')
+            .populate('user', 'name fcmToken avatar')
             .populate('consultationSellerId', 'name fcmToken');
 
         if (!order) {
@@ -270,19 +270,50 @@ exports.acceptOrder = async (req, res) => {
             
             if (conversation) {
                 const conversationId = conversation._id.toString();
+
+                // --- GỬI THÔNG BÁO CHO CUSTOMER (KHÁCH HÀNG) ---
                 if (order.user && order.user.fcmToken) {
-                    safeNotify(order.user.fcmToken, { 
+                    await safeNotify(order.user.fcmToken, { 
                         title: "Đã tìm thấy người hỗ trợ!", 
                         body: `Bạn có thể bắt đầu trò chuyện với ${order.consultationSellerId.name}.`,
-                        data: { type: 'consultation_unlocked', conversationId: conversationId }
+                        // Dữ liệu này dành cho App Bán Hàng của khách
+                        data: { type: 'consultation_unlocked', conversationId: conversationId } 
                     });
                 }
-                if (order.consultationSellerId && order.consultationSellerId.fcmToken) {
-                    safeNotify(order.consultationSellerId.fcmToken, { 
-                        title: "Yêu cầu tư vấn mới", 
-                        body: `Khách hàng ${order.user.name} đang chờ bạn.`,
-                        data: { type: 'consultation_unlocked', conversationId: conversationId }
+                
+                // --- GỬI THÔNG BÁO CHO SELLER (NGƯỜI BÁN) ---
+                if (order.consultationSellerId) {
+                    const sellerId = order.consultationSellerId._id;
+                    const sellerNotificationTitle = "Yêu cầu tư vấn mới";
+                    const sellerNotificationBody = `Khách hàng "${order.user.name}" đang chờ bạn tư vấn.`;
+                    
+                    // Dữ liệu này dành cho App Seller
+                    const notificationDataForSeller = {
+                        type: 'new_consultation_request', 
+                        conversationId: conversationId,
+                        screen: 'ConversationDetail', 
+                        otherUserId: order.user._id.toString(),
+                        otherUserName: order.user.name,
+                    };
+
+                    // 1. Gửi push notification cho Seller
+                    if (order.consultationSellerId.fcmToken) {
+                        await safeNotify(order.consultationSellerId.fcmToken, { 
+                            title: sellerNotificationTitle, 
+                            body: sellerNotificationBody,
+                            data: notificationDataForSeller
+                        });
+                    }
+                    
+                    // 2. Lưu thông báo vào database của Seller
+                    await Notification.create({
+                        user: sellerId,
+                        title: sellerNotificationTitle,
+                        message: sellerNotificationBody,
+                        type: 'order',
+                        data: notificationDataForSeller
                     });
+                     console.log(`[Notification] Đã LƯU thông báo tư vấn mới cho seller ${sellerId}`);
                 }
             }
             
