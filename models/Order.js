@@ -143,6 +143,10 @@ const orderSchema = new mongoose.Schema({
     trim: true,
     default: null
   },
+  cancelReason: {
+    type: String,
+    trim: true
+  },
   // Ghi chú: Trường timestamps lồng nhau không phải là cách làm chuẩn, 
   // nên sử dụng timestamps: true của Mongoose. 
   // Tuy nhiên, để không phá vỡ code hiện tại, tôi sẽ giữ nguyên.
