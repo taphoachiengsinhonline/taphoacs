@@ -31,21 +31,10 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
         }
 
         if (retryCount >= MAX_RETRY) {
-            console.warn(`[assignShipper][${orderId}] DỪNG: Đã đạt số lần thử tối đa (${MAX_RETRY}). Hủy đơn hàng.`);
-            order.status = 'Đã huỷ';
-            order.cancelReason = 'Không tìm thấy tài xế phù hợp nhận đơn.';
-            await order.save();
-
-            const customer = await User.findById(order.user);
-            if (customer?.fcmToken) {
-                await safeNotify(customer.fcmToken, {
-                    title: 'Không tìm thấy tài xế',
-                    body: `Rất tiếc, đơn hàng #${order._id.toString().slice(-6)} của bạn đã bị hủy do không có tài xế nào nhận. Vui lòng thử lại sau.`,
-                    data: { orderId: order._id.toString(), type: 'order_canceled_no_shipper' }
-                });
-            }
-            return;
-        }
+        console.log(`[Assign] Đã đạt giới hạn ${MAX_RETRY} lần thử cho đơn hàng ${orderId}. Sẽ chờ cron job xử lý.`);
+        // <<< XÓA HOÀN TOÀN KHỐI LOGIC HỦY ĐƠN Ở ĐÂY >>>
+        return; // Dừng vòng lặp
+    }
 
         console.log(`[assignShipper][${orderId}] Bước 2: Tìm hoặc tạo PendingDelivery...`);
         let pending = await PendingDelivery.findOne({ orderId });
