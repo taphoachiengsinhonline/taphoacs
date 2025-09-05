@@ -89,7 +89,7 @@ exports.createOrder = async (req, res) => {
     try {
         const {
             items, phone, shippingAddress, shippingLocation, customerName,
-            paymentMethod, voucherDiscount, voucherCode
+            paymentMethod, voucherDiscount, voucherCode, customerNotes
         } = req.body;
         const userId = req.user._id;
 
@@ -193,7 +193,7 @@ exports.createOrder = async (req, res) => {
                     shippingLocation, paymentMethod: paymentMethod || 'COD', shippingFeeActual: shippingFeeActual,
                     shippingFeeCustomerPaid: shippingFeeCustomerPaid, extraSurcharge: 0,
                     voucherDiscount: voucherDiscount || 0, voucherCode, status: 'Chờ xác nhận',
-                    isConsultationOrder: false,
+                    isConsultationOrder: false, customerNotes: customerNotes
                 });
                 
                 const [createdOrder] = await Order.create([order], { session });
