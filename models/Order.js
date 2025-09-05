@@ -143,6 +143,10 @@ const orderSchema = new mongoose.Schema({
     trim: true,
     default: null
   },
+  customerNotes: {
+    type: String,
+    trim: true
+  },
   cancelReason: {
     type: String,
     trim: true
