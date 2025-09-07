@@ -806,9 +806,13 @@ exports.getPendingSellers = async (req, res) => {
 exports.approveSeller = async (req, res) => {
     try {
         const { sellerId } = req.params;
+        const { regionId } = req.body;
+        if (!regionId) {
+            return res.status(400).json({ message: 'Vui lòng chọn một khu vực cho Seller.' });
+        }
         const seller = await User.findOneAndUpdate(
             { _id: sellerId, role: 'seller', approvalStatus: 'pending' },
-            { $set: { approvalStatus: 'approved' } },
+            { $set: { approvalStatus: 'approved', region: regionId } },
             { new: true }
         );
 
