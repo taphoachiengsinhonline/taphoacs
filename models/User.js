@@ -35,7 +35,11 @@ const userSchema = new mongoose.Schema({
     required: [true, 'Vui lòng nhập mật khẩu'],
     select: false
   },
-  
+   region: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Region',
+        default: null // Sẽ được gán khi đăng ký
+    },
   role: {
   type: String,
   // SỬA DÒNG NÀY
