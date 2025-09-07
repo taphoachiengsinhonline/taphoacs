@@ -46,6 +46,12 @@ const orderSchema = new mongoose.Schema({
     required: true,
     validate: v => Array.isArray(v) && v.length > 0
   },
+  region: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Region',
+        required: true,
+        index: true // Rất quan trọng để query nhanh
+    },
   total: {
     type: Number,
     required: true,
