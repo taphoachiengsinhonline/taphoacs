@@ -23,18 +23,18 @@ exports.getAllProducts = async (req, res) => {
     const { category, limit, sellerId } = req.query;
     let filter = {}; 
 
+    let filter = { approvalStatus: 'approved' }; 
+
     if (sellerId) {
-        // Khi xem shop của một seller cụ thể, không cần lọc theo khu vực
         filter.seller = sellerId;
-        filter.approvalStatus = 'approved';
     } else {
-        // Mặc định, user phải đăng nhập và có khu vực
-        if (!req.user || !req.user.region) {
-            // Trả về mảng rỗng nếu user không có thông tin khu vực
-            return res.json([]);
+        // <<< SỬA LOGIC LỌC KHU VỰC >>>
+        // Nếu người dùng đã đăng nhập VÀ có thông tin khu vực, thì mới lọc
+        if (req.user && req.user.region) {
+            filter.region = req.user.region;
         }
-        filter.approvalStatus = 'approved';
-        filter.region = req.user.region; // <<< LỌC THEO KHU VỰC CỦA USER
+        // Nếu không (khách vãng lai), filter sẽ không có trường region,
+        // do đó sẽ lấy sản phẩm từ tất cả các khu vực.
     }
 
     if (category && category !== 'Tất cả') {
