@@ -21,8 +21,7 @@ const getAllChildCategoryIds = async (parentId) => {
 exports.getAllProducts = async (req, res) => {
   try {
     const { category, limit, sellerId } = req.query;
-    let filter = {}; 
-
+    
     let filter = { approvalStatus: 'approved' }; 
 
     if (sellerId) {
