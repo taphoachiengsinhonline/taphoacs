@@ -161,8 +161,10 @@ exports.updateFcmToken = async (req, res) => {
 // HÀM MỚI: LẤY SẢN PHẨM GỢI Ý CÁ NHÂN HÓA
 exports.getPersonalizedRecommendations = async (req, res) => {
     try {
+        // <<< SỬA LOGIC: HÀM NÀY CHỈ CÓ Ý NGHĨA KHI USER ĐÃ ĐĂNG NHẬP >>>
         if (!req.user || !req.user.region) {
-            return res.json([]);
+            // Nếu khách vãng lai gọi, trả về mảng rỗng vì không có gì để "cá nhân hóa"
+            return res.json([]); 
         }
         const userId = req.user._id;
         const regionId = req.user.region;
