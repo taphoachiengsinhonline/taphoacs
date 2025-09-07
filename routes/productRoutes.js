@@ -10,9 +10,14 @@ const { verifyToken } = require('../middlewares/authMiddleware');
 // Lấy sản phẩm bán chạy nhất
 router.get('/bestsellers', productController.getBestSellers);
 
-// Lấy sản phẩm gợi ý cá nhân hóa - Cần token để biết user và khu vực
-router.get('/personalized-recommendations', verifyToken, productController.getPersonalizedRecommendations);
-// Lấy sản phẩm gợi ý cho một sản phẩm cụ thể - Cần token để biết khu vực
+// Lấy sản phẩm bán chạy nhất - Cần token để biết khu vực
+router.get('/bestsellers', verifyToken, productController.getBestSellers);
+
+// Lấy sản phẩm liên quan (cùng danh mục) - Cần token
+router.get('/:productId/related', verifyToken, productController.getRelatedProducts);
+
+// Lấy sản phẩm thường mua cùng - Cần token
+router.get('/:productId/also-bought', verifyToken, productController.getAlsoBoughtProducts);
 router.get('/:id/recommendations', verifyToken, productController.getProductRecommendations);
 
 
