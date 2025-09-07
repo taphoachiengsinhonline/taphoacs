@@ -17,91 +17,58 @@ const getAllChildCategoryIds = async (parentId) => {
 };
 
 
-// HÀM getAllProducts SỬA LẠI HOÀN CHỈNH
 exports.getAllProducts = async (req, res) => {
-  try {
-    const { category, limit, sellerId } = req.query;
-    
-    let filter = { approvalStatus: 'approved' }; 
+    try {
+        const { category, limit, sellerId } = req.query;
+        let filter = { approvalStatus: 'approved' };
 
-    if (sellerId) {
-        filter.seller = sellerId;
-    } else {
-        // <<< SỬA LOGIC LỌC KHU VỰC >>>
-        // Nếu người dùng đã đăng nhập VÀ có thông tin khu vực, thì mới lọc
-        if (req.user && req.user.region) {
-            filter.region = req.user.region;
+        if (sellerId) {
+            filter.seller = sellerId;
+        } else {
+            if (req.user && req.user.region) {
+                filter.region = req.user.region;
+            }
         }
-        // Nếu không (khách vãng lai), filter sẽ không có trường region,
-        // do đó sẽ lấy sản phẩm từ tất cả các khu vực.
-    }
 
-    if (category && category !== 'Tất cả') {
-      const ids = [category, ...(await getAllChildCategoryIds(category))];
-      filter.category = { $in: ids };
-    }
-    
-    let query = Product.find(filter)
-      .populate('category')
-      .select('+saleTimeFrames +totalStock') 
-      .sort({ createdAt: -1 });
+        if (category && category !== 'Tất cả') {
+            const ids = [category, ...(await getAllChildCategoryIds(category))];
+            filter.category = { $in: ids };
+        }
 
-    if (limit) {
-      query = query.limit(parseInt(limit));
+        let query = Product.find(filter).populate('category').sort({ createdAt: -1 });
+        if (limit) query = query.limit(parseInt(limit));
+        
+        let products = await query.exec();
+        
+        if (!sellerId) {
+            products = products.filter(p => p.totalStock > 0 || p.requiresConsultation === true);
+        }
+        
+        res.json(products);
+    } catch (err) {
+        console.error('❌ Lỗi khi lấy sản phẩm:', err);
+        res.status(500).json({ error: err.message });
     }
-
-    let products = await query.exec();
-    
-    if (!sellerId) {
-        products = products.filter(p => p.totalStock > 0 || p.requiresConsultation === true);
-    }
-    
-    res.json(products);
-
-  } catch (err) {
-    console.error('❌ Lỗi khi lấy sản phẩm:', err);
-    res.status(500).json({ error: err.message });
-  }
-};
-exports.getProductById = async (req, res) => {
-  try {
-    // --- BẮT ĐẦU SỬA ĐỔI ---
-    const product = await Product.findById(req.params.id)
-        .populate('category')
-        // Sửa lại chuỗi select để lấy đúng các trường cần thiết từ shopProfile
-        .populate('seller', 'name shopProfile.avatar'); 
-    // --- KẾT THÚC SỬA ĐỔI ---
-
-    if (!product) {
-      return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
-    }
-    res.json(product);
-  } catch (err) {
-    console.error('❌ Lỗi khi lấy chi tiết sản phẩm:', err);
-    res.status(500).json({ message: 'Lỗi server' });
-  }
 };
 
+// --- HÀM 2: LẤY SẢN PHẨM BÁN CHẠY NHẤT ---
 exports.getBestSellers = async (req, res) => {
     try {
         const limit = parseInt(req.query.limit, 10) || 10;
-        
         let matchStage = { status: 'Đã giao' };
 
-        // <<< SỬA LOGIC LỌC KHU VỰC >>>
         if (req.user && req.user.region) {
             matchStage.region = new mongoose.Types.ObjectId(req.user.region);
         }
-        
+
         const bestSellers = await Order.aggregate([
-            { $match: matchStage }, // << Áp dụng bộ lọc
+            { $match: matchStage },
             { $unwind: '$items' },
             { $group: { _id: '$items.productId', totalQuantitySold: { $sum: '$items.quantity' } } },
             { $sort: { totalQuantitySold: -1 } },
             { $limit: limit },
             { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'productDetails' } },
             { $unwind: '$productDetails' },
-            // Bước 2: Chỉ giữ lại các sản phẩm vẫn còn được duyệt
             { $match: { 'productDetails.approvalStatus': 'approved' } },
             { $replaceRoot: { newRoot: '$productDetails' } }
         ]);
@@ -112,7 +79,7 @@ exports.getBestSellers = async (req, res) => {
     }
 };
 
-
+// --- HÀM 3: LẤY SẢN PHẨM LIÊN QUAN (CÙNG DANH MỤC) ---
 exports.getRelatedProducts = async (req, res) => {
     try {
         if (!req.user || !req.user.region) return res.json([]);
@@ -127,9 +94,9 @@ exports.getRelatedProducts = async (req, res) => {
 
         const relatedProducts = await Product.find({
             category: currentProduct.category,
-            _id: { $ne: productId }, // Loại trừ chính sản phẩm đang xem
+            _id: { $ne: productId },
             approvalStatus: 'approved',
-            region: regionId, // Lọc theo khu vực
+            region: regionId,
             $or: [{ totalStock: { $gt: 0 } }, { requiresConsultation: true }]
         })
         .limit(limit)
@@ -142,7 +109,7 @@ exports.getRelatedProducts = async (req, res) => {
     }
 };
 
-// --- HÀM 2: LẤY SẢN PHẨM THƯỜNG MUA CÙNG ---
+// --- HÀM 4: LẤY SẢN PHẨM THƯỜNG MUA CÙNG ---
 exports.getAlsoBoughtProducts = async (req, res) => {
     try {
         if (!req.user || !req.user.region) return res.json([]);
@@ -171,7 +138,7 @@ exports.getAlsoBoughtProducts = async (req, res) => {
             .map(([id]) => new mongoose.Types.ObjectId(id));
         
         if (sortedIds.length === 0) {
-            return res.json([]); // Không có ai mua cùng, trả về mảng rỗng
+            return res.json([]);
         }
 
         const alsoBoughtProducts = await Product.find({
@@ -187,10 +154,24 @@ exports.getAlsoBoughtProducts = async (req, res) => {
         res.status(500).json({ error: 'Lỗi server' });
     }
 };
+exports.getProductById = async (req, res) => {
+  try {
+    // --- BẮT ĐẦU SỬA ĐỔI ---
+    const product = await Product.findById(req.params.id)
+        .populate('category')
+        // Sửa lại chuỗi select để lấy đúng các trường cần thiết từ shopProfile
+        .populate('seller', 'name shopProfile.avatar'); 
+    // --- KẾT THÚC SỬA ĐỔI ---
 
-
-
-
+    if (!product) {
+      return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+    }
+    res.json(product);
+  } catch (err) {
+    console.error('❌ Lỗi khi lấy chi tiết sản phẩm:', err);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
+};
 
 
 
