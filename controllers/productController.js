@@ -84,20 +84,17 @@ exports.getProductById = async (req, res) => {
 
 exports.getBestSellers = async (req, res) => {
     try {
-        if (!req.user || !req.user.region) {
-            return res.json([]);
-        }
-        const regionId = req.user.region;
         const limit = parseInt(req.query.limit, 10) || 10;
+        
+        let matchStage = { status: 'Đã giao' };
 
+        // <<< SỬA LOGIC LỌC KHU VỰC >>>
+        if (req.user && req.user.region) {
+            matchStage.region = new mongoose.Types.ObjectId(req.user.region);
+        }
+        
         const bestSellers = await Order.aggregate([
-            // Bước 1: Chỉ lấy các đơn hàng "Đã giao" TRONG KHU VỰC của user
-            { 
-                $match: { 
-                    status: 'Đã giao',
-                    region: new mongoose.Types.ObjectId(regionId) // <<< LỌC THEO KHU VỰC
-                } 
-            },
+            { $match: matchStage }, // << Áp dụng bộ lọc
             { $unwind: '$items' },
             { $group: { _id: '$items.productId', totalQuantitySold: { $sum: '$items.quantity' } } },
             { $sort: { totalQuantitySold: -1 } },
