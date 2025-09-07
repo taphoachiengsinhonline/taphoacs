@@ -121,6 +121,7 @@ exports.createOrder = async (req, res) => {
                 isConsultationOrder: true,
                 consultationSellerId: productForCheck.seller._id,
                 customerName, phone, shippingAddress, shippingLocation,
+                region: req.user.region, // <<< KẾ THỪA REGION TỪ CUSTOMER
             });
 
             savedOrder = await consultationOrder.save();
