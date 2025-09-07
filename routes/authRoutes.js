@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const voucherController = require('../controllers/voucherController');
 const { verifyToken } = require('../middlewares/authMiddleware');
+const Region = require('../models/Region');
 
 // Hàm tạo Access + Refresh token
 const generateTokens = (userId) => {
@@ -28,6 +29,28 @@ const generateTokens = (userId) => {
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password, address, phone, location, role, fcmToken, shipperProfile } = req.body;
+    // <<< THÊM LOGIC TÌM KHU VỰC >>>
+        let userRegion = null;
+        if (location && location.coordinates) {
+            userRegion = await Region.findOne({
+                isActive: true,
+                center: {
+                    $nearSphere: {
+                        $geometry: {
+                            type: "Point",
+                            coordinates: location.coordinates
+                        },
+                        // Tìm trong bán kính hoạt động của chính khu vực đó (cần cải tiến nếu cần)
+                        // Tạm thời tìm khu vực gần nhất
+                    }
+                }
+            }).select('_id');
+        }
+
+        if (!userRegion) {
+            return res.status(400).json({ message: 'Vị trí của bạn hiện không nằm trong khu vực phục vụ của chúng tôi.' });
+        }
+        // <<< KẾT THÚC LOGIC TÌM KHU VỰC >>>
 
     if (!name || !email || !password || !address || !phone) {
       return res.status(400).json({
@@ -53,7 +76,8 @@ router.post('/register', async (req, res) => {
       address,
       phone,
       role: role || 'customer',
-      location: location || { type: 'Point', coordinates: [0, 0] }
+      location: location || { type: 'Point', coordinates: [0, 0] },
+      region: userRegion._id // <<< GÁN REGION ID
     };
 
     if (fcmToken) {
