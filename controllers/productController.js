@@ -23,10 +23,18 @@ exports.getAllProducts = async (req, res) => {
     const { category, limit, sellerId } = req.query;
     let filter = {}; 
 
-    if (!sellerId) {
+    if (sellerId) {
+        // Khi xem shop của một seller cụ thể, không cần lọc theo khu vực
+        filter.seller = sellerId;
         filter.approvalStatus = 'approved';
     } else {
-        filter.seller = sellerId;
+        // Mặc định, user phải đăng nhập và có khu vực
+        if (!req.user || !req.user.region) {
+            // Trả về mảng rỗng nếu user không có thông tin khu vực
+            return res.json([]);
+        }
+        filter.approvalStatus = 'approved';
+        filter.region = req.user.region; // <<< LỌC THEO KHU VỰC CỦA USER
     }
 
     if (category && category !== 'Tất cả') {
@@ -36,8 +44,6 @@ exports.getAllProducts = async (req, res) => {
     
     let query = Product.find(filter)
       .populate('category')
-      // SỬ DỤNG .select() ĐỂ ĐẢM BẢO LẤY ĐỦ CÁC TRƯỜỜNG CẦN THIẾT
-      // Dấu cộng (+) có nghĩa là "bắt buộc lấy trường này"
       .select('+saleTimeFrames +totalStock') 
       .sort({ createdAt: -1 });
 
@@ -47,11 +53,8 @@ exports.getAllProducts = async (req, res) => {
 
     let products = await query.exec();
     
-    // Lọc tồn kho (chỉ cho app khách hàng)
     if (!sellerId) {
-        products = products.filter(p => {
-            return p.totalStock > 0 || p.requiresConsultation === true;
-        });
+        products = products.filter(p => p.totalStock > 0 || p.requiresConsultation === true);
     }
     
     res.json(products);
@@ -82,15 +85,28 @@ exports.getProductById = async (req, res) => {
 
 exports.getBestSellers = async (req, res) => {
     try {
+        if (!req.user || !req.user.region) {
+            return res.json([]);
+        }
+        const regionId = req.user.region;
         const limit = parseInt(req.query.limit, 10) || 10;
+
         const bestSellers = await Order.aggregate([
-            { $match: { status: 'Đã giao' } },
+            // Bước 1: Chỉ lấy các đơn hàng "Đã giao" TRONG KHU VỰC của user
+            { 
+                $match: { 
+                    status: 'Đã giao',
+                    region: new mongoose.Types.ObjectId(regionId) // <<< LỌC THEO KHU VỰC
+                } 
+            },
             { $unwind: '$items' },
             { $group: { _id: '$items.productId', totalQuantitySold: { $sum: '$items.quantity' } } },
             { $sort: { totalQuantitySold: -1 } },
             { $limit: limit },
             { $lookup: { from: 'products', localField: '_id', foreignField: '_id', as: 'productDetails' } },
             { $unwind: '$productDetails' },
+            // Bước 2: Chỉ giữ lại các sản phẩm vẫn còn được duyệt
+            { $match: { 'productDetails.approvalStatus': 'approved' } },
             { $replaceRoot: { newRoot: '$productDetails' } }
         ]);
         res.json(bestSellers);
@@ -99,6 +115,88 @@ exports.getBestSellers = async (req, res) => {
         res.status(500).json({ error: 'Lỗi server' });
     }
 };
+
+
+exports.getRelatedProducts = async (req, res) => {
+    try {
+        if (!req.user || !req.user.region) return res.json([]);
+        const regionId = req.user.region;
+        const { productId } = req.params;
+        const limit = parseInt(req.query.limit, 10) || 6;
+
+        const currentProduct = await Product.findById(productId).select('category').lean();
+        if (!currentProduct || !currentProduct.category) {
+            return res.json([]);
+        }
+
+        const relatedProducts = await Product.find({
+            category: currentProduct.category,
+            _id: { $ne: productId }, // Loại trừ chính sản phẩm đang xem
+            approvalStatus: 'approved',
+            region: regionId, // Lọc theo khu vực
+            $or: [{ totalStock: { $gt: 0 } }, { requiresConsultation: true }]
+        })
+        .limit(limit)
+        .lean();
+        
+        res.json(relatedProducts);
+    } catch (error) {
+        console.error('❌ Lỗi khi lấy sản phẩm liên quan:', error);
+        res.status(500).json({ error: 'Lỗi server' });
+    }
+};
+
+// --- HÀM 2: LẤY SẢN PHẨM THƯỜNG MUA CÙNG ---
+exports.getAlsoBoughtProducts = async (req, res) => {
+    try {
+        if (!req.user || !req.user.region) return res.json([]);
+        const regionId = req.user.region;
+        const { productId } = req.params;
+        const limit = parseInt(req.query.limit, 10) || 8;
+
+        const ordersWithProduct = await Order.find({ 
+            'items.productId': productId, 
+            status: 'Đã giao',
+            region: regionId
+        }, 'items.productId').limit(200).lean();
+        
+        let companionProductIds = {};
+        ordersWithProduct.forEach(order => {
+            const productIdsInOrder = order.items.map(item => item.productId.toString());
+            if (productIdsInOrder.length > 1) {
+                productIdsInOrder.forEach(id => {
+                    if (id !== productId) { companionProductIds[id] = (companionProductIds[id] || 0) + 1; }
+                });
+            }
+        });
+
+        const sortedIds = Object.entries(companionProductIds)
+            .sort(([, a], [, b]) => b - a)
+            .map(([id]) => new mongoose.Types.ObjectId(id));
+        
+        if (sortedIds.length === 0) {
+            return res.json([]); // Không có ai mua cùng, trả về mảng rỗng
+        }
+
+        const alsoBoughtProducts = await Product.find({
+            _id: { $in: sortedIds.slice(0, limit) },
+            approvalStatus: 'approved',
+            region: regionId,
+            $or: [{ totalStock: { $gt: 0 } }, { requiresConsultation: true }]
+        }).lean();
+
+        res.json(alsoBoughtProducts);
+    } catch (error) {
+        console.error('❌ Lỗi khi lấy sản phẩm thường mua cùng:', error);
+        res.status(500).json({ error: 'Lỗi server' });
+    }
+};
+
+
+
+
+
+
 
 exports.createProduct = async (req, res) => {
   try {
@@ -262,11 +360,23 @@ exports.deleteProduct = async (req, res) => {
 
 exports.getProductRecommendations = async (req, res) => {
     try {
+        if (!req.user || !req.user.region) {
+            return res.json([]);
+        }
+        const regionId = req.user.region;
         const { id: productId } = req.params;
         const limit = parseInt(req.query.limit, 10) || 8;
+
         const currentProduct = await Product.findById(productId).lean();
         if (!currentProduct) { return res.status(404).json({ message: "Sản phẩm không tồn tại." }); }
-        const ordersWithProduct = await Order.find({ 'items.productId': productId, status: 'Đã giao' }, 'items.productId').limit(200).lean();
+
+        // Tìm các đơn hàng chứa sản phẩm này, trong cùng khu vực
+        const ordersWithProduct = await Order.find({ 
+            'items.productId': productId, 
+            status: 'Đã giao',
+            region: regionId // <<< LỌC THEO KHU VỰC
+        }, 'items.productId').limit(200).lean();
+        
         let companionProductIds = {};
         if (ordersWithProduct.length > 0) {
             ordersWithProduct.forEach(order => {
@@ -278,22 +388,32 @@ exports.getProductRecommendations = async (req, res) => {
                 }
             });
         }
+
         let recommendedIds = Object.entries(companionProductIds).sort(([, a], [, b]) => b - a).map(([id]) => new mongoose.Types.ObjectId(id));
+        
         let recommendations = [];
         if (recommendedIds.length > 0) {
-            recommendations = await Product.find({ _id: { $in: recommendedIds }, approvalStatus: 'approved' }).lean();
+            recommendations = await Product.find({ 
+                _id: { $in: recommendedIds }, 
+                approvalStatus: 'approved',
+                region: regionId // <<< Đảm bảo sản phẩm gợi ý cũng trong khu vực
+            }).lean();
         }
+
         if (recommendations.length < limit && currentProduct.category) {
             const additionalProducts = await Product.find({
                 category: currentProduct.category,
                 _id: { $nin: [productId, ...recommendedIds] },
-                approvalStatus: 'approved'
+                approvalStatus: 'approved',
+                region: regionId // <<< LỌC THEO KHU VỰC
             }).limit(limit - recommendations.length).lean();
             recommendations = [...recommendations, ...additionalProducts];
         }
+
         const finalRecommendations = recommendations
             .filter((p, index, self) => index === self.findIndex((t) => t._id.toString() === p._id.toString()))
-            .filter(p => p.totalStock > 0 || p.requiresConsultation === true); // Sửa thêm ở đây
+            .filter(p => p.totalStock > 0 || p.requiresConsultation === true);
+            
         res.json(finalRecommendations);
     } catch (error) {
         console.error('❌ Lỗi khi lấy sản phẩm gợi ý:', error);
