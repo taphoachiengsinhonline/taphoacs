@@ -79,81 +79,7 @@ exports.getBestSellers = async (req, res) => {
     }
 };
 
-// --- HÀM 3: LẤY SẢN PHẨM LIÊN QUAN (CÙNG DANH MỤC) ---
-exports.getRelatedProducts = async (req, res) => {
-    try {
-        if (!req.user || !req.user.region) return res.json([]);
-        const regionId = req.user.region;
-        const { productId } = req.params;
-        const limit = parseInt(req.query.limit, 10) || 6;
 
-        const currentProduct = await Product.findById(productId).select('category').lean();
-        if (!currentProduct || !currentProduct.category) {
-            return res.json([]);
-        }
-
-        const relatedProducts = await Product.find({
-            category: currentProduct.category,
-            _id: { $ne: productId },
-            approvalStatus: 'approved',
-            region: regionId,
-            $or: [{ totalStock: { $gt: 0 } }, { requiresConsultation: true }]
-        })
-        .limit(limit)
-        .lean();
-        
-        res.json(relatedProducts);
-    } catch (error) {
-        console.error('❌ Lỗi khi lấy sản phẩm liên quan:', error);
-        res.status(500).json({ error: 'Lỗi server' });
-    }
-};
-
-// --- HÀM 4: LẤY SẢN PHẨM THƯỜNG MUA CÙNG ---
-exports.getAlsoBoughtProducts = async (req, res) => {
-    try {
-        if (!req.user || !req.user.region) return res.json([]);
-        const regionId = req.user.region;
-        const { productId } = req.params;
-        const limit = parseInt(req.query.limit, 10) || 8;
-
-        const ordersWithProduct = await Order.find({ 
-            'items.productId': productId, 
-            status: 'Đã giao',
-            region: regionId
-        }, 'items.productId').limit(200).lean();
-        
-        let companionProductIds = {};
-        ordersWithProduct.forEach(order => {
-            const productIdsInOrder = order.items.map(item => item.productId.toString());
-            if (productIdsInOrder.length > 1) {
-                productIdsInOrder.forEach(id => {
-                    if (id !== productId) { companionProductIds[id] = (companionProductIds[id] || 0) + 1; }
-                });
-            }
-        });
-
-        const sortedIds = Object.entries(companionProductIds)
-            .sort(([, a], [, b]) => b - a)
-            .map(([id]) => new mongoose.Types.ObjectId(id));
-        
-        if (sortedIds.length === 0) {
-            return res.json([]);
-        }
-
-        const alsoBoughtProducts = await Product.find({
-            _id: { $in: sortedIds.slice(0, limit) },
-            approvalStatus: 'approved',
-            region: regionId,
-            $or: [{ totalStock: { $gt: 0 } }, { requiresConsultation: true }]
-        }).lean();
-
-        res.json(alsoBoughtProducts);
-    } catch (error) {
-        console.error('❌ Lỗi khi lấy sản phẩm thường mua cùng:', error);
-        res.status(500).json({ error: 'Lỗi server' });
-    }
-};
 exports.getProductById = async (req, res) => {
   try {
     // --- BẮT ĐẦU SỬA ĐỔI ---
@@ -172,7 +98,6 @@ exports.getProductById = async (req, res) => {
     res.status(500).json({ message: 'Lỗi server' });
   }
 };
-
 
 
 exports.createProduct = async (req, res) => {
@@ -333,4 +258,72 @@ exports.deleteProduct = async (req, res) => {
     console.error('❌ Lỗi khi xoá sản phẩm:', err);
     res.status(500).json({ message: 'Lỗi server khi xoá sản phẩm' });
   }
+};
+exports.getProductRecommendations = async (req, res) => {
+    try {
+        if (!req.user || !req.user.region) {
+            return res.json([]);
+        }
+        const regionId = req.user.region;
+        const { id: productId } = req.params;
+        const limit = parseInt(req.query.limit, 10) || 8;
+
+        const currentProduct = await Product.findById(productId).lean();
+        if (!currentProduct) { 
+            return res.status(404).json({ message: "Sản phẩm không tồn tại." }); 
+        }
+
+        // --- Logic cho "Thường mua cùng" ---
+        const ordersWithProduct = await Order.find({ 
+            'items.productId': productId, 
+            status: 'Đã giao',
+            region: regionId 
+        }, 'items.productId').limit(200).lean();
+        
+        let companionProductIds = {};
+        ordersWithProduct.forEach(order => {
+            const productIdsInOrder = order.items.map(item => item.productId.toString());
+            if (productIdsInOrder.length > 1) {
+                productIdsInOrder.forEach(id => {
+                    if (id !== productId) { 
+                        companionProductIds[id] = (companionProductIds[id] || 0) + 1; 
+                    }
+                });
+            }
+        });
+
+        const sortedIds = Object.entries(companionProductIds)
+            .sort(([, a], [, b]) => b - a)
+            .map(([id]) => new mongoose.Types.ObjectId(id));
+        
+        let recommendations = [];
+        if (sortedIds.length > 0) {
+            recommendations = await Product.find({ 
+                _id: { $in: sortedIds }, 
+                approvalStatus: 'approved',
+                region: regionId 
+            }).lean();
+        }
+
+        // --- Logic cho "Sản phẩm liên quan" để lấp đầy ---
+        if (recommendations.length < limit && currentProduct.category) {
+            const existingIds = [productId, ...recommendations.map(p => p._id.toString())];
+            const additionalProducts = await Product.find({
+                category: currentProduct.category,
+                _id: { $nin: existingIds.map(id => new mongoose.Types.ObjectId(id)) },
+                approvalStatus: 'approved',
+                region: regionId 
+            }).limit(limit - recommendations.length).lean();
+            recommendations.push(...additionalProducts);
+        }
+
+        const finalRecommendations = recommendations
+            .filter((p, index, self) => index === self.findIndex((t) => t._id.toString() === p._id.toString()))
+            .filter(p => p.totalStock > 0 || p.requiresConsultation === true);
+            
+        res.json(finalRecommendations);
+    } catch (error) {
+        console.error('❌ Lỗi khi lấy sản phẩm gợi ý:', error);
+        res.status(500).json({ error: 'Lỗi server' });
+    }
 };
