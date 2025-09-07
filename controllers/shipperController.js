@@ -32,7 +32,9 @@ exports.updateLocation = async (req, res) => {
 exports.getAssignedOrders = async (req, res) => {
     try {
         const { page = 1, limit = 10, status, from, to, search } = req.query;
-        const filter = { shipper: req.user._id };
+        const filter = { shipper: req.user._id,
+                        region: req.user.region
+                       };
 
         if (status && status !== 'all') filter.status = status;
         if (from && to) filter['timestamps.acceptedAt'] = { $gte: new Date(from), $lte: new Date(to) };
