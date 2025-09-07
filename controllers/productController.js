@@ -128,6 +128,7 @@ exports.createProduct = async (req, res) => {
       category, description, images, saleTimeFrames, barcode, weight,
       variantGroups, variantTable, requiresConsultation,
       seller: req.user._id,
+      region: req.user.region, // <<< KẾ THỪA REGION TỪ SELLER
       approvalStatus: 'pending_approval'
     });
     
