@@ -161,26 +161,34 @@ exports.updateFcmToken = async (req, res) => {
 // HÀM MỚI: LẤY SẢN PHẨM GỢI Ý CÁ NHÂN HÓA
 exports.getPersonalizedRecommendations = async (req, res) => {
     try {
-        const userId = req.user._id;
-        const limit = parseInt(req.query.limit, 10) || 8;
-
-        const recentOrders = await Order.find({ user: userId, status: 'Đã giao' })
-            .sort({ 'timestamps.deliveredAt': -1 })
-            .limit(5)
-            .select('items.productId')
-            .lean();
-
-        if (recentOrders.length === 0) {
+        if (!req.user || !req.user.region) {
             return res.json([]);
         }
+        const userId = req.user._id;
+        const regionId = req.user.region;
+        const limit = parseInt(req.query.limit, 10) || 8;
 
-        const recentProductIds = [];
-        recentOrders.forEach(order => {
-            order.items.forEach(item => {
-                recentProductIds.push(item.productId);
-            });
-        });
+        const recentOrders = await Order.find({ 
+            user: userId, 
+            status: 'Đã giao',
+            region: regionId // <<< LỌC THEO KHU VỰC
+        })
+        .sort({ 'timestamps.deliveredAt': -1 })
+        .limit(5)
+        .select('items.productId')
+        .lean();
 
+        if (recentOrders.length === 0) {
+            // Nếu không có đơn hàng nào, trả về sản phẩm ngẫu nhiên trong khu vực
+            const randomProducts = await Product.find({ 
+                region: regionId, 
+                approvalStatus: 'approved',
+                $or: [{ totalStock: { $gt: 0 } }, { requiresConsultation: true }]
+            }).limit(limit);
+            return res.json(randomProducts);
+        }
+
+        const recentProductIds = recentOrders.flatMap(order => order.items.map(item => item.productId));
         const recentProductsDetails = await Product.find({ _id: { $in: recentProductIds } }).select('category').lean();
         const recentCategoryIds = [...new Set(recentProductsDetails.map(p => p.category.toString()))];
 
@@ -192,7 +200,8 @@ exports.getPersonalizedRecommendations = async (req, res) => {
             category: { $in: recentCategoryIds },
             _id: { $nin: recentProductIds },
             approvalStatus: 'approved',
-            totalStock: { $gt: 0 }
+            region: regionId, // <<< LỌC THEO KHU VỰC
+            $or: [ { totalStock: { $gt: 0 } }, { requiresConsultation: true } ]
         })
         .limit(limit)
         .lean();
