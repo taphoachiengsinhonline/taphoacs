@@ -72,6 +72,12 @@ const productSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  region: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Region',
+        required: true,
+        index: true // Rất quan trọng để query nhanh
+    },
   approvalStatus: {
     type: String,
     enum: ['pending_approval', 'approved', 'rejected'],
@@ -111,3 +117,4 @@ productSchema.virtual('totalStock').get(function() {
 });
 
 module.exports = mongoose.model('Product', productSchema);
+
