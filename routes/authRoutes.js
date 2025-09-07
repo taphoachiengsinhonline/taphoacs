@@ -29,28 +29,6 @@ const generateTokens = (userId) => {
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password, address, phone, location, role, fcmToken, shipperProfile } = req.body;
-    // <<< THÊM LOGIC TÌM KHU VỰC >>>
-        let userRegion = null;
-        if (location && location.coordinates) {
-            userRegion = await Region.findOne({
-                isActive: true,
-                center: {
-                    $nearSphere: {
-                        $geometry: {
-                            type: "Point",
-                            coordinates: location.coordinates
-                        },
-                        // Tìm trong bán kính hoạt động của chính khu vực đó (cần cải tiến nếu cần)
-                        // Tạm thời tìm khu vực gần nhất
-                    }
-                }
-            }).select('_id');
-        }
-
-        if (!userRegion) {
-            return res.status(400).json({ message: 'Vị trí của bạn hiện không nằm trong khu vực phục vụ của chúng tôi.' });
-        }
-        // <<< KẾT THÚC LOGIC TÌM KHU VỰC >>>
 
     if (!name || !email || !password || !address || !phone) {
       return res.status(400).json({
@@ -58,6 +36,35 @@ router.post('/register', async (req, res) => {
         message: 'Vui lòng điền đầy đủ: họ và tên, email, mật khẩu, địa chỉ, số điện thoại'
       });
     }
+
+    // --- BẮT ĐẦU SỬA LOGIC GÁN KHU VỰC ---
+    if (!location || !location.coordinates || location.coordinates.length !== 2) {
+        return res.status(400).json({
+            status: 'error',
+            message: 'Không thể đăng ký vì không có thông tin vị trí hợp lệ.'
+        });
+    }
+
+    // Tìm khu vực gần nhất với vị trí của người dùng
+    const userRegion = await Region.findOne({
+        isActive: true, // Chỉ tìm trong các khu vực đang hoạt động
+        center: {
+            $nearSphere: {
+                $geometry: {
+                    type: "Point",
+                    coordinates: location.coordinates // [longitude, latitude]
+                },
+                // Có thể giới hạn khoảng cách tối đa nếu cần
+                // $maxDistance: 20000 // ví dụ: 20km
+            }
+        }
+    }).select('_id');
+
+    if (!userRegion) {
+        return res.status(400).json({ status: 'error', message: 'Rất tiếc, vị trí của bạn hiện chưa nằm trong khu vực phục vụ của chúng tôi.' });
+    }
+   
+        // <<< KẾT THÚC LOGIC TÌM KHU VỰC >>>
 
     const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
     if (existingUser) {
