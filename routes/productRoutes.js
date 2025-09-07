@@ -9,8 +9,7 @@ router.get('/', optionalAuth, productController.getAllProducts);
 router.get('/bestsellers', optionalAuth, productController.getBestSellers);
 
 // --- Sửa dùng optionalAuth để hỗ trợ khách vãng lai ---
-router.get('/:productId/related', optionalAuth, productController.getRelatedProducts);
-router.get('/:productId/also-bought', optionalAuth, productController.getAlsoBoughtProducts);
+router.get('/:id/recommendations', verifyToken, productController.getProductRecommendations);
 
 // --- Routes yêu cầu đăng nhập bắt buộc (dùng verifyToken) ---
 router.get('/:id', productController.getProductById); // Công khai, không cần verifyToken
