@@ -5,10 +5,6 @@ const router = express.Router();
 const productController = require('../controllers/productController');
 const { verifyToken } = require('../middlewares/authMiddleware');
 
-
-router.get('/', optionalAuth, productController.getAllProducts);
-router.get('/bestsellers', optionalAuth, productController.getBestSellers);
-
 // === CÁC ROUTE CỤ THỂ (phải đặt trước route động /:id) ===
 
 // Lấy sản phẩm bán chạy nhất
