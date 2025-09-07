@@ -14,7 +14,10 @@ const bcrypt = require('bcrypt');
 // Route POST để tạo shipper mới (chỉ admin được dùng)
 router.post('/', verifyToken, isAdmin, async (req, res) => {
   try {
-    const { email, password, name, phone, address, shipperProfile } = req.body;
+    const { email, password, name, phone, address, shipperProfile, regionId } = req.body;
+    if (!regionId) {
+            return res.status(400).json({ message: 'Vui lòng chọn khu vực cho Shipper.' });
+        }
     const { vehicleType, licensePlate } = shipperProfile || {};
     if (!email || !password || !name || !phone || !address || !vehicleType || !licensePlate) {
       return res.status(400).json({ message: 'Vui lòng cung cấp đầy đủ thông tin' });
@@ -25,7 +28,7 @@ router.post('/', verifyToken, isAdmin, async (req, res) => {
     }
     const hashedPassword = await bcrypt.hash(password, 10);
     const shipper = new User({
-      email, password: hashedPassword, name, phone, address, role: 'shipper',
+      email, password: hashedPassword, name, phone, address, role: 'shipper',region: regionId,
       shipperProfile: { vehicleType, licensePlate }
     });
     await shipper.save();
