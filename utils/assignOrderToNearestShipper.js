@@ -1,5 +1,4 @@
 // File: backend/utils/assignOrderToNearestShipper.js
-// PHIÊN BẢN HOÀN CHỈNH - Đầy đủ log debug
 
 const Order = require('../models/Order');
 const User = require('../models/User');
@@ -8,8 +7,8 @@ const mongoose = require('mongoose');
 const { safeNotify } = require('./notificationMiddleware');
 
 const MAX_RETRY = 5;
-const RETRY_DELAY = 35000; // Thời gian chờ giữa các chu kỳ tìm shipper (35s)
-const MODAL_TIMEOUT = 30000; // Thời gian shipper có để chấp nhận đơn (30s)
+const RETRY_DELAY = 35000;
+const MODAL_TIMEOUT = 30000;
 
 async function assignOrderToNearestShipper(orderId, retryCount = 0) {
     console.log(`[assignShipper][${orderId}] --- BẮT ĐẦU CHU KỲ ${retryCount} ---`);
@@ -22,7 +21,14 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
             console.error(`[assignShipper][${orderId}] DỪNG: Order.findById không tìm thấy đơn hàng.`);
             return;
         }
-        console.log(`[assignShipper][${orderId}] Bước 1 THÀNH CÔNG. Tình trạng đơn hàng: ${order.status}`);
+
+        // <<< THÊM KIỂM TRA QUAN TRỌNG >>>
+        if (!order.region) {
+            console.error(`[assignShipper][${orderId}] DỪNG: Đơn hàng không có thông tin khu vực (region).`);
+            return;
+        }
+        
+        console.log(`[assignShipper][${orderId}] Bước 1 THÀNH CÔNG. Tình trạng: ${order.status}, Khu vực: ${order.region}`);
 
         const validStatuses = ['Chờ xác nhận', 'Chờ tư vấn'];
         if (!validStatuses.includes(order.status)) {
@@ -31,10 +37,9 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
         }
 
         if (retryCount >= MAX_RETRY) {
-        console.log(`[Assign] Đã đạt giới hạn ${MAX_RETRY} lần thử cho đơn hàng ${orderId}. Sẽ chờ cron job xử lý.`);
-        // <<< XÓA HOÀN TOÀN KHỐI LOGIC HỦY ĐƠN Ở ĐÂY >>>
-        return; // Dừng vòng lặp
-    }
+            console.log(`[Assign] Đã đạt giới hạn ${MAX_RETRY} lần thử cho đơn hàng ${orderId}. Sẽ chờ cron job xử lý.`);
+            return;
+        }
 
         console.log(`[assignShipper][${orderId}] Bước 2: Tìm hoặc tạo PendingDelivery...`);
         let pending = await PendingDelivery.findOne({ orderId });
@@ -56,12 +61,15 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
                 $geoNear: {
                     near: { type: 'Point', coordinates: order.shippingLocation.coordinates },
                     distanceField: 'distance',
-                    maxDistance: 10000, // 10km
+                    maxDistance: 10000,
                     query: {
                         role: 'shipper',
                         isAvailable: true,
                         fcmToken: { $exists: true, $ne: null },
                         _id: { $nin: triedShippers.map(id => new mongoose.Types.ObjectId(id)) },
+                        // --- BẮT ĐẦU SỬA LỖI ---
+                        region: order.region // <<< CHỈ TÌM SHIPPER CÙNG KHU VỰC VỚI ĐƠN HÀNG
+                        // --- KẾT THÚC SỬA LỖI ---
                     },
                     spherical: true,
                 },
@@ -97,7 +105,7 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
         ]);
 
         if (candidates.length === 0) {
-            console.warn(`[assignShipper][${orderId}] Bước 3 THẤT BẠI: Không tìm thấy shipper nào khả dụng. Lên lịch thử lại sau ${RETRY_DELAY}ms.`);
+            console.warn(`[assignShipper][${orderId}] Bước 3 THẤT BẠI: Không tìm thấy shipper nào khả dụng trong khu vực. Lên lịch thử lại sau ${RETRY_DELAY}ms.`);
             setTimeout(() => assignOrderToNearestShipper(orderId, retryCount + 1), RETRY_DELAY);
             return;
         }
@@ -126,7 +134,7 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
             console.log(`[assignShipper][${orderId}] Bước 5 THÀNH CÔNG.`);
         } else {
             console.warn(`[assignShipper][${orderId}] Bỏ qua gửi thông báo vì shipper không có fcmToken. Thử lại ngay.`);
-            assignOrderToNearestShipper(orderId, retryCount); // Thử lại ngay lập tức với shipper tiếp theo
+            assignOrderToNearestShipper(orderId, retryCount);
             return;
         }
 
@@ -147,7 +155,6 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
 
     } catch (err) {
         console.error(`[assignShipper][${orderId}] LỖI NGHIÊM TRỌNG trong chu kỳ ${retryCount}:`, err);
-        // Lên lịch thử lại nếu có lỗi không mong muốn
         setTimeout(() => assignOrderToNearestShipper(orderId, retryCount + 1), RETRY_DELAY);
     }
 }
