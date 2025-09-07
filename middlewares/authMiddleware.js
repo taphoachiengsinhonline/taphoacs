@@ -70,6 +70,26 @@ const restrictTo = (...roles) => {
     next();
   };
 };
+const optionalAuth = async (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.slice(7).trim();
+        if (token) {
+            try {
+                const decoded = jwt.verify(token, process.env.JWT_SECRET);
+                const user = await User.findById(decoded.userId).select('-password');
+                if (user) {
+                    req.user = user; // Gán user vào request
+                }
+            } catch (err) {
+                // Bỏ qua lỗi token hết hạn hoặc không hợp lệ, coi như là khách vãng lai
+                console.log('Optional auth: Invalid token, proceeding as guest.');
+            }
+        }
+    }
+    next(); // Luôn luôn đi tiếp
+};
+
 
 
 module.exports = {
@@ -80,4 +100,5 @@ module.exports = {
   restrictTo,
   isAdminMiddleware: isAdmin,
   verifyAdmin: isAdmin,
+  optionalAuth,
 };
