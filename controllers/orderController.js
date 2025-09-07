@@ -194,7 +194,8 @@ exports.createOrder = async (req, res) => {
                     shippingLocation, paymentMethod: paymentMethod || 'COD', shippingFeeActual: shippingFeeActual,
                     shippingFeeCustomerPaid: shippingFeeCustomerPaid, extraSurcharge: 0,
                     voucherDiscount: voucherDiscount || 0, voucherCode, status: 'Chờ xác nhận',
-                    isConsultationOrder: false, customerNotes: customerNotes
+                    isConsultationOrder: false, customerNotes: customerNotes,
+                    region: req.user.region, // <<< KẾ THỪA REGION TỪ CUSTOMER
                 });
                 
                 const [createdOrder] = await Order.create([order], { session });
