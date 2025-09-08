@@ -122,6 +122,29 @@ exports.getGroupedConversations = async (req, res) => {
                     'otherUser.name': 1,
                     'otherUser.avatar': 1,
                     'otherUser.shopProfile': 1,
+                    'otherUser.isOnline': {
+                        $let: {
+                           vars: {
+                              // Nếu là seller thì lấy lastActive từ shopProfile, ngược lại lấy từ gốc (nếu có)
+                              lastActiveTime: {
+                                $ifNull: [ "$otherUser.shopProfile.lastActive", null ]
+                              }
+                           },
+                           in: {
+                              // So sánh lastActiveTime với thời gian hiện tại trừ đi 2 phút
+                              $cond: {
+                                 if: {
+                                    $gt: [
+                                       "$$lastActiveTime",
+                                       new Date(Date.now() - 2 * 60 * 1000)
+                                    ]
+                                 },
+                                 then: true,
+                                 else: false
+                              }
+                           }
+                        }
+                    },
                     
                     // Logic tùy chỉnh nội dung tin nhắn cuối cùng
                     lastMessageContent: {
