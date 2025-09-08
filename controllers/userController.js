@@ -82,6 +82,7 @@ exports.updateLocation = async (req, res) => {
       coordinates: [longitude, latitude]
     };
     await user.save();
+    await user.updateLastActive(); // Cập nhật lastActive khi cập nhật vị trí
     return res.json({ message: 'Cập nhật vị trí thành công' });
   } catch (err) {
     console.error('[BACKEND] update-location error:', err);
