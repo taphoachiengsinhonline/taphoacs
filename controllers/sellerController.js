@@ -474,3 +474,13 @@ exports.updateShopProfile = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
+exports.updateActivity = async (req, res) => {
+    try {
+        await User.findByIdAndUpdate(req.user._id, {
+            'shopProfile.lastActive': new Date()
+        });
+        res.status(200).json({ message: 'Activity updated.' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error.' });
+    }
+};
