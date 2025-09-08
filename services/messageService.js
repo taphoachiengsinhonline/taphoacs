@@ -1,7 +1,3 @@
-
-
-// File: backend/services/messageService.js
-
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
@@ -33,25 +29,16 @@ const wordToDigitMap = {
 };
 
 const containsPhoneNumber = (text) => {
-    // 1. Chuẩn hóa: chữ thường, bỏ dấu cách, bỏ dấu tiếng Việt
     let processedText = removeVietnameseTones(text.toLowerCase());
     
-    // 2. "Dịch" chữ sang số
     for (const word in wordToDigitMap) {
-        // Dùng regex với global flag 'g' để thay thế tất cả các lần xuất hiện
         processedText = processedText.replace(new RegExp(word, 'g'), wordToDigitMap[word]);
     }
 
-    // 3. Làm sạch cuối cùng: chỉ giữ lại số
     const onlyDigits = processedText.replace(/\D/g, '');
 
-    // 4. Kiểm tra bằng Regex trên chuỗi số đã được "dịch"
-    // Regex tìm SĐT Việt Nam (10 chữ số, bắt đầu bằng 0)
     const phoneRegex = /^0\d{9}$/;
-    
-    // Nếu chuỗi số dài hơn 9 và chứa một SĐT hợp lệ
     if (onlyDigits.length >= 10) {
-        // Thử tìm các chuỗi con 10 chữ số
         for (let i = 0; i <= onlyDigits.length - 10; i++) {
             const sub = onlyDigits.substring(i, i + 10);
             if (phoneRegex.test(sub)) {
@@ -71,7 +58,7 @@ exports.sendMessage = async ({ conversationId, senderId, content, messageType = 
             throw new Error("Thiếu thông tin cần thiết để gửi tin nhắn.");
         }
 
-        // --- ÁP DỤNG BỘ LỌC TẠI ĐÂY ---
+        // --- ÁP DỤNG BỌ LỌC TẠI ĐÂY ---
         if (messageType === 'text' && containsPhoneNumber(content)) {
             content = "[Thông tin liên lạc đã được ẩn để đảm bảo an toàn cho giao dịch của bạn]";
         }
@@ -80,7 +67,16 @@ exports.sendMessage = async ({ conversationId, senderId, content, messageType = 
         const message = new Message({ conversationId, senderId, content, messageType, data });
         await message.save();
 
-        // 2. Cập nhật conversation và gửi notification (fire-and-forget)
+        // 2. Cập nhật lastActive cho sender
+        const sender = await User.findById(senderId);
+        if (sender) {
+            await sender.updateLastActive();
+            console.log(`[DEBUG] Updated lastActive for sender ${senderId} to ${sender.role === 'seller' ? sender.shopProfile.lastActive : sender.lastActive}`);
+        } else {
+            console.log(`[DEBUG] Sender ${senderId} not found, skipping lastActive update`);
+        }
+
+        // 3. Cập nhật conversation và gửi notification (fire-and-forget)
         (async () => {
             try {
                 const conversation = await Conversation.findById(conversationId)
@@ -117,7 +113,7 @@ exports.sendMessage = async ({ conversationId, senderId, content, messageType = 
             }
         })();
 
-        // 3. Trả về tin nhắn đã được tạo
+        // 4. Trả về tin nhắn đã được tạo
         return message;
 
     } catch (error) {
