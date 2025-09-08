@@ -95,7 +95,7 @@ exports.getGroupedConversations = async (req, res) => {
             otherUserField = '$sellerId';
             unreadField = '$unreadByCustomer';
         }
-
+        const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
         const pipeline = [
             { $match: matchStage },
             { $sort: { updatedAt: -1 } },
@@ -123,27 +123,11 @@ exports.getGroupedConversations = async (req, res) => {
                     'otherUser.avatar': 1,
                     'otherUser.shopProfile': 1,
                     'otherUser.isOnline': {
-                        $let: {
-                           vars: {
-                              // Nếu là seller thì lấy lastActive từ shopProfile, ngược lại lấy từ gốc (nếu có)
-                              lastActiveTime: {
-                                $ifNull: [ "$otherUser.shopProfile.lastActive", null ]
-                              }
-                           },
-                           in: {
-                              // So sánh lastActiveTime với thời gian hiện tại trừ đi 2 phút
-                              $cond: {
-                                 if: {
-                                    $gt: [
-                                       "$$lastActiveTime",
-                                       new Date(Date.now() - 2 * 60 * 1000)
-                                    ]
-                                 },
-                                 then: true,
-                                 else: false
-                              }
-                           }
-                        }
+                       $cond: {
+                          if: { $gt: [ { $ifNull: [ "$otherUser.shopProfile.lastActive", null ] }, twoMinutesAgo ] },
+                          then: true,
+                          else: false
+                       }
                     },
                     
                     // Logic tùy chỉnh nội dung tin nhắn cuối cùng
