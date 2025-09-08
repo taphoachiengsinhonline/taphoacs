@@ -155,14 +155,37 @@ rejectionReason: String,
   toObject: { virtuals: true }
 });
 
-userSchema.virtual('shopProfile.isOnline').get(function() {
-    if (!this.shopProfile || !this.shopProfile.lastActive) {
-        return false;
-    }
-    // Nếu hoạt động trong vòng 2 phút gần nhất thì coi là online
+userSchema.virtual('isOnline').get(function() {
+  if (this.role === 'seller' && this.shopProfile && this.shopProfile.lastActive) {
     const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
     return this.shopProfile.lastActive > twoMinutesAgo;
+  } else if (this.role === 'customer' && this.lastActive) {
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+    return this.lastActive > twoMinutesAgo;
+  }
+  return false;
 });
+
+userSchema.pre('save', function(next) {
+  if (this.isModified('lastActive') || this.isModified('shopProfile.lastActive')) {
+    if (this.role === 'seller') {
+      this.shopProfile.lastActive = new Date();
+    } else if (this.role === 'customer') {
+      this.lastActive = new Date();
+    }
+  }
+  next();
+});
+
+// Middleware để cập nhật lastActive khi gửi tin nhắn
+userSchema.methods.updateLastActive = async function() {
+  if (this.role === 'seller') {
+    this.shopProfile.lastActive = new Date();
+  } else if (this.role === 'customer') {
+    this.lastActive = new Date();
+  }
+  await this.save({ validateBeforeSave: false });
+};
 
 // Hash password trước khi lưu
 userSchema.pre('save', async function (next) {
