@@ -101,15 +101,37 @@ exports.getGroupedConversations = async (req, res) => {
         const pipeline = [
             { $match: matchStage },
             { $sort: { updatedAt: -1 } },
+            { $group: { _id: otherUserField, totalUnread: { $sum: unreadField }, lastConversation: { $first: '$$ROOT' } } },
+            { $sort: { 'lastConversation.updatedAt': -1 } },
+            
+            // --- BẮT ĐẦU SỬA ---
             {
-                $group: {
-                    _id: otherUserField,
-                    totalUnread: { $sum: unreadField },
-                    lastConversation: { $first: '$$ROOT' }
+                $lookup: {
+                    from: 'users',
+                    localField: '_id',
+                    foreignField: '_id',
+                    // Sử dụng pipeline con để định hình lại dữ liệu user trả về
+                    pipeline: [
+                        {
+                            $project: {
+                                name: 1,
+                                avatar: 1,
+                                'shopProfile.avatar': 1,
+                                'shopProfile.lastActive': 1, // << LẤY TRƯỜNG lastActive
+                                isOnline: { // << TÍNH TOÁN isOnline NGAY TẠI ĐÂY
+                                    $cond: {
+                                        if: { $gt: [ { $ifNull: [ "$shopProfile.lastActive", null ] }, twoMinutesAgo ] },
+                                        then: true,
+                                        else: false
+                                    }
+                                }
+                            }
+                        }
+                    ],
+                    as: 'otherUser'
                 }
             },
-            { $sort: { 'lastConversation.updatedAt': -1 } },
-            { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'otherUser' } },
+            // --- KẾT THÚC SỬA ---
             { $unwind: { path: '$otherUser', preserveNullAndEmptyArrays: true } },
             { $lookup: { from: 'messages', localField: 'lastConversation._id', foreignField: 'conversationId', as: 'messages' } },
             { $addFields: { lastMessageObject: { $last: '$messages' } } },
