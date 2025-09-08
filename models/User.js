@@ -155,6 +155,15 @@ rejectionReason: String,
   toObject: { virtuals: true }
 });
 
+userSchema.virtual('shopProfile.isOnline').get(function() {
+    if (!this.shopProfile || !this.shopProfile.lastActive) {
+        return false;
+    }
+    // Nếu hoạt động trong vòng 2 phút gần nhất thì coi là online
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+    return this.shopProfile.lastActive > twoMinutesAgo;
+});
+
 // Hash password trước khi lưu
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
