@@ -149,7 +149,7 @@ exports.updateFcmToken = async (req, res) => {
       { fcmToken },
       { new: true }
     );
-    
+    await updatedUser.updateLastActive(); // Cập nhật lastActive khi cập nhật token
     res.json({
       message: 'Cập nhật FCM token thành công',
       fcmToken: updatedUser.fcmToken
