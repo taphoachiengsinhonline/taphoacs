@@ -15,6 +15,7 @@ const restrictToSeller = (req, res, next) => {
     next();
 };
 router.use(verifyToken, restrictToSeller);
+router.post('/activity', sellerController.updateActivity);
 
 
 // --- CÁC API CŨ GIỮ NGUYÊN ---
