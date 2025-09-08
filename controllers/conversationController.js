@@ -35,7 +35,7 @@ exports.findOrCreateConversation = async (req, res) => {
     ]);
     await seller.updateLastActive();
     await customer.updateLastActive();
-    console.log(`[DEBUG] Updated lastActive for seller ${sellerId} and customer ${customerId}`);
+    console.log(`[DEBUG] Triggered updateLastActive for seller ${sellerId} and customer ${customerId}`);
 
     if (isNewConversation) {
       const sellerData = await User.findById(sellerId).select('sellerProfile.autoResponseMessage');
@@ -48,7 +48,7 @@ exports.findOrCreateConversation = async (req, res) => {
           content: autoMessageContent,
           messageType: 'text'
         });
-        console.log(`Đã gửi tin nhắn tự động (qua service) cho conversation: ${conversation._id}`);
+        console.log(`Đã gửi tin nhắn tự động cho conversation: ${conversation._id}`);
       }
     }
     
