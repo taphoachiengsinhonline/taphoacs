@@ -87,78 +87,76 @@ exports.getUnreadCount = async (req, res) => {
 
 // API LẤY DANH SÁCH CHAT ĐÃ GOM NHÓM
 exports.getGroupedConversations = async (req, res) => {
-    try {
-        const userId = req.user._id;
-        const userRole = req.user.role;
+  try {
+    const userId = req.user._id;
+    const userRole = req.user.role;
 
-        let matchStage, otherUserField, unreadField;
+    let matchStage, otherUserField, unreadField;
 
-        if (userRole === 'seller') {
-            matchStage = { sellerId: new mongoose.Types.ObjectId(userId) };
-            otherUserField = '$customerId';
-            unreadField = '$unreadBySeller';
-        } else { // customer
-            matchStage = { customerId: new mongoose.Types.ObjectId(userId) };
-            otherUserField = '$sellerId';
-            unreadField = '$unreadByCustomer';
+    if (userRole === 'seller') {
+      matchStage = { sellerId: new mongoose.Types.ObjectId(userId) };
+      otherUserField = '$customerId';
+      unreadField = '$unreadBySeller';
+    } else { // customer
+      matchStage = { customerId: new mongoose.Types.ObjectId(userId) };
+      otherUserField = '$sellerId';
+      unreadField = '$unreadByCustomer';
+    }
+
+    const pipeline = [
+      { $match: matchStage },
+      { $sort: { updatedAt: -1 } },
+      {
+        $group: {
+          _id: otherUserField,
+          totalUnread: { $sum: unreadField },
+          lastConversation: { $first: '$$ROOT' }
         }
-
-        const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
-
-        const pipeline = [
-            { $match: matchStage },
-            { $sort: { updatedAt: -1 } },
-            { $group: { _id: otherUserField, totalUnread: { $sum: unreadField }, lastConversation: { $first: '$$ROOT' } } },
-            { $sort: { 'lastConversation.updatedAt': -1 } },
-            
-            // --- BẮT ĐẦU SỬA ---
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: '_id',
-                    foreignField: '_id',
-                    // Sử dụng pipeline con để định hình lại dữ liệu user trả về
-                    pipeline: [
-                        {
-                            $project: {
-                                name: 1,
-                                avatar: 1,
-                                'shopProfile.avatar': 1,
-                                'shopProfile.lastActive': 1, // << LẤY TRƯỜNG lastActive
-                                isOnline: { // << TÍNH TOÁN isOnline NGAY TẠI ĐÂY
-                                    $cond: {
-                                        if: { $gt: [ { $ifNull: [ "$shopProfile.lastActive", null ] }, twoMinutesAgo ] },
-                                        then: true,
-                                        else: false
-                                    }
-                                }
-                            }
-                        }
-                    ],
-                    as: 'otherUser'
+      },
+      { $sort: { 'lastConversation.updatedAt': -1 } },
+      { 
+        $lookup: { 
+          from: 'users', 
+          localField: '_id', 
+          foreignField: '_id', 
+          as: 'otherUser' 
+        } 
+      },
+      { $unwind: { path: '$otherUser', preserveNullAndEmptyArrays: true } },
+      { 
+        $project: {
+          _id: 1,
+          totalUnread: 1,
+          lastUpdatedAt: '$lastConversation.updatedAt',
+          'otherUser._id': 1,
+          'otherUser.name': 1,
+          'otherUser.avatar': 1,
+          'otherUser.shopProfile': 1,
+          'otherUser.lastActive': 1, // Thêm populate lastActive
+          'otherUser.isOnline': {
+            $let: {
+              vars: {
+                lastActiveTime: {
+                  $ifNull: [
+                    { $ifNull: ["$otherUser.shopProfile.lastActive", "$otherUser.lastActive"] },
+                    null
+                  ]
                 }
-            },
-            // --- KẾT THÚC SỬA ---
-            { $unwind: { path: '$otherUser', preserveNullAndEmptyArrays: true } },
-            { $lookup: { from: 'messages', localField: 'lastConversation._id', foreignField: 'conversationId', as: 'messages' } },
-            { $addFields: { lastMessageObject: { $last: '$messages' } } },
-            
-            {
-                $project: {
-                    _id: 1,
-                    totalUnread: 1,
-                    lastUpdatedAt: '$lastConversation.updatedAt',
-                    'otherUser._id': 1,
-                    'otherUser.name': 1,
-                    'otherUser.avatar': 1,
-                    'otherUser.shopProfile': 1,
-                    'otherUser.isOnline': {
-                       $cond: {
-                          if: { $gt: [ { $ifNull: [ "$otherUser.shopProfile.lastActive", null ] }, twoMinutesAgo ] },
-                          then: true,
-                          else: false
-                       }
-                    },
+              },
+              in: {
+                $cond: {
+                  if: {
+                    $gt: [
+                      "$$lastActiveTime",
+                      new Date(Date.now() - 2 * 60 * 1000)
+                    ]
+                  },
+                  then: true,
+                  else: false
+                }
+              }
+            }
+          },
                     lastMessageContent: {
                         $let: {
                             vars: { msg: "$lastMessageObject" },
@@ -240,8 +238,8 @@ exports.getConversationsList = async (req, res) => {
 exports.getConversationById = async (req, res) => {
   try {
     const conversation = await Conversation.findById(req.params.id)
-      .populate('sellerId', 'name avatar shopProfile.avatar shopProfile.lastActive')
-      .populate('customerId', 'name avatar')
+      .populate('sellerId', 'name avatar shopProfile.avatar shopProfile.lastActive lastActive')
+      .populate('customerId', 'name avatar lastActive')
       .populate('productId', 'name images price variantTable')
       .lean();
 
