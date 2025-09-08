@@ -9,47 +9,49 @@ const { sendMessage } = require('../services/messageService');
 
 // API để Khách hàng hoặc Seller tạo/tìm cuộc trò chuyện
 exports.findOrCreateConversation = async (req, res) => {
-    try {
-        const { productId, sellerId } = req.body;
-        const customerId = req.user._id;
+  try {
+    const { productId, sellerId } = req.body;
+    const customerId = req.user._id;
 
-        if (!productId || !sellerId) {
-            return res.status(400).json({ message: 'Thiếu thông tin sản phẩm hoặc người bán.' });
-        }
-        
-        let conversation = await Conversation.findOne({ productId, customerId, sellerId });
-        let isNewConversation = false;
-
-        if (!conversation) {
-            isNewConversation = true;
-            conversation = new Conversation({ productId, customerId, sellerId });
-        }
-        
-        conversation.updatedAt = new Date();
-        await conversation.save();
-        
-        // --- BẮT ĐẦU SỬA LỖI ---
-        // Chỉ gửi khi đây là cuộc trò chuyện hoàn toàn mới
-        if (isNewConversation) {
-            const seller = await User.findById(sellerId).select('sellerProfile.autoResponseMessage');
-            const autoMessageContent = seller?.sellerProfile?.autoResponseMessage;
-
-            if (autoMessageContent && autoMessageContent.trim() !== '') {
-                 await sendMessage({
-                    conversationId: conversation._id,
-                    senderId: sellerId,
-                    content: autoMessageContent,
-                    messageType: 'text'
-                });
-                console.log(`Đã gửi tin nhắn tự động (qua service) cho conversation: ${conversation._id}`);
-            }
-        }
-        
-        res.status(isNewConversation ? 201 : 200).json(conversation);
-    } catch (err) {
-        console.error('[CONVERSATION POST] Lỗi:', err.message);
-        res.status(500).json({ message: 'Lỗi server' });
+    if (!productId || !sellerId) {
+      return res.status(400).json({ message: 'Thiếu thông tin sản phẩm hoặc người bán.' });
     }
+    
+    let conversation = await Conversation.findOne({ productId, customerId, sellerId });
+    let isNewConversation = false;
+
+    if (!conversation) {
+      isNewConversation = true;
+      conversation = new Conversation({ productId, customerId, sellerId });
+    }
+    
+    conversation.updatedAt = new Date();
+    await conversation.save();
+    
+    // Cập nhật lastActive cho cả seller và customer
+    await User.findById(sellerId).updateLastActive();
+    await User.findById(customerId).updateLastActive();
+    
+    if (isNewConversation) {
+      const seller = await User.findById(sellerId).select('sellerProfile.autoResponseMessage');
+      const autoMessageContent = seller?.sellerProfile?.autoResponseMessage;
+
+      if (autoMessageContent && autoMessageContent.trim() !== '') {
+        await sendMessage({
+          conversationId: conversation._id,
+          senderId: sellerId,
+          content: autoMessageContent,
+          messageType: 'text'
+        });
+        console.log(`Đã gửi tin nhắn tự động (qua service) cho conversation: ${conversation._id}`);
+      }
+    }
+    
+    res.status(isNewConversation ? 201 : 200).json(conversation);
+  } catch (err) {
+    console.error('[CONVERSATION POST] Lỗi:', err.message);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
 };
 
 // API đếm tổng số tin nhắn chưa đọc
@@ -231,44 +233,40 @@ exports.getConversationsList = async (req, res) => {
   
 // API lấy chi tiết một cuộc trò chuyện
 exports.getConversationById = async (req, res) => {
-    try {
-        const conversation = await Conversation.findById(req.params.id)
-            .populate('sellerId', 'name avatar shopProfile')
-            .populate('customerId', 'name avatar')
-            .populate('productId', 'name images price variantTable')
-            .lean({ virtuals: true });
-            
-        if (!conversation) {
-            return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện' });
-        }
+  try {
+    const conversation = await Conversation.findById(req.params.id)
+      .populate('sellerId', 'name avatar shopProfile.avatar shopProfile.lastActive')
+      .populate('customerId', 'name avatar')
+      .populate('productId', 'name images price variantTable')
+      .lean();
 
-        const productIdValue = conversation.productId?._id;
-        const customerIdValue = conversation.customerId;
-        const sellerIdValue = conversation.sellerId?._id;
-        
-        let relatedOrder = null;
-        if (productIdValue && customerIdValue && sellerIdValue) {
-            const searchQuery = {
-                'items.productId': productIdValue,
-                'user': customerIdValue,
-                'consultationSellerId': sellerIdValue,
-                'isConsultationOrder': true,
-            };
-            relatedOrder = await Order.findOne(searchQuery)
-                .select('_id status items customTitle total sellerNotes')
-                .sort({ createdAt: -1 })
-                .lean();
-        }
-
-        conversation.relatedOrder = relatedOrder;
-
-        console.log("--- DEBUG: Dữ liệu getConversationById TRƯỚỚC KHI GỬI VỀ CLIENT ---");
-        console.log("Seller Info:", JSON.stringify(conversation.sellerId, null, 2));
-        console.log("--------------------------------------------------------------------");
-        
-        res.json(conversation);
-    } catch (err) {
-        console.error('[CONVERSATION GET DETAIL BY ID] Lỗi:', err.message, err.stack);
-        res.status(500).json({ message: 'Lỗi server' });
+    if (!conversation) {
+      return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện' });
     }
+
+    const productIdValue = conversation.productId?._id;
+    const customerIdValue = conversation.customerId;
+    const sellerIdValue = conversation.sellerId?._id;
+    
+    let relatedOrder = null;
+    if (productIdValue && customerIdValue && sellerIdValue) {
+      const searchQuery = {
+        'items.productId': productIdValue,
+        'user': customerIdValue,
+        'consultationSellerId': sellerIdValue,
+        'isConsultationOrder': true,
+      };
+
+      relatedOrder = await Order.findOne(searchQuery)
+        .select('_id status items customTitle total sellerNotes')
+        .sort({ createdAt: -1 })
+        .lean();
+    }
+
+    conversation.relatedOrder = relatedOrder;
+    res.json(conversation);
+  } catch (err) {
+    console.error('[CONVERSATION GET DETAIL BY ID] Lỗi:', err.message, err.stack);
+    res.status(500).json({ message: 'Lỗi server' });
+  }
 };
