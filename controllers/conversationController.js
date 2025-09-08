@@ -121,6 +121,7 @@ exports.getGroupedConversations = async (req, res) => {
                     'otherUser._id': 1,
                     'otherUser.name': 1,
                     'otherUser.avatar': 1,
+                    'otherUser.shopProfile': 1,
                     
                     // Logic tùy chỉnh nội dung tin nhắn cuối cùng
                     lastMessageContent: {
