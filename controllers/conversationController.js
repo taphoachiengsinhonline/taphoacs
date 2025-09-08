@@ -29,12 +29,17 @@ exports.findOrCreateConversation = async (req, res) => {
     await conversation.save();
     
     // Cập nhật lastActive cho cả seller và customer
-    await User.findById(sellerId).updateLastActive();
-    await User.findById(customerId).updateLastActive();
-    
+    const [seller, customer] = await Promise.all([
+      User.findById(sellerId),
+      User.findById(customerId)
+    ]);
+    await seller.updateLastActive();
+    await customer.updateLastActive();
+    console.log(`[DEBUG] Updated lastActive for seller ${sellerId} and customer ${customerId}`);
+
     if (isNewConversation) {
-      const seller = await User.findById(sellerId).select('sellerProfile.autoResponseMessage');
-      const autoMessageContent = seller?.sellerProfile?.autoResponseMessage;
+      const sellerData = await User.findById(sellerId).select('sellerProfile.autoResponseMessage');
+      const autoMessageContent = sellerData?.sellerProfile?.autoResponseMessage;
 
       if (autoMessageContent && autoMessageContent.trim() !== '') {
         await sendMessage({
