@@ -208,35 +208,30 @@ exports.getConversationsList = async (req, res) => {
         
         const conversations = await Conversation.find(query)
             .populate('customerId', 'name avatar')
-            .populate('sellerId', 'name avatar shopProfile.avatar shopProfile.lastActive')
+            // Populate cả object shopProfile để có lastActive
+            .populate('sellerId', 'name avatar shopProfile') 
             .populate('productId', 'name images price variantTable')
-            .sort({ updatedAt: -1 });
-
-        // Logic này có thể làm chậm API, cân nhắc bỏ nếu không quá cần thiết
-        const conversationsWithLastMessage = await Promise.all(
-            conversations.map(async (conv) => {
-                const lastMessage = await Message.findOne({ conversationId: conv._id }).sort({ createdAt: -1 });
-                return { ...conv.toObject(), lastMessage: lastMessage ? lastMessage.toObject() : null };
-            })
-        );
+            .sort({ updatedAt: -1 })
+            .lean({ virtuals: true }); // Thêm virtuals: true
+        // --- KẾT THÚC SỬA ---
+        res.json(conversations);
         
-        res.json(conversationsWithLastMessage);
     } catch (err) {
         console.error('[CONVERSATION GET LIST] Lỗi:', err.message);
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
-
+  
 // API lấy chi tiết một cuộc trò chuyện
 exports.getConversationById = async (req, res) => {
     try {
-        // --- BẮT ĐẦU SỬA Ở ĐÂY ---
+        // --- BẮT ĐẦU SỬA ---
         const conversation = await Conversation.findById(req.params.id)
-            .populate('sellerId', 'name avatar shopProfile.avatar') // << Thêm avatar
-            .populate('customerId', 'name avatar') // << Thêm avatar
+            .populate('sellerId', 'name avatar shopProfile') // Populate cả object shopProfile
+            .populate('customerId', 'name avatar')
             .populate('productId', 'name images price variantTable')
-            .lean();
-        // --- KẾT THÚC SỬA Ở ĐÂY ---
+            .lean({ virtuals: true }); // Thêm virtuals: true
+        // --- KẾT THÚC SỬA ---
             
         if (!conversation) {
             return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện' });
