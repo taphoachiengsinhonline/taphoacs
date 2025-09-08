@@ -95,7 +95,9 @@ exports.getGroupedConversations = async (req, res) => {
             otherUserField = '$sellerId';
             unreadField = '$unreadByCustomer';
         }
+
         const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+
         const pipeline = [
             { $match: matchStage },
             { $sort: { updatedAt: -1 } },
@@ -112,7 +114,6 @@ exports.getGroupedConversations = async (req, res) => {
             { $lookup: { from: 'messages', localField: 'lastConversation._id', foreignField: 'conversationId', as: 'messages' } },
             { $addFields: { lastMessageObject: { $last: '$messages' } } },
             
-            // --- BẮT ĐẦU SỬA ĐỔI ---
             {
                 $project: {
                     _id: 1,
@@ -129,27 +130,19 @@ exports.getGroupedConversations = async (req, res) => {
                           else: false
                        }
                     },
-                    
-                    // Logic tùy chỉnh nội dung tin nhắn cuối cùng
                     lastMessageContent: {
                         $let: {
-                            vars: {
-                                msg: "$lastMessageObject"
-                            },
+                            vars: { msg: "$lastMessageObject" },
                             in: {
                                 $cond: {
                                     if: { $eq: ["$$msg.messageType", "quote_summary"] },
-                                    // Nếu là tin nhắn báo giá
                                     then: {
                                         $cond: {
                                             if: { $eq: ["$$msg.senderId", new mongoose.Types.ObjectId(userId)] },
-                                            // Nếu mình là người gửi (seller)
                                             then: "Bạn đã gửi một báo giá",
-                                            // Nếu mình là người nhận (customer)
                                             else: "Bạn đã nhận được một báo giá"
                                         }
                                     },
-                                    // Nếu là tin nhắn ảnh
                                     else: {
                                         $cond: {
                                             if: { $eq: ["$$msg.messageType", "image"] },
@@ -160,7 +153,6 @@ exports.getGroupedConversations = async (req, res) => {
                                                     else: "Bạn đã nhận được một hình ảnh"
                                                 }
                                             },
-                                            // Nếu là tin nhắn text hoặc không xác định
                                             else: { $ifNull: ["$$msg.content", "Bắt đầu trò chuyện"] }
                                         }
                                     }
@@ -170,10 +162,19 @@ exports.getGroupedConversations = async (req, res) => {
                     }
                 }
             }
-            // --- KẾT THÚC SỬA ĐỔI ---
         ];
 
         const groupedConversations = await Conversation.aggregate(pipeline);
+        
+        console.log("--- DEBUG: Dữ liệu getGroupedConversations TRƯỚỚC KHI GỬI VỀ CLIENT ---");
+        if (groupedConversations.length > 0) {
+            console.log("Ví dụ một bản ghi (otherUser object):");
+            console.log(JSON.stringify(groupedConversations[0].otherUser, null, 2));
+        } else {
+            console.log("Không có cuộc trò chuyện nào được tìm thấy.");
+        }
+        console.log("--------------------------------------------------------------------");
+
         res.json(groupedConversations);
 
     } catch (err) {
@@ -209,19 +210,15 @@ exports.getConversationsList = async (req, res) => {
 // API lấy chi tiết một cuộc trò chuyện
 exports.getConversationById = async (req, res) => {
     try {
-        // --- BẮT ĐẦU SỬA ---
         const conversation = await Conversation.findById(req.params.id)
-            .populate('sellerId', 'name avatar shopProfile') // Populate cả object shopProfile
+            .populate('sellerId', 'name avatar shopProfile')
             .populate('customerId', 'name avatar')
             .populate('productId', 'name images price variantTable')
-            .lean({ virtuals: true }); // Thêm virtuals: true
-        // --- KẾT THÚC SỬA ---
+            .lean({ virtuals: true });
             
         if (!conversation) {
             return res.status(404).json({ message: 'Không tìm thấy cuộc trò chuyện' });
         }
-
-        // --- BẮT ĐẦU SỬA LỖI LOGIC ---
 
         const productIdValue = conversation.productId?._id;
         const customerIdValue = conversation.customerId;
@@ -229,23 +226,23 @@ exports.getConversationById = async (req, res) => {
         
         let relatedOrder = null;
         if (productIdValue && customerIdValue && sellerIdValue) {
-            
             const searchQuery = {
-                'items.productId': productIdValue, // << CHỈ DÙNG _id
+                'items.productId': productIdValue,
                 'user': customerIdValue,
-                'consultationSellerId': sellerIdValue, // << CHỈ DÙNG _id
+                'consultationSellerId': sellerIdValue,
                 'isConsultationOrder': true,
             };
-
             relatedOrder = await Order.findOne(searchQuery)
                 .select('_id status items customTitle total sellerNotes')
                 .sort({ createdAt: -1 })
                 .lean();
-
         }
-        // --- KẾT THÚC SỬA LỖI LOGIC ---
 
         conversation.relatedOrder = relatedOrder;
+
+        console.log("--- DEBUG: Dữ liệu getConversationById TRƯỚỚC KHI GỬI VỀ CLIENT ---");
+        console.log("Seller Info:", JSON.stringify(conversation.sellerId, null, 2));
+        console.log("--------------------------------------------------------------------");
         
         res.json(conversation);
     } catch (err) {
