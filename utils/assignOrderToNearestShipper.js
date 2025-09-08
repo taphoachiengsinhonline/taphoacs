@@ -145,7 +145,7 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
             
             if (currentStatus === 'Chờ tư vấn' || currentStatus === 'Chờ xác nhận') {
                 console.log(`[assignShipper][${orderId}] Timeout: Shipper không phản hồi. Bắt đầu tìm shipper tiếp theo.`);
-                assignOrderToNearestShipper(orderId, retryCount);
+                assignOrderToNearestShipper(orderId, retryCount + 1);
             } else {
                 console.log(`[assignShipper][${orderId}] Timeout: Đơn hàng đã được xử lý (trạng thái: ${currentStatus}). Dừng chu kỳ.`);
             }
