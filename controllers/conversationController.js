@@ -183,8 +183,8 @@ exports.getConversationsList = async (req, res) => {
         if (sellerId) query.sellerId = sellerId;
         
         const conversations = await Conversation.find(query)
-            .populate('customerId', 'name')
-            .populate('sellerId', 'name')
+            .populate('customerId', 'name avatar')
+            .populate('sellerId', 'name avatar shopProfile.avatar shopProfile.lastActive')
             .populate('productId', 'name images price variantTable')
             .sort({ updatedAt: -1 });
 
