@@ -78,6 +78,10 @@ rejectionReason: String,
     type: Boolean,
     default: true
   },
+  lastActive: { // Thêm cho customer
+    type: Date,
+    default: null
+  },
   shipperProfile: {
     vehicleType: {
     type: String,
@@ -180,12 +184,18 @@ userSchema.pre('save', function(next) {
 
 // Middleware để cập nhật lastActive khi gửi tin nhắn
 userSchema.methods.updateLastActive = async function() {
-  if (this.role === 'seller') {
-    this.shopProfile.lastActive = new Date();
-  } else if (this.role === 'customer') {
-    this.lastActive = new Date();
+  console.log(`[DEBUG] Updating lastActive for user ${this._id}, role ${this.role}`);
+  try {
+    if (this.role === 'seller') {
+      this.shopProfile.lastActive = new Date();
+    } else if (this.role === 'customer') {
+      this.lastActive = new Date();
+    }
+    await this.save({ validateBeforeSave: false });
+    console.log(`[DEBUG] Saved lastActive for user ${this._id}: ${this.role === 'seller' ? this.shopProfile.lastActive : this.lastActive}`);
+  } catch (err) {
+    console.error(`[DEBUG] Error saving lastActive for user ${this._id}: ${err.message}`);
   }
-  await this.save({ validateBeforeSave: false });
 };
 
 // Hash password trước khi lưu
