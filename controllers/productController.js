@@ -86,7 +86,7 @@ exports.getProductById = async (req, res) => {
     const product = await Product.findById(req.params.id)
         .populate('category')
         // Sửa lại chuỗi select để lấy đúng các trường cần thiết từ shopProfile
-        .populate('seller', 'name shopProfile.avatar'); 
+        .populate('seller', 'name shopProfile.avatar shopProfile.lastActive'); 
     // --- KẾT THÚC SỬA ĐỔI ---
 
     if (!product) {
