@@ -14,15 +14,16 @@ exports.updateUserProfile = async (req, res) => {
     if (req.user._id.toString() !== req.params.id && !req.user.isAdmin) {
       return res.status(403).json({ message: 'Bạn không có quyền cập nhật người dùng này' });
     }
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { name, address, phone },
-      { new: true, runValidators: true }
-    ).select('-password');
+    const user = await User.findById(req.params.id);
     if (!user) {
       return res.status(404).json({ message: 'User không tồn tại' });
     }
-    return res.json(user);
+    user.name = name;
+    user.address = address;
+    user.phone = phone;
+    await user.save();
+    await user.updateLastActive(); // Cập nhật lastActive khi cập nhật profile
+    return res.json(user.select('-password'));
   } catch (err) {
     console.error('[BACKEND] update-user error:', err);
     return res.status(500).json({ message: 'Lỗi server khi cập nhật user', error: err.message });
