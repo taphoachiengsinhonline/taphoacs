@@ -29,7 +29,19 @@ exports.updateUserProfile = async (req, res) => {
     return res.status(500).json({ message: 'Lỗi server khi cập nhật user', error: err.message });
   }
 };
-
+exports.updateUserStatus = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy user' });
+    }
+    await user.updateLastActive();
+    res.json({ message: 'Cập nhật trạng thái thành công' });
+  } catch (err) {
+    console.error('[BACKEND] update-user-status error:', err);
+    res.status(500).json({ message: 'Lỗi server khi cập nhật trạng thái' });
+  }
+};
 // Đổi mật khẩu
 exports.changePassword = async (req, res) => {
     try {
