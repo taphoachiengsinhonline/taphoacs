@@ -82,16 +82,22 @@ exports.getBestSellers = async (req, res) => {
 
 exports.getProductById = async (req, res) => {
   try {
-    // --- BẮT ĐẦU SỬA ĐỔI ---
     const product = await Product.findById(req.params.id)
         .populate('category')
-        // Sửa lại chuỗi select để lấy đúng các trường cần thiết từ shopProfile
-        .populate('seller', 'name shopProfile.avatar shopProfile.lastActive'); 
-    // --- KẾT THÚC SỬA ĐỔI ---
+        .populate('seller', 'name shopProfile.avatar shopProfile.lastActive');
 
     if (!product) {
       return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
     }
+
+    // --- BẮT ĐẦU SỬA ---
+    // Log để kiểm tra dữ liệu thô từ DB
+    console.log("--- DEBUG: Dữ liệu sản phẩm từ DB (getProductById) ---");
+    console.log("Rating Quantity:", product.ratingQuantity);
+    console.log("Rating Average:", product.ratingAverage);
+    console.log("----------------------------------------------------");
+    // --- KẾT THÚC SỬA ---
+
     res.json(product);
   } catch (err) {
     console.error('❌ Lỗi khi lấy chi tiết sản phẩm:', err);
