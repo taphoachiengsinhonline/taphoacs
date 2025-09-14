@@ -32,9 +32,7 @@ exports.updateLocation = async (req, res) => {
 exports.getAssignedOrders = async (req, res) => {
     try {
         const { page = 1, limit = 10, status, from, to, search } = req.query;
-        const filter = { shipper: req.user._id,
-                        region: req.user.region
-                       };
+        const filter = { shipper: req.user._id, region: req.user.region };
 
         if (status && status !== 'all') filter.status = status;
         if (from && to) filter['timestamps.acceptedAt'] = { $gte: new Date(from), $lte: new Date(to) };
@@ -46,11 +44,19 @@ exports.getAssignedOrders = async (req, res) => {
         const result = await Order.paginate(filter, {
             page: parseInt(page, 10),
             limit: parseInt(limit, 10),
-            sort: { 'timestamps.createdAt': -1 }
+            sort: { 'timestamps.createdAt': -1 },
+            populate: {
+                path: 'shipper', // Populate shipper
+                select: 'name phone avatar shipperProfile' // Chọn các trường cần thiết, bao gồm avatar
+            }
         });
 
         return res.json({
-            orders: result.docs.map(d => ({ ...d.toObject(), timestamps: d.timestamps })),
+            orders: result.docs.map(d => ({
+                ...d.toObject(),
+                timestamps: d.timestamps,
+                shipper: d.shipper // Đảm bảo shipper được bao gồm
+            })),
             totalPages: result.totalPages,
             currentPage: result.page
         });
