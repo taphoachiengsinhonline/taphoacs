@@ -547,7 +547,7 @@ exports.getOrderById = async (req, res) => {
     try {
         const order = await Order.findById(req.params.id)
             .populate('user', 'name phone')
-            .populate('shipper', 'name phone shipperProfile.vehicleType shipperProfile.licensePlate');
+            .populate('shipper', 'name phone avatar shipperProfile.vehicleType shipperProfile.licensePlate'); // Thêm avatar vào select
 
         if (!order) {
             return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
