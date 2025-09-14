@@ -1,5 +1,6 @@
 // File: backend/models/Review.js
 const mongoose = require('mongoose');
+const mongoosePaginate = require('mongoose-paginate-v2');
 
 const reviewSchema = new mongoose.Schema({
     orderId: { // Để biết đánh giá này thuộc đơn hàng nào
@@ -36,5 +37,5 @@ const reviewSchema = new mongoose.Schema({
 
 // Ngăn một user đánh giá cùng một sản phẩm/shipper 2 lần cho cùng 1 đơn hàng
 reviewSchema.index({ orderId: 1, user: 1, targetId: 1 }, { unique: true });
-
+reviewSchema.plugin(mongoosePaginate);
 module.exports = mongoose.model('Review', reviewSchema);
