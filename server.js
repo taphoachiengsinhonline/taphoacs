@@ -21,6 +21,7 @@ const payoutRoutes = require('./routes/payoutRoutes');
 const sellerOrderRoutes = require('./routes/sellerOrderRoutes');
 const regionRoutes = require('./routes/regionRoutes');
 const { setupOrderCleanupJob } = require('./jobs/orderCleanup');
+const reviewRoutes = require('./routes/reviewRoutes');
 const app = express();
 
 app.use(cors({
@@ -82,6 +83,7 @@ app.use('/api/v1/sellers', sellerRoutes);
 app.use('/api/v1/payouts', payoutRoutes); 
 app.use('/api/v1/seller-orders', sellerOrderRoutes);
 app.use('/api/v1/regions', regionRoutes);
+app.use('/api/v1/reviews', reviewRoutes);
 
 // 404 Handler
 app.use((req, res, next) => {
@@ -109,6 +111,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Server UP: http://localhost:${PORT}`);
   console.log(`📡 Mode: ${process.env.NODE_ENV || 'development'}`);
 });
+
 
 
 
