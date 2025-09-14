@@ -230,5 +230,7 @@ userSchema.pre('validate', function (next) {
 
 // Tạo index cho truy vấn địa lý
 userSchema.index({ location: '2dsphere' });
-
+userSchema.virtual('shipperProfile.ratingAverage').get(function() {
+    return this.shipperProfile.rating;
+});
 module.exports = mongoose.model('User', userSchema);
