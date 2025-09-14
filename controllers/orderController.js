@@ -404,6 +404,31 @@ exports.updateOrderStatusByShipper = async (req, res) => {
             order.timestamps.deliveringAt = now;
         } else if (status === 'Đã giao') {
             order.timestamps.deliveredAt = now;
+            (async () => {
+        try {
+            if (order.user && order.user.fcmToken) {
+                const title = "Bạn hãy đánh giá đơn hàng nhé";
+                const message = `Đơn hàng #${order._id.toString().slice(-6)} đã giao thành công. Hãy cho chúng tôi biết trải nghiệm của bạn!`;
+                
+                await Notification.create({
+                    user: order.user._id, title, message, type: 'order',
+                    data: { 
+                        screen: 'ReviewScreen', // Màn hình đích
+                        orderId: order._id.toString()
+                    }
+                });
+                
+                await safeNotify(order.user.fcmToken, {
+                    title, body: message,
+                    data: { 
+                        screen: 'ReviewScreen',
+                        orderId: order._id.toString()
+                    }
+                });
+            }
+        } catch(e) { console.error("Lỗi gửi thông báo đánh giá:", e); }
+    })();
+
         } else if (status === 'Đã huỷ') {
             order.timestamps.canceledAt = now;
             order.cancelReason = cancelReason || 'Shipper đã hủy đơn';
