@@ -91,6 +91,17 @@ const productSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  ratingAverage: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 5,
+        set: val => Math.round(val * 10) / 10 // Làm tròn đến 1 chữ số thập phân
+    },
+    ratingQuantity: {
+        type: Number,
+        default: 0
+    },
 }, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
 
 // Validation mới cho saleTimeFrames
@@ -117,4 +128,5 @@ productSchema.virtual('totalStock').get(function() {
 });
 
 module.exports = mongoose.model('Product', productSchema);
+
 
