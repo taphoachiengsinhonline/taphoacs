@@ -111,12 +111,17 @@ rejectionReason: String,
         max: 100
     },
 
- rating: {
-      type: Number,
-      default: 5.0,
-      min: 1,
-      max: 5
-    }
+ rating: { // Trường này đã có, nhưng chúng ta sẽ dùng 2 trường mới cho chi tiết hơn
+            type: Number,
+            default: 0,
+            min: 0,
+            max: 5
+        },
+        // <<< THÊM 2 TRƯỜNG MỚI ĐỂ QUẢN LÝ ĐÁNH GIÁ SHIPPER >>>
+        ratingQuantity: {
+            type: Number,
+            default: 0
+        }
   },
   fcmToken: {
     type: String,
