@@ -5,6 +5,7 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const mongoose = require('mongoose');
+const moment = require('moment-timezone'); 
 
 // Hàm tính toán và cập nhật rating trung bình cho Product hoặc Shipper
 const updateRatings = async (reviewFor, targetId) => {
@@ -54,6 +55,18 @@ exports.createReview = async (req, res) => {
         }
         if (order.status !== 'Đã giao') {
             return res.status(400).json({ message: `Chỉ có thể đánh giá đơn hàng đã được giao thành công.` });
+        }
+        if (order.isReviewed === true) {
+            return res.status(400).json({ message: "Bạn đã đánh giá đơn hàng này rồi." });
+        }
+        const deliveredAt = moment(order.timestamps.deliveredAt);
+        // Lấy thời điểm hiện tại
+        const now = moment();
+        // Tính số ngày đã trôi qua
+        const daysSinceDelivery = now.diff(deliveredAt, 'days');
+
+        if (daysSinceDelivery > 7) {
+            return res.status(400).json({ message: "Đã quá 7 ngày kể từ khi nhận hàng, bạn không thể đánh giá đơn hàng này nữa." });
         }
 
         // Kiểm tra xem có đánh giá nào bị trùng lặp không
