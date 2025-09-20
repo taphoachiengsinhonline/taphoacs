@@ -153,10 +153,11 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
     }
 
+    // Lấy user và password để so sánh
     const user = await User.findOne({ email: email.toLowerCase().trim() })
-        .select('+password +role +phone +address +name +email +avatar +shopProfile +shipperProfile +commissionRate +paymentInfo');
-    
-   if (!user) {
+        .select('+password +role +phone +address +name +email +avatar +shopProfile +shipperProfile +commissionRate +paymentInfo +approvalStatus +rejectionReason'); // <<< THÊM 2 TRƯỜNG MỚI
+
+    if (!user) {
       return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
     }
 
@@ -165,6 +166,27 @@ router.post('/login', async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
     }
+
+    // ==========================================================
+    // <<< THÊM BƯỚC KIỂM TRA PHÊ DUYỆT NGAY TẠI ĐÂY >>>
+    // ==========================================================
+    if (user.role === 'seller' || user.role === 'shipper') { // Áp dụng cho cả shipper và seller
+        if (user.approvalStatus === 'pending') {
+            return res.status(403).json({ 
+                status: 'error', 
+                message: 'Tài khoản của bạn đang chờ quản trị viên phê duyệt. Vui lòng thử lại sau.' 
+            });
+        }
+        if (user.approvalStatus === 'rejected') {
+            return res.status(403).json({ 
+                status: 'error', 
+                message: `Tài khoản của bạn đã bị từ chối. Lý do: ${user.rejectionReason || 'Không có'}` 
+            });
+        }
+    }
+    // ==========================================================
+    // <<< KẾT THÚC LOGIC KIỂM TRA >>>
+    // ==========================================================
 
     const allowedRoles = {
       customer: ['customer', 'admin'],
@@ -181,8 +203,6 @@ router.post('/login', async (req, res) => {
 
     const { accessToken, refreshToken } = generateTokens(user._id);
     
-    // --- BẮT ĐẦU SỬA LỖI ---
-    // Xây dựng userResponse một cách đầy đủ và không có điều kiện thiếu sót
     const userResponse = {
         _id: user._id,
         name: user.name,
@@ -191,15 +211,15 @@ router.post('/login', async (req, res) => {
         address: user.address,
         role: user.role,
         isAdmin: user.role === 'admin',
-        
-        // Luôn gửi các trường này về nếu chúng tồn tại trong document
         avatar: user.avatar, 
         shopProfile: user.shopProfile, 
         shipperProfile: user.shipperProfile, 
         commissionRate: user.commissionRate,
         paymentInfo: user.paymentInfo,
+        // (Tùy chọn) có thể thêm 2 trường này để frontend biết mà hiển thị
+        approvalStatus: user.approvalStatus,
+        rejectionReason: user.rejectionReason
     };
-    // --- KẾT THÚC SỬA LỖI ---
     
     res.status(200).json({
       status: 'success',
