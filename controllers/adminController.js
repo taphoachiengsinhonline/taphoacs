@@ -17,27 +17,6 @@ const { safeNotify } = require('../utils/notificationMiddleware');
 // ==============================================================
 // === CÁC HÀM CŨ CỦA BẠN - GIỮ NGUYÊN HOÀN TOÀN              ===
 // ==============================================================
-exports.getAllSellers = async (req, res) => {
-    try {
-        const query = { role: 'seller' };
-
-        // Nếu người dùng là Quản lý Vùng, chỉ lấy seller trong vùng của họ
-        if (req.user.role === 'region_manager') {
-            query.region = req.user.region;
-        }
-
-        const sellers = await User.find(query)
-            .populate('managedBy', 'name') // Lấy tên người quản lý trực tiếp
-            .populate('region', 'name')   // Lấy tên khu vực
-            .select('name email commissionRate managedBy region'); // Chọn các trường cần thiết
-
-        res.status(200).json(sellers);
-    } catch (error) {
-        console.error("Lỗi khi lấy danh sách Sellers:", error);
-        res.status(500).json({ message: 'Lỗi server khi lấy danh sách Seller.' });
-    }
-};
-
 
 exports.getFinancialOverview = async (req, res) => {
     try {
@@ -1044,7 +1023,6 @@ exports.remindShipperToPayDebt = async (req, res) => {
 };
 
 
-// Lấy danh sách tất cả Quản lý Vùng
 exports.getRegionManagers = async (req, res) => {
     try {
         const managers = await User.find({ role: 'region_manager' })
@@ -1152,5 +1130,25 @@ exports.assignManagerToUser = async (req, res) => {
 
     } catch (error) {
         res.status(500).json({ message: 'Lỗi server khi gán người quản lý.' });
+    }
+};
+exports.getAllSellers = async (req, res) => {
+    try {
+        const query = { role: 'seller' };
+
+        // Nếu người dùng là Quản lý Vùng, chỉ lấy seller trong vùng của họ
+        if (req.user.role === 'region_manager') {
+            query.region = req.user.region;
+        }
+
+        const sellers = await User.find(query)
+            .populate('managedBy', 'name') // Lấy tên người quản lý trực tiếp
+            .populate('region', 'name')   // Lấy tên khu vực
+            .select('name email commissionRate managedBy region'); // Chọn các trường cần thiết
+
+        res.status(200).json(sellers);
+    } catch (error) {
+        console.error("Lỗi khi lấy danh sách Sellers:", error);
+        res.status(500).json({ message: 'Lỗi server khi lấy danh sách Seller.' });
     }
 };
