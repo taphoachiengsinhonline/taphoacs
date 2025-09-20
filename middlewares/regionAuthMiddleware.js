@@ -14,3 +14,4 @@ const verifyRegionManager = (req, res, next) => {
     }
     next();
 };
+module.exports = { verifyRegionManager };
