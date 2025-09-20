@@ -155,14 +155,6 @@ router.post('/shippers/:id/fake-order', async (req, res) => {
 // ===============================================
 // ===      QUẢN LÝ SELLER (Giữ nguyên)        ===
 // ===============================================
-router.get('/sellers', async (req, res) => {
-    try {
-        const sellers = await User.find({ role: 'seller' }).select('name email commissionRate');
-        res.json(sellers);
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi server' });
-    }
-});
 router.patch('/sellers/:sellerId/commission', async (req, res) => {
     try {
         const { commissionRate } = req.body;
