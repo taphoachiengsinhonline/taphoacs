@@ -292,38 +292,57 @@ router.get('/me', verifyToken, async (req, res) => {
     }
 });
 
+// API này không cần xác thực, ai cũng có thể gọi
+router.get('/regions', async (req, res) => {
+    try {
+        const activeRegions = await Region.find({ isActive: true }).select('name _id');
+        res.status(200).json(activeRegions);
+    } catch (error) {
+        res.status(500).json({ message: "Lỗi server khi lấy danh sách khu vực." });
+    }
+});
+
+// --- SỬA LẠI API ĐĂNG KÝ CỦA SELLER ---
 router.post('/register/seller', async (req, res) => {
     try {
-        const { email, password, name, phone, address } = req.body;
+        // Nhận thêm 'regionId' từ body
+        const { email, password, name, phone, address, regionId } = req.body;
         
-        if (!name || !email || !password || !address || !phone) {
-            return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin bắt buộc.' });
+        // Thêm 'regionId' vào kiểm tra
+        if (!name || !email || !password || !phone || !regionId) {
+            return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin, bao gồm cả khu vực hoạt động.' });
         }
         
-        const existingUser = await User.findOne({ email });
+        const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
         if (existingUser) {
             return res.status(400).json({ message: 'Email này đã được sử dụng.' });
         }
         
+        // (Tùy chọn nhưng nên có) Kiểm tra xem regionId có hợp lệ không
+        const regionExists = await Region.findById(regionId);
+        if (!regionExists || !regionExists.isActive) {
+            return res.status(400).json({ message: 'Khu vực hoạt động không hợp lệ.' });
+        }
                 
         const newSeller = new User({
             name,
             email: email.toLowerCase().trim(),
             password,
-            address,
+            address: address || '', // Cho phép địa chỉ rỗng
             phone,
             role: 'seller',
-            approvalStatus: 'pending' // << QUAN TRỌNG: Tài khoản mới sẽ ở trạng thái chờ duyệt
+            approvalStatus: 'pending',
+            region: regionId // << GÁN REGION ID TỪ REQUEST
         });
         
         await newSeller.save();
         
-        // (Tùy chọn) Gửi thông báo cho tất cả Admin về việc có tài khoản mới cần duyệt
-        
         res.status(201).json({ message: 'Đăng ký thành công! Tài khoản của bạn đang chờ quản trị viên phê duyệt.' });
         
     } catch (error) {
-         res.status(500).json({ message: "Đã có lỗi xảy ra, vui lòng thử lại." });
+         // Thêm log lỗi để dễ debug
+         console.error('[REGISTER SELLER ERROR]:', error);
+         res.status(500).json({ message: "Đã có lỗi xảy ra khi đăng ký, vui lòng thử lại." });
     }
 });
 
