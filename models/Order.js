@@ -134,6 +134,25 @@ const orderSchema = new mongoose.Schema({
      shippingFeeShareRate: Number,
      profitShareRate: Number
    },
+  
+  // Lưu lại ai là người quản lý và hưởng lợi nhuận từ đơn hàng này
+  profitRecipient: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null // null = Admin trung tâm
+    },
+
+    // Lưu lại tỷ lệ chia sẻ lợi nhuận tại thời điểm đặt hàng
+    profitShareRateSnapshot: {
+        type: Number,
+        default: 100 // Admin trung tâm mặc định hưởng 100%
+    },
+
+    // Lợi nhuận thực tế của người nhận (sau khi chia sẻ)
+    recipientProfit: {
+        type: Number,
+        default: 0
+    },
   extraSurcharge: {
     type: Number,
     min: 0,
