@@ -244,6 +244,7 @@ router.get('/sellers', verifyToken, verifyRegionManager, adminController.getAllS
 router.get('/region-managers', verifyToken, verifyAdmin, adminController.getRegionManagers);
 router.post('/region-managers', verifyToken, verifyAdmin, adminController.createRegionManager);
 router.put('/region-managers/:managerId', verifyToken, verifyAdmin, adminController.updateRegionManager);
+router.put('/users/:userId/assign-manager', verifyToken, verifyAdmin, adminController.assignManagerToUser);
 // <<< KẾT THÚC THÊM ROUTE >>>
 
 module.exports = router;
