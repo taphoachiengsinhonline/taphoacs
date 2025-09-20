@@ -188,7 +188,18 @@ exports.createOrder = async (req, res) => {
                     userVoucher.isUsed = true;
                     await userVoucher.save({ session });
                 }
+                const firstItemSeller = await User.findById(enrichedItems[0].sellerId).select('managedBy');
 
+let profitRecipientId = null;
+let profitShare = 100; // Mặc định Admin hưởng 100%
+
+if (firstItemSeller && firstItemSeller.managedBy) {
+    const regionManager = await User.findById(firstItemSeller.managedBy).select('regionManagerProfile');
+    if (regionManager) {
+        profitRecipientId = regionManager._id;
+        profitShare = regionManager.regionManagerProfile.profitShareRate;
+    }
+}
                 const order = new Order({
                     user: userId, items: enrichedItems, total: finalTotal, customerName, phone, shippingAddress,
                     shippingLocation, paymentMethod: paymentMethod || 'COD', shippingFeeActual: shippingFeeActual,
@@ -196,6 +207,8 @@ exports.createOrder = async (req, res) => {
                     voucherDiscount: voucherDiscount || 0, voucherCode, status: 'Chờ xác nhận',
                     isConsultationOrder: false, customerNotes: customerNotes,
                     region: req.user.region, // <<< KẾ THỪA REGION TỪ CUSTOMER
+                    profitRecipient: profitRecipientId,
+                    profitShareRateSnapshot: profitShare,
                 });
                 
                 const [createdOrder] = await Order.create([order], { session });
