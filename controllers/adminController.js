@@ -1,6 +1,7 @@
 // controllers/adminController.js
 
 const User = require('../models/User');
+const Region = require('../models/Region');
 const Remittance = require('../models/Remittance');
 const Order = require('../models/Order');
 const Payout = require('../models/PayoutRequest'); // <<< THÊM IMPORT
@@ -1018,5 +1019,86 @@ exports.remindShipperToPayDebt = async (req, res) => {
     } catch (error) {
         console.error('[remindShipperToPayDebt] Lỗi:', error);
         res.status(500).json({ message: "Lỗi server khi gửi nhắc nhở." });
+    }
+};
+
+
+// Lấy danh sách tất cả Quản lý Vùng
+exports.getRegionManagers = async (req, res) => {
+    try {
+        const managers = await User.find({ role: 'region_manager' })
+            .populate('region', 'name') // Lấy tên khu vực họ quản lý
+            .select('name email phone region regionManagerProfile'); // Chọn các trường cần thiết
+        res.status(200).json(managers);
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server khi lấy danh sách Quản lý Vùng.' });
+    }
+};
+
+// Tạo một Quản lý Vùng mới
+exports.createRegionManager = async (req, res) => {
+    try {
+        const { name, email, password, phone, regionId, profitShareRate } = req.body;
+
+        if (!name || !email || !password || !phone || !regionId || profitShareRate == null) {
+            return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin.' });
+        }
+
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(409).json({ message: 'Email này đã được sử dụng.' });
+        }
+
+        const region = await Region.findById(regionId);
+        if (!region) {
+            return res.status(404).json({ message: 'Khu vực được chọn không tồn tại.' });
+        }
+        
+        const newManager = new User({
+            name,
+            email,
+            password, // Mật khẩu sẽ tự được hash bởi middleware trong User model
+            phone,
+            role: 'region_manager',
+            approvalStatus: 'approved', // Quản lý Vùng do Admin tạo nên được duyệt luôn
+            address: region.name, // Lấy tạm địa chỉ là tên khu vực
+            region: regionId,
+            regionManagerProfile: {
+                profitShareRate: parseFloat(profitShareRate)
+            }
+        });
+
+        await newManager.save();
+        res.status(201).json(newManager);
+
+    } catch (error) {
+        console.error("Lỗi khi tạo Quản lý Vùng:", error);
+        res.status(500).json({ message: 'Lỗi server khi tạo Quản lý Vùng.' });
+    }
+};
+
+// Cập nhật thông tin Quản lý Vùng
+exports.updateRegionManager = async (req, res) => {
+    try {
+        const { managerId } = req.params;
+        const { name, phone, regionId, profitShareRate } = req.body;
+
+        const updateData = {};
+        if (name) updateData.name = name;
+        if (phone) updateData.phone = phone;
+        if (regionId) updateData.region = regionId;
+        if (profitShareRate != null) {
+            updateData['regionManagerProfile.profitShareRate'] = parseFloat(profitShareRate);
+        }
+
+        const updatedManager = await User.findByIdAndUpdate(managerId, updateData, { new: true });
+
+        if (!updatedManager) {
+            return res.status(404).json({ message: 'Không tìm thấy Quản lý Vùng.' });
+        }
+
+        res.status(200).json(updatedManager);
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server khi cập nhật Quản lý Vùng.' });
     }
 };
