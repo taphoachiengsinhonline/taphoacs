@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const { verifyToken, isAdmin } = require('../middlewares/authMiddleware');
+const { verifyRegionManager } = require('../middlewares/regionAuthMiddleware');
 const bcrypt = require('bcrypt');
 const Product = require('../models/Product');
 
