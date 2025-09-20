@@ -44,9 +44,23 @@ const userSchema = new mongoose.Schema({
   role: {
   type: String,
   // SỬA DÒNG NÀY
-  enum: ['customer', 'admin', 'shipper', 'seller'], 
+  enum: ['customer', 'admin', 'shipper', 'seller', 'region_manager'], 
   default: 'customer'
 },
+regionManagerProfile: {
+    profitShareRate: { // % lợi nhuận mà quản lý vùng được hưởng
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 100
+    }
+  },
+managedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null // null nghĩa là được quản lý bởi Admin trung tâm
+  },
+  
 commissionRate: { // <-- THÊM MỚI Ở ĐÂY
     type: Number,
     default: 0, 
