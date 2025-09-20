@@ -233,8 +233,8 @@ router.get('/dashboard-counts', adminController.getAdminDashboardCounts);
 router.post('/shippers/:shipperId/remind-debt', adminController.remindShipperToPayDebt);
 //router.get('/sellers', verifyToken, verifyRegionManager, adminController.getAllSellers);
 // <<< BẮT ĐẦU THÊM ROUTE CHO QUẢN LÝ VÙNG >>>
-router.get('/region-managers', verifyToken, verifyAdmin, adminController.getRegionManagers);
-router.post('/region-managers', verifyToken, verifyAdmin, adminController.createRegionManager);
+//router.get('/region-managers', verifyToken, verifyAdmin, adminController.getRegionManagers);
+//router.post('/region-managers', verifyToken, verifyAdmin, adminController.createRegionManager);
 router.put('/region-managers/:managerId', verifyToken, verifyAdmin, adminController.updateRegionManager);
 router.put('/users/:userId/assign-manager', verifyToken, verifyAdmin, adminController.assignManagerToUser);
 // <<< KẾT THÚC THÊM ROUTE >>>
