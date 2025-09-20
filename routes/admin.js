@@ -239,5 +239,6 @@ router.post('/sellers/:sellerId/reject', adminController.rejectSeller);
 router.get('/financial-overview', adminController.getFinancialOverview);
 router.get('/dashboard-counts', adminController.getAdminDashboardCounts);
 router.post('/shippers/:shipperId/remind-debt', adminController.remindShipperToPayDebt);
+router.get('/sellers', verifyToken, verifyRegionManager, adminController.getAllSellers);
 
 module.exports = router;
