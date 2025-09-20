@@ -7,6 +7,8 @@ const User = require('../models/User');
 const voucherController = require('../controllers/voucherController');
 const { verifyToken } = require('../middlewares/authMiddleware');
 const Region = require('../models/Region');
+const Notification = require('../models/Notification'); // Model để lưu thông báo vào DB
+const { safeNotify } = require('../utils/notificationMiddleware');
 
 // Hàm tạo Access + Refresh token
 const generateTokens = (userId) => {
@@ -325,10 +327,8 @@ router.get('/regions', async (req, res) => {
 // --- SỬA LẠI API ĐĂNG KÝ CỦA SELLER ---
 router.post('/register/seller', async (req, res) => {
     try {
-        // Nhận thêm 'regionId' từ body
         const { email, password, name, phone, address, regionId } = req.body;
         
-        // Thêm 'regionId' vào kiểm tra
         if (!name || !email || !password || !phone || !regionId) {
             return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin, bao gồm cả khu vực hoạt động.' });
         }
@@ -338,7 +338,6 @@ router.post('/register/seller', async (req, res) => {
             return res.status(400).json({ message: 'Email này đã được sử dụng.' });
         }
         
-        // (Tùy chọn nhưng nên có) Kiểm tra xem regionId có hợp lệ không
         const regionExists = await Region.findById(regionId);
         if (!regionExists || !regionExists.isActive) {
             return res.status(400).json({ message: 'Khu vực hoạt động không hợp lệ.' });
@@ -348,19 +347,76 @@ router.post('/register/seller', async (req, res) => {
             name,
             email: email.toLowerCase().trim(),
             password,
-            address: address || '', // Cho phép địa chỉ rỗng
+            address: address || '',
             phone,
             role: 'seller',
             approvalStatus: 'pending',
-            region: regionId // << GÁN REGION ID TỪ REQUEST
+            region: regionId
         });
         
-        await newSeller.save();
+        // Lưu seller mới vào database
+        const savedSeller = await newSeller.save();
         
+        // ==========================================================
+        // <<< BẮT ĐẦU LOGIC GỬI THÔNG BÁO CHO ADMIN >>>
+        // ==========================================================
+        // Chạy tác vụ này bất đồng bộ để không làm chậm phản hồi trả về cho người dùng
+        (async () => {
+            try {
+                // 1. Tìm tất cả các tài khoản Admin có fcmToken hợp lệ
+                const admins = await User.find({ 
+                    role: 'admin', 
+                    fcmToken: { $exists: true, $ne: null } 
+                });
+
+                if (admins.length > 0) {
+                    const notificationTitle = "Seller mới đăng ký";
+                    const notificationBody = `Tài khoản "${savedSeller.name}" vừa đăng ký và đang chờ được phê duyệt.`;
+                    
+                    // 2. Tạo một mảng các promise để xử lý song song
+                    const notificationPromises = admins.map(admin => {
+                        // 2a. Lưu thông báo vào database cho từng Admin
+                        const dbNotification = Notification.create({
+                            user: admin._id,
+                            title: notificationTitle,
+                            message: notificationBody,
+                            type: 'general', // Hoặc 'admin_task' nếu bạn muốn phân loại
+                            data: {
+                                screen: 'SellerApproval', // Màn hình Admin sẽ được điều hướng đến
+                                sellerId: savedSeller._id.toString()
+                            }
+                        });
+
+                        // 2b. Gửi push notification đến từng Admin
+                        const pushNotification = safeNotify(admin.fcmToken, {
+                            title: notificationTitle,
+                            body: notificationBody,
+                            data: {
+                                screen: 'SellerApproval', // Dữ liệu đính kèm để app biết điều hướng
+                                sellerId: savedSeller._id.toString()
+                            }
+                        });
+                        
+                        return Promise.all([dbNotification, pushNotification]);
+                    });
+
+                    // 3. Thực thi tất cả các promise
+                    await Promise.all(notificationPromises);
+                    console.log(`[New Seller Notification] Đã gửi thông báo đến ${admins.length} quản trị viên.`);
+                }
+            } catch (notificationError) {
+                // Ghi lại lỗi nếu có vấn đề trong quá trình gửi thông báo
+                console.error("[New Seller Notification] Lỗi khi gửi thông báo cho Admin:", notificationError);
+            }
+        })();
+        // ==========================================================
+        // <<< KẾT THÚC LOGIC GỬI THÔNG BÁO >>>
+        // ==========================================================
+        
+        // Phản hồi thành công cho người dùng ngay lập tức
         res.status(201).json({ message: 'Đăng ký thành công! Tài khoản của bạn đang chờ quản trị viên phê duyệt.' });
         
     } catch (error) {
-         // Thêm log lỗi để dễ debug
          console.error('[REGISTER SELLER ERROR]:', error);
          res.status(500).json({ message: "Đã có lỗi xảy ra khi đăng ký, vui lòng thử lại." });
     }
