@@ -9,7 +9,7 @@ const moment = require('moment-timezone');
 exports.processOrderCompletionForFinance = async (orderId) => {
     try {
         console.log(`[FINANCE_PROCESS] Bắt đầu xử lý tài chính cho Order ID: ${orderId}`);
-        const order = await Order.findById(orderId);
+        const order = await Order.findById(orderId).populate('profitRecipient'); // <<< populate để lấy thông tin người nhận lợi nhuận
 
         if (!order || order.status !== 'Đã giao') {
             console.log(`[FINANCE_PROCESS_SKIP] Bỏ qua: Đơn ${orderId} không ở trạng thái "Đã giao" hoặc không tồn tại.`);
@@ -22,19 +22,42 @@ exports.processOrderCompletionForFinance = async (orderId) => {
             return;
         }
 
-        const sellerFinanceData = {};
+        // --- Bước 1: Tính toán lợi nhuận gộp của đơn hàng ---
+        const itemsTotalValue = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        const totalCommissionFromSeller = order.items.reduce((sum, item) => sum + (item.commissionAmount || 0), 0);
+        
+        // Lợi nhuận gộp = (Phí sàn thu từ seller) + (Phí ship thực tế) + (Phụ phí) - (Thu nhập trả cho shipper)
+        const grossProfit = 
+            (totalCommissionFromSeller || 0) + 
+            (order.shippingFeeActual || 0) + 
+            (order.extraSurcharge || 0) - 
+            (order.shipperIncome || 0);
 
+        console.log(`[FINANCE_PROCESS] Đơn hàng ${orderId} - Lợi nhuận gộp: ${grossProfit}`);
+
+        // --- Bước 2: Phân chia lợi nhuận cho người nhận (Admin hoặc Quản lý Vùng) ---
+        let recipientProfitAmount = 0;
+        if (grossProfit > 0) {
+            // Lấy tỷ lệ chia sẻ đã được lưu lúc tạo đơn hàng
+            const profitShareRate = order.profitShareRateSnapshot || 100;
+            recipientProfitAmount = grossProfit * (profitShareRate / 100);
+            
+            // Cập nhật lại đơn hàng với số lợi nhuận cuối cùng
+            order.recipientProfit = recipientProfitAmount;
+            await order.save();
+            
+            console.log(`[FINANCE_PROCESS] Lợi nhuận được chia cho "${order.profitRecipient ? order.profitRecipient.name : 'Admin trung tâm'}" là ${recipientProfitAmount} (${profitShareRate}%)`);
+        }
+
+        // --- Bước 3: Ghi bút toán cho các Seller (Logic này giữ nguyên) ---
+        const sellerFinanceData = {};
         for (const item of order.items) {
             const sellerId = item.sellerId.toString();
             if (!sellerFinanceData[sellerId]) {
                 sellerFinanceData[sellerId] = { netIncome: 0 };
             }
-            
-            // <<< SỬA LỖI LOGIC QUAN TRỌNG Ở ĐÂY >>>
             const itemValue = item.price * item.quantity;
-            // Lấy thẳng phí sàn đã được tính và lưu sẵn trong item, không tính lại
             const commission = item.commissionAmount || 0; 
-            
             sellerFinanceData[sellerId].netIncome += (itemValue - commission);
         }
         
