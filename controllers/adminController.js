@@ -1102,3 +1102,34 @@ exports.updateRegionManager = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server khi cập nhật Quản lý Vùng.' });
     }
 };
+
+exports.assignManagerToUser = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { managerId } = req.body; // managerId có thể là null để gỡ gán
+
+        const userToUpdate = await User.findById(userId);
+        if (!userToUpdate || !['seller', 'shipper'].includes(userToUpdate.role)) {
+            return res.status(404).json({ message: 'Không tìm thấy Seller hoặc Shipper này.' });
+        }
+
+        if (managerId) {
+            const manager = await User.findById(managerId);
+            if (!manager || manager.role !== 'region_manager') {
+                return res.status(404).json({ message: 'Người quản lý được chọn không hợp lệ.' });
+            }
+            // Gán người quản lý và đồng bộ khu vực
+            userToUpdate.managedBy = managerId;
+            userToUpdate.region = manager.region; 
+        } else {
+            // Gỡ gán, quay về cho Admin trung tâm quản lý
+            userToUpdate.managedBy = null;
+        }
+
+        await userToUpdate.save();
+        res.status(200).json({ message: 'Cập nhật người quản lý thành công!', user: userToUpdate });
+
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server khi gán người quản lý.' });
+    }
+};
