@@ -154,30 +154,26 @@ router.post('/login', async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
     }
-
+    
+    // <<< BẮT ĐẦU SỬA ĐỔI ĐỂ TEST >>>
+    // Dùng .lean() để lấy plain object, nó thường bỏ qua một số hook.
+    // Bỏ hết select đi, chỉ lấy những gì cần thiết nhất để test.
     const user = await User.findOne({ email: email.toLowerCase().trim() })
-        .select('+password +role +phone +address +name +email +avatar +shopProfile +shipperProfile +commissionRate +paymentInfo +approvalStatus +rejectionReason');
+        .select('+password +role +approvalStatus +rejectionReason')
+        .lean(); // <<< THÊM .lean() VÀO ĐÂY
+    // <<< KẾT THÚC SỬA ĐỔI ĐỂ TEST >>>
 
-    if (!user || !user.password) { // Thêm kiểm tra !user.password cho chắc chắn
-      return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
+    if (!user) {
+      return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng (KHÔNG TÌM THẤY USER)' });
     }
+    
+    // Log ra để xem nó lấy được gì
+    console.log("USER TÌM THẤY (với .lean()):", user);
 
-    // ==========================================================
-    // <<< BẮT ĐẦU SỬA LỖI Ở ĐÂY >>>
-    // ==========================================================
-
-    // Log ra kiểu dữ liệu để xác nhận
-    console.log('Kiểu dữ liệu của user.password:', typeof user.password);
-
-    // Ép kiểu user.password thành chuỗi (string) trước khi so sánh
     const isMatch = await bcrypt.compare(password, String(user.password));
     
-    // ==========================================================
-    // <<< KẾT THÚC SỬA LỖI >>>
-    // ==========================================================
-    
     if (!isMatch) {
-      return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
+      return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng (SAI MẬT KHẨU)' });
     }
 
 
