@@ -1105,30 +1105,44 @@ exports.updateRegionManager = async (req, res) => {
 exports.assignManagerToUser = async (req, res) => {
     try {
         const { userId } = req.params;
-        const { managerId } = req.body; // managerId có thể là null để gỡ gán
+        const { managerId } = req.body;
 
         const userToUpdate = await User.findById(userId);
         if (!userToUpdate || !['seller', 'shipper'].includes(userToUpdate.role)) {
             return res.status(404).json({ message: 'Không tìm thấy Seller hoặc Shipper này.' });
         }
 
-        if (managerId) {
+        let updateOperation;
+
+        if (managerId) { // Trường hợp GÁN cho một manager
             const manager = await User.findById(managerId);
             if (!manager || manager.role !== 'region_manager') {
                 return res.status(404).json({ message: 'Người quản lý được chọn không hợp lệ.' });
             }
-            // Gán người quản lý và đồng bộ khu vực
-            userToUpdate.managedBy = managerId;
-            userToUpdate.region = manager.region; 
-        } else {
-            // Gỡ gán, quay về cho Admin trung tâm quản lý
-            userToUpdate.managedBy = null;
+            // Dùng $set để cập nhật cả hai trường
+            updateOperation = {
+                $set: {
+                    managedBy: managerId,
+                    region: manager.region
+                }
+            };
+        } else { // Trường hợp GỠ GÁN (quay về Admin)
+            // Dùng $unset để xóa hoàn toàn trường managedBy
+            updateOperation = {
+                $unset: {
+                    managedBy: "" // Giá trị của "" không quan trọng, chỉ cần key tồn tại
+                }
+            };
+            // Lưu ý: Chúng ta không thay đổi `region` của user khi gỡ gán.
         }
 
-        await userToUpdate.save();
-        res.status(200).json({ message: 'Cập nhật người quản lý thành công!', user: userToUpdate });
+        // Thực hiện cập nhật bằng findByIdAndUpdate
+        const updatedUser = await User.findByIdAndUpdate(userId, updateOperation, { new: true });
+
+        res.status(200).json({ message: 'Cập nhật người quản lý thành công!', user: updatedUser });
 
     } catch (error) {
+        console.error("Lỗi khi gán người quản lý:", error);
         res.status(500).json({ message: 'Lỗi server khi gán người quản lý.' });
     }
 };
