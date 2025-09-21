@@ -215,31 +215,17 @@ userSchema.virtual('isOnline').get(function() {
   return false;
 });
 
-userSchema.pre('save', async function (next) {
-  // Chỉ chạy hàm này nếu password đã được thay đổi (hoặc là một user mới)
-  if (!this.isModified('password')) return next();
-
-  // <<< THÊM KIỂM TRA MỚI Ở ĐÂY >>>
-  // Kiểm tra xem mật khẩu có phải là một chuỗi hash của bcrypt hay không
-  // Chuỗi hash của bcrypt thường bắt đầu bằng '$2a$', '$2b$', hoặc '$2y$'
-  const isHashed = this.password.startsWith('$2a$') || this.password.startsWith('$2b$') || this.password.startsWith('$2y$');
-  
-  // Nếu mật khẩu đã được hash rồi, bỏ qua để tránh hash 2 lần
-  if (isHashed) {
-      console.log(`[Bcrypt] Mật khẩu cho user ${this.email} đã được hash. Bỏ qua hash lại.`);
-      return next();
+userSchema.pre('save', function(next) {
+  if (this.isModified('lastActive') || this.isModified('shopProfile.lastActive')) {
+    if (this.role === 'seller') {
+      this.shopProfile.lastActive = new Date();
+    } else if (this.role === 'customer') {
+      this.lastActive = new Date();
+    }
   }
-  // <<< KẾT THÚC THÊM KIỂM TRA >>>
-
-  try {
-    console.log(`[Bcrypt] Đang hash mật khẩu cho user ${this.email}...`);
-    const hashedPassword = await bcrypt.hash(this.password, 12);
-    this.password = hashedPassword;
-    next();
-  } catch (error) {
-    next(new Error(`Lỗi hash password: ${error.message}`));
-  }
+  next();
 });
+
 // Middleware để cập nhật lastActive khi gửi tin nhắn
 userSchema.methods.updateLastActive = async function() {
   console.log(`[DEBUG] Updating lastActive for user ${this._id}, role ${this.role}`);
