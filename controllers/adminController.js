@@ -1136,15 +1136,19 @@ exports.getAllSellers = async (req, res) => {
     try {
         const query = { role: 'seller' };
 
-        // Nếu người dùng là Quản lý Vùng, chỉ lấy seller trong vùng của họ
         if (req.user.role === 'region_manager') {
+            if (!req.user.region) {
+                return res.status(403).json({ message: 'Tài khoản quản lý của bạn chưa được gán khu vực.' });
+            }
             query.region = req.user.region;
         }
 
         const sellers = await User.find(query)
-            .populate('managedBy', 'name') // Lấy tên người quản lý trực tiếp
-            .populate('region', 'name')   // Lấy tên khu vực
-            .select('name email commissionRate managedBy region'); // Chọn các trường cần thiết
+            // <<< DÒNG POPULATE NÀY LÀ CHÌA KHÓA >>>
+            .populate('managedBy', 'name') // Lấy trường 'name' từ document của người quản lý
+            .populate('region', 'name')
+            // Lấy thêm các trường cần thiết cho hiển thị
+            .select('name email commissionRate managedBy region');
 
         res.status(200).json(sellers);
     } catch (error) {
