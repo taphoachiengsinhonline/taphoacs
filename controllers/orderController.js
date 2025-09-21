@@ -592,15 +592,37 @@ exports.getOrderById = async (req, res) => {
 exports.getAllOrders = async (req, res) => {
     try {
         const { status, page = 1, limit = 10 } = req.query;
-        const query = status ? { status } : {};
-        const options = { page: parseInt(page, 10), limit: parseInt(limit, 10), sort: { 'timestamps.createdAt': -1 }, populate: { path: 'user', select: 'name' }, };
+        
+        // <<< BẮT ĐẦU LOGIC LỌC THEO VAI TRÒ >>>
+        const query = {};
+        if (status) {
+            query.status = status;
+        }
+
+        // Nếu người dùng là Quản lý Vùng, chỉ lấy đơn hàng trong vùng của họ
+        if (req.user.role === 'region_manager') {
+            query.region = req.user.region;
+        }
+        // <<< KẾT THÚC LOGIC LỌC THEO VAI TRÒ >>>
+
+        const options = { 
+            page: parseInt(page, 10), 
+            limit: parseInt(limit, 10), 
+            sort: { 'timestamps.createdAt': -1 }, 
+            populate: { path: 'user', select: 'name' }, 
+        };
         const result = await Order.paginate(query, options);
-        res.json({ docs: result.docs.map(doc => ({ ...doc.toObject(), timestamps: doc.timestamps })), totalPages: result.totalPages, page: result.page });
+        res.json({ 
+            docs: result.docs.map(doc => ({ ...doc.toObject(), timestamps: doc.timestamps })), 
+            totalPages: result.totalPages, 
+            page: result.page 
+        });
     } catch (err) {
         console.error('[getAllOrders] error:', err);
         res.status(500).json({ message: 'Lỗi server khi lấy tất cả đơn hàng' });
     }
 };
+
 
 exports.updateOrderStatus = async (req, res) => {
     try {
@@ -676,7 +698,19 @@ exports.cancelOrder = async (req, res) => {
 
 exports.adminCountByStatus = async (req, res) => {
     try {
-        const counts = await Order.aggregate([ { $group: { _id: '$status', count: { $sum: 1 } } } ]);
+        // <<< BẮT ĐẦU LOGIC LỌC THEO VAI TRÒ >>>
+        const matchQuery = {};
+
+        // Nếu người dùng là Quản lý Vùng, chỉ đếm đơn hàng trong vùng của họ
+        if (req.user.role === 'region_manager') {
+            matchQuery.region = req.user.region; // Chú ý: cần convert sang ObjectId nếu `req.user.region` là string
+        }
+        // <<< KẾT THÚC LOGIC LỌC THEO VAI TRÒ >>>
+
+        const counts = await Order.aggregate([ 
+            { $match: matchQuery },
+            { $group: { _id: '$status', count: { $sum: 1 } } } 
+        ]);
         const result = { 'pending': 0, 'confirmed': 0, 'shipped': 0, 'delivered': 0, 'canceled': 0 };
         counts.forEach(item => {
             if (item._id === 'Chờ xác nhận') result.pending = item.count;
