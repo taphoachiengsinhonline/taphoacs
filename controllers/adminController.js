@@ -1053,26 +1053,37 @@ exports.createRegionManager = async (req, res) => {
             return res.status(404).json({ message: 'Khu vực được chọn không tồn tại.' });
         }
         
+        // BƯỚC 1: HASH MẬT KHẨU THỦ CÔNG
+        const hashedPassword = await bcrypt.hash(password, 12);
+
+        // BƯỚC 2: TẠO USER MỚI VỚI MẬT KHẨU ĐÃ HASH
         const newManager = new User({
             name,
             email,
-            password, // Mật khẩu sẽ tự được hash bởi middleware trong User model
+            password: hashedPassword, // << Sử dụng mật khẩu đã hash
             phone,
             role: 'region_manager',
-            approvalStatus: 'approved', // Quản lý Vùng do Admin tạo nên được duyệt luôn
-            address: region.name, // Lấy tạm địa chỉ là tên khu vực
+            approvalStatus: 'approved',
+            address: region.name,
             region: regionId,
             regionManagerProfile: {
                 profitShareRate: parseFloat(profitShareRate)
             }
         });
+        
+        // BƯỚC 3: LƯU VÀO DB. 
+        // pre-save hook sẽ được gọi, nhưng nó sẽ bỏ qua vì isModified('password') là false.
+        // Để chắc chắn hơn, chúng ta sẽ lưu mà không chạy validation trên password nữa.
+        await newManager.save({ validateBeforeSave: true }); 
+        
+        const managerResponse = newManager.toObject();
+        delete managerResponse.password;
 
-        await newManager.save();
-        res.status(201).json(newManager);
+        res.status(201).json(managerResponse);
 
     } catch (error) {
         console.error("Lỗi khi tạo Quản lý Vùng:", error);
-        res.status(500).json({ message: 'Lỗi server khi tạo Quản lý Vùng.' });
+        res.status(500).json({ message: `Lỗi server: ${error.message}` });
     }
 };
 
