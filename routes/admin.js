@@ -4,19 +4,23 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const { verifyToken, isAdmin } = require('../middlewares/authMiddleware');
-const { verifyRegionManager } = require('../middlewares/regionAuthMiddleware');
-const bcrypt = require('bcrypt');
+const { verifyRegionManager } = require('../middlewares/regionAuthMiddleware'); // Dùng để cho phép cả Admin và QLV
 const Product = require('../models/Product');
-
-// <<< BƯỚC 1: SỬA LẠI IMPORT >>>
-// Bỏ import cũ, thay bằng import `safeNotify`
 const { safeNotify } = require('../utils/notificationMiddleware');
-
-// Import controller
 const adminController = require('../controllers/adminController');
+const orderController = require('../controllers/orderController'); // <<< THÊM IMPORT NÀY
 
-// Middleware: Yêu cầu tất cả các route trong file này phải là admin đã đăng nhập
-router.use(verifyToken, isAdmin);
+// Middleware chung: Tất cả các route trong file này đều yêu cầu phải đăng nhập
+router.use(verifyToken);
+
+// ===============================================
+// ===      QUẢN LÝ ĐƠN HÀNG (Dùng chung)      ===
+// ===============================================
+// API này cần cho cả Admin và Quản lý Vùng.
+// Middleware `verifyRegionManager` sẽ cho cả 2 vai trò đi qua.
+// Logic lọc theo vùng sẽ nằm trong controller.
+router.get('/orders', verifyRegionManager, orderController.getAllOrders); 
+router.get('/orders/admin-count-by-status', verifyRegionManager, orderController.adminCountByStatus);
 
 // ===============================================
 // ===      QUẢN LÝ SHIPPER                   ===
@@ -170,7 +174,8 @@ router.post('/shippers/:id/fake-order', async (req, res) => {
 // ===============================================
 // ===      QUẢN LÝ SELLER (Giữ nguyên)        ===
 // ===============================================
-router.patch('/sellers/:sellerId/commission', async (req, res) => {
+router.get('/sellers', verifyRegionManager, adminController.getAllSellers);
+router.patch('/sellers/:sellerId/commission', isAdmin, async (req, res) => {
     try {
         const { commissionRate } = req.body;
         if (commissionRate === undefined || commissionRate < 0 || commissionRate > 100) {
@@ -187,7 +192,7 @@ router.patch('/sellers/:sellerId/commission', async (req, res) => {
 // ===============================================
 // ===      QUẢN LÝ SẢN PHẨM (Giữ nguyên)     ===
 // ===============================================
-router.get('/products/pending/count', async (req, res) => {
+rrouter.get('/products/pending/count', isAdmin, async (req, res) => {
     try {
         const count = await Product.countDocuments({ approvalStatus: 'pending_approval' });
         res.json({ count });
@@ -196,7 +201,7 @@ router.get('/products/pending/count', async (req, res) => {
         res.status(500).json({ message: 'Lỗi server' });
     }
 });
-router.get('/products/pending', async (req, res) => {
+router.get('/products/pending', isAdmin, async (req, res) => {
     try {
         const pendingProducts = await Product.find({ approvalStatus: 'pending_approval' }).populate('seller', 'name');
         res.json(pendingProducts);
@@ -204,7 +209,7 @@ router.get('/products/pending', async (req, res) => {
         res.status(500).json({ message: 'Lỗi server' });
     }
 });
-router.post('/products/:productId/approve', async (req, res) => {
+router.post('/products/:productId/approve', isAdmin, async (req, res) => {
     try {
         const product = await Product.findByIdAndUpdate(req.params.productId, { approvalStatus: 'approved' }, { new: true });
         if (!product) return res.status(404).json({ message: 'Sản phẩm không tồn tại' });
@@ -213,7 +218,7 @@ router.post('/products/:productId/approve', async (req, res) => {
         res.status(500).json({ message: 'Lỗi server' });
     }
 });
-router.post('/products/:productId/reject', async (req, res) => {
+router.post('/products/:productId/reject', isAdmin, async (req, res) => {
     try {
         const { reason } = req.body;
         if (!reason) return res.status(400).json({ message: 'Cần có lý do từ chối' });
@@ -226,8 +231,10 @@ router.post('/products/:productId/reject', async (req, res) => {
 });
 
 // =======================================================
-// === CÁC ROUTE TRỎ TỚI CONTROLLER (Giữ nguyên) ===
+// === CÁC ROUTE KHÁC (Đa số là Admin only)           ===
 // =======================================================
+// Áp dụng `isAdmin` cho tất cả các route từ đây trở xuống
+router.use(isAdmin);
 
 router.get('/shipper-debt-overview', adminController.getShipperDebtOverview);
 router.get('/remittances/pending-count', adminController.countPendingRemittanceRequests);
