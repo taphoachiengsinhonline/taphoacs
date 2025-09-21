@@ -49,7 +49,13 @@ router.post('/shippers', async (req, res) => {
 // Lấy danh sách shipper
 router.get('/shippers', async (req, res) => {
     try {
-        const shippers = await User.find({ role: 'shipper' }).select('name email address phone location locationUpdatedAt isAvailable shipperProfile').lean({ virtuals: true });
+        // <<< BẮT ĐẦU SỬA ĐỔI CÂU QUERY NÀY >>>
+        const shippers = await User.find({ role: 'shipper' })
+            .populate('managedBy', 'name') // <<< THÊM DÒNG NÀY ĐỂ LẤY THÔNG TIN NGƯỜI QUẢN LÝ
+            .select('name email address phone location locationUpdatedAt isAvailable shipperProfile managedBy') // <<< THÊM `managedBy` vào select
+            .lean({ virtuals: true });
+        // <<< KẾT THÚC SỬA ĐỔI >>>
+
         const nowVN = Date.now() + (7 * 60 * 60 * 1000);
         const processedShippers = shippers.map(shipper => {
             const updatedAt = shipper.locationUpdatedAt?.getTime() || 0;
