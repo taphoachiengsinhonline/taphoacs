@@ -155,40 +155,28 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
     }
 
-    // Lấy user và password để so sánh
-    const user = await User.findOne({ email: email.toLowerCase().trim() })
-        .select('+password +role +phone +address +name +email +avatar +shopProfile +shipperProfile +commissionRate +paymentInfo +approvalStatus +rejectionReason'); // <<< THÊM 2 TRƯỜNG MỚI
-
-    if (!user) {
+    // BƯỚC 1: LẤY USER VỚI MẬT KHẨU VÀ CÁC TRƯỜNG CẦN CHO VALIDATION
+    const userForValidation = await User.findOne({ email: email.toLowerCase().trim() })
+        .select('+password +role +approvalStatus +rejectionReason'); 
+    
+    if (!userForValidation || !userForValidation.password) {
       return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    
+    const isMatch = await bcrypt.compare(password, userForValidation.password);
     if (!isMatch) {
       return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
     }
 
-    // ==========================================================
-    // <<< THÊM BƯỚC KIỂM TRA PHÊ DUYỆT NGAY TẠI ĐÂY >>>
-    // ==========================================================
-    if (user.role === 'seller' || user.role === 'shipper') { // Áp dụng cho cả shipper và seller
-        if (user.approvalStatus === 'pending') {
-            return res.status(403).json({ 
-                status: 'error', 
-                message: 'Tài khoản của bạn đang chờ quản trị viên phê duyệt. Vui lòng thử lại sau.' 
-            });
+    // BƯỚC 2: MẬT KHẨU ĐÃ ĐÚNG, KIỂM TRA CÁC ĐIỀU KIỆN KHÁC
+    if (userForValidation.role === 'seller' || userForValidation.role === 'shipper') {
+        if (userForValidation.approvalStatus === 'pending') {
+            return res.status(403).json({ status: 'error', message: 'Tài khoản của bạn đang chờ quản trị viên phê duyệt.' });
         }
-        if (user.approvalStatus === 'rejected') {
-            return res.status(403).json({ 
-                status: 'error', 
-                message: `Tài khoản của bạn đã bị từ chối. Lý do: ${user.rejectionReason || 'Không có'}` 
-            });
+        if (userForValidation.approvalStatus === 'rejected') {
+            return res.status(403).json({ status: 'error', message: `Tài khoản của bạn đã bị từ chối. Lý do: ${userForValidation.rejectionReason || 'Không có'}` });
         }
     }
-    // ==========================================================
-    // <<< KẾT THÚC LOGIC KIỂM TRA >>>
-    // ==========================================================
 
     const allowedRoles = {
       customer: ['customer', 'admin', 'region_manager'],
@@ -196,31 +184,36 @@ router.post('/login', async (req, res) => {
       seller: ['seller']
     };
     const requestClientType = client_type || 'customer'; 
-    if (!allowedRoles[requestClientType] || !allowedRoles[requestClientType].includes(user.role)) {
-        return res.status(403).json({
-            status: 'error',
-            message: 'Tài khoản của bạn không có quyền truy cập vào ứng dụng này.'
-        });
+    if (!allowedRoles[requestClientType] || !allowedRoles[requestClientType].includes(userForValidation.role)) {
+        return res.status(403).json({ status: 'error', message: 'Tài khoản của bạn không có quyền truy cập vào ứng dụng này.' });
     }
 
-    const { accessToken, refreshToken } = generateTokens(user._id);
+    // BƯỚC 3: KHI TẤT CẢ ĐỀU HỢP LỆ, LẤY LẠI TOÀN BỘ THÔNG TIN USER ĐỂ TRẢ VỀ
+    const userToReturn = await User.findById(userForValidation._id);
+
+    if (!userToReturn) {
+        // Trường hợp hiếm gặp: user bị xóa ngay sau khi xác thực mật khẩu
+        return res.status(401).json({ status: 'error', message: 'Tài khoản không còn tồn tại.' });
+    }
     
+    const { accessToken, refreshToken } = generateTokens(userToReturn._id);
+    
+    // <<< GIỮ LẠI HOÀN TOÀN KHỐI TẠO userResponse CỦA BẠN >>>
     const userResponse = {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        address: user.address,
-        role: user.role,
-        isAdmin: user.role === 'admin',
-        avatar: user.avatar, 
-        shopProfile: user.shopProfile, 
-        shipperProfile: user.shipperProfile, 
-        commissionRate: user.commissionRate,
-        paymentInfo: user.paymentInfo,
-        // (Tùy chọn) có thể thêm 2 trường này để frontend biết mà hiển thị
-        approvalStatus: user.approvalStatus,
-        rejectionReason: user.rejectionReason
+        _id: userToReturn._id,
+        name: userToReturn.name,
+        email: userToReturn.email,
+        phone: userToReturn.phone,
+        address: userToReturn.address,
+        role: userToReturn.role,
+        isAdmin: userToReturn.role === 'admin', // Giữ lại virtual
+        avatar: userToReturn.avatar, 
+        shopProfile: userToReturn.shopProfile, 
+        shipperProfile: userToReturn.shipperProfile, 
+        commissionRate: userToReturn.commissionRate,
+        paymentInfo: userToReturn.paymentInfo,
+        approvalStatus: userToReturn.approvalStatus,
+        rejectionReason: userToReturn.rejectionReason
     };
     
     res.status(200).json({
@@ -231,6 +224,7 @@ router.post('/login', async (req, res) => {
         refreshToken
       }
     });
+
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ status: 'error', message: 'Lỗi server' });
