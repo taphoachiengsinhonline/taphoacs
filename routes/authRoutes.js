@@ -155,19 +155,31 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
     }
 
-    // Lấy user và password để so sánh
     const user = await User.findOne({ email: email.toLowerCase().trim() })
-        .select('+password +role +phone +address +name +email +avatar +shopProfile +shipperProfile +commissionRate +paymentInfo +approvalStatus +rejectionReason'); // <<< THÊM 2 TRƯỜNG MỚI
+        .select('+password +role +phone +address +name +email +avatar +shopProfile +shipperProfile +commissionRate +paymentInfo +approvalStatus +rejectionReason');
 
-    if (!user) {
+    if (!user || !user.password) { // Thêm kiểm tra !user.password cho chắc chắn
       return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    // ==========================================================
+    // <<< BẮT ĐẦU SỬA LỖI Ở ĐÂY >>>
+    // ==========================================================
+
+    // Log ra kiểu dữ liệu để xác nhận
+    console.log('Kiểu dữ liệu của user.password:', typeof user.password);
+
+    // Ép kiểu user.password thành chuỗi (string) trước khi so sánh
+    const isMatch = await bcrypt.compare(password, String(user.password));
+    
+    // ==========================================================
+    // <<< KẾT THÚC SỬA LỖI >>>
+    // ==========================================================
     
     if (!isMatch) {
       return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
     }
+
 
     // ==========================================================
     // <<< THÊM BƯỚC KIỂM TRA PHÊ DUYỆT NGAY TẠI ĐÂY >>>
