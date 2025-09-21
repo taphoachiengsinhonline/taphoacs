@@ -154,28 +154,20 @@ router.post('/login', async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
     }
-    
-    // <<< BẮT ĐẦU SỬA ĐỔI ĐỂ TEST >>>
-    // Dùng .lean() để lấy plain object, nó thường bỏ qua một số hook.
-    // Bỏ hết select đi, chỉ lấy những gì cần thiết nhất để test.
+
+    // Lấy user và password để so sánh
     const user = await User.findOne({ email: email.toLowerCase().trim() })
-        .select('+password +role +approvalStatus +rejectionReason')
-        .lean(); // <<< THÊM .lean() VÀO ĐÂY
-    // <<< KẾT THÚC SỬA ĐỔI ĐỂ TEST >>>
+        .select('+password +role +phone +address +name +email +avatar +shopProfile +shipperProfile +commissionRate +paymentInfo +approvalStatus +rejectionReason'); // <<< THÊM 2 TRƯỜNG MỚI
 
     if (!user) {
-      return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng (KHÔNG TÌM THẤY USER)' });
+      return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
     }
-    
-    // Log ra để xem nó lấy được gì
-    console.log("USER TÌM THẤY (với .lean()):", user);
 
-    const isMatch = await bcrypt.compare(password, String(user.password));
+    const isMatch = await bcrypt.compare(password, user.password);
     
     if (!isMatch) {
-      return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng (SAI MẬT KHẨU)' });
+      return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
     }
-
 
     // ==========================================================
     // <<< THÊM BƯỚC KIỂM TRA PHÊ DUYỆT NGAY TẠI ĐÂY >>>
