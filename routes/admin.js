@@ -70,18 +70,27 @@ router.put('/shippers/:id', async (req, res) => {
     try {
         const shipperId = req.params.id;
         const { name, email, phone, address, shipperProfile } = req.body;
+        
         if (!shipperProfile) {
             return res.status(400).json({ message: 'Thiếu thông tin shipperProfile.' });
         }
+
+        // <<< BẮT ĐẦU SỬA LOGIC UPDATE >>>
         const updateData = {
-            name, email, phone, address,
-            $set: {
-                'shipperProfile.vehicleType': shipperProfile.vehicleType,
-                'shipperProfile.licensePlate': shipperProfile.licensePlate,
-                'shipperProfile.shippingFeeShareRate': shipperProfile.shippingFeeShareRate,
-                'shipperProfile.profitShareRate': shipperProfile.profitShareRate,
+            name, 
+            email, 
+            phone, 
+            address,
+            // Cập nhật toàn bộ object shipperProfile
+            shipperProfile: {
+                vehicleType: shipperProfile.vehicleType,
+                licensePlate: shipperProfile.licensePlate,
+                shippingFeeShareRate: shipperProfile.shippingFeeShareRate,
+                profitShareRate: shipperProfile.profitShareRate,
             }
         };
+        // <<< KẾT THÚC SỬA LOGIC UPDATE >>>
+
         const updated = await User.findByIdAndUpdate(shipperId, updateData, { new: true, runValidators: true });
         if (!updated) return res.status(404).json({ message: 'Không tìm thấy shipper' });
         res.json({ status: 'success', data: updated });
