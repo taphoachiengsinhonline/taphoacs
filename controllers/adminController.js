@@ -1055,7 +1055,7 @@ exports.createRegionManager = async (req, res) => {
         
         const newManager = new User({
             name,
-            email,
+            email: email.toLowerCase().trim(),
             password, // Mật khẩu sẽ tự được hash bởi middleware trong User model
             phone,
             role: 'region_manager',
