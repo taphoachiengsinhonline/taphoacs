@@ -191,7 +191,7 @@ router.post('/login', async (req, res) => {
     // ==========================================================
 
     const allowedRoles = {
-      customer: ['customer', 'admin'],
+      customer: ['customer', 'admin', 'region_manager'],
       shipper: ['shipper'],
       seller: ['seller']
     };
