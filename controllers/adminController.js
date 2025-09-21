@@ -1105,39 +1105,32 @@ exports.updateRegionManager = async (req, res) => {
 exports.assignManagerToUser = async (req, res) => {
     try {
         const { userId } = req.params;
-        const { managerId } = req.body;
+        const managerId = req.body.managerId; // Lấy managerId, có thể là null
 
         const userToUpdate = await User.findById(userId);
         if (!userToUpdate || !['seller', 'shipper'].includes(userToUpdate.role)) {
             return res.status(404).json({ message: 'Không tìm thấy Seller hoặc Shipper này.' });
         }
 
-        let updateOperation;
-
         if (managerId) { // Trường hợp GÁN cho một manager
             const manager = await User.findById(managerId);
             if (!manager || manager.role !== 'region_manager') {
                 return res.status(404).json({ message: 'Người quản lý được chọn không hợp lệ.' });
             }
-            // Dùng $set để cập nhật cả hai trường
-            updateOperation = {
-                $set: {
-                    managedBy: managerId,
-                    region: manager.region
-                }
-            };
+            
+            userToUpdate.managedBy = managerId;
+            userToUpdate.region = manager.region;
+            console.log(`Gán user ${userId} cho manager ${managerId}`);
+
         } else { // Trường hợp GỠ GÁN (quay về Admin)
-            // Dùng $unset để xóa hoàn toàn trường managedBy
-            updateOperation = {
-                $unset: {
-                    managedBy: "" // Giá trị của "" không quan trọng, chỉ cần key tồn tại
-                }
-            };
-            // Lưu ý: Chúng ta không thay đổi `region` của user khi gỡ gán.
+            userToUpdate.managedBy = null;
+            // Chúng ta không thay đổi `region` của user khi gỡ gán.
+            // Họ vẫn thuộc về khu vực đó, chỉ là người quản lý trực tiếp là Admin.
+            console.log(`Gỡ gán manager cho user ${userId}`);
         }
 
-        // Thực hiện cập nhật bằng findByIdAndUpdate
-        const updatedUser = await User.findByIdAndUpdate(userId, updateOperation, { new: true });
+        // Dùng save() để trigger các middleware của Mongoose nếu có
+        const updatedUser = await userToUpdate.save();
 
         res.status(200).json({ message: 'Cập nhật người quản lý thành công!', user: updatedUser });
 
