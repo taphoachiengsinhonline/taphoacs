@@ -28,22 +28,33 @@ const userSchema = new mongoose.Schema({
   },
   address: {
     type: String,
-    // Sửa lại `required` và `minlength` để nó trở thành một hàm
-    required: [
-        function() {
-            // Chỉ bắt buộc địa chỉ cho customer và shipper
-            return ['customer', 'shipper'].includes(this.role);
+    trim: true,
+    // SỬ DỤNG VALIDATE TÙY CHỈNH THAY VÌ required/minlength riêng lẻ
+    validate: [
+        {
+            validator: function(value) {
+                // Điều kiện 1: Nếu vai trò là customer hoặc shipper, địa chỉ là bắt buộc.
+                if (['customer', 'shipper'].includes(this.role)) {
+                    return value && value.length > 0;
+                }
+                // Với các vai trò khác (admin, seller, region_manager), địa chỉ không bắt buộc.
+                return true; 
+            },
+            message: 'Vui lòng nhập địa chỉ.'
         },
-        'Vui lòng nhập địa chỉ'
-    ],
-    minlength: [
-        function() {
-            // Chỉ yêu cầu 10 ký tự cho customer và shipper
-            return ['customer', 'shipper'].includes(this.role) ? 10 : 0;
-        },
-        'Địa chỉ phải có ít nhất 10 ký tự'
-    ],
-    trim: true
+        {
+            validator: function(value) {
+                // Điều kiện 2: Nếu vai trò là customer hoặc shipper, địa chỉ phải đủ 10 ký tự.
+                if (['customer', 'shipper'].includes(this.role)) {
+                    // Chỉ kiểm tra độ dài nếu địa chỉ được cung cấp
+                    return !value || value.length >= 10;
+                }
+                // Với các vai trò khác, bỏ qua kiểm tra độ dài.
+                return true;
+            },
+            message: 'Địa chỉ phải có ít nhất 10 ký tự.'
+        }
+    ]
   },
   password: {
     type: String,
