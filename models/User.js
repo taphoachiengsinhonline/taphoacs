@@ -28,8 +28,22 @@ const userSchema = new mongoose.Schema({
   },
   address: {
     type: String,
-    required: [true, 'Vui lòng nhập địa chỉ'],
-    minlength: [10, 'Địa chỉ phải có ít nhất 10 ký tự']
+    // Sửa lại `required` và `minlength` để nó trở thành một hàm
+    required: [
+        function() {
+            // Chỉ bắt buộc địa chỉ cho customer và shipper
+            return ['customer', 'shipper'].includes(this.role);
+        },
+        'Vui lòng nhập địa chỉ'
+    ],
+    minlength: [
+        function() {
+            // Chỉ yêu cầu 10 ký tự cho customer và shipper
+            return ['customer', 'shipper'].includes(this.role) ? 10 : 0;
+        },
+        'Địa chỉ phải có ít nhất 10 ký tự'
+    ],
+    trim: true
   },
   password: {
     type: String,
