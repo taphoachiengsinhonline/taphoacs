@@ -1,4 +1,4 @@
-// File: backend/routes/admin.js (PHIÊN BẢN SỬA LỖI ĐẦY ĐỦ 100%)
+// File: backend/routes/admin.js (PHIÊN BẢN TÁI CẤU TRÚC CUỐI CÙNG)
 
 const express = require('express');
 const router = express.Router();
@@ -14,12 +14,14 @@ const orderController = require('../controllers/orderController');
 // Middleware chung: Tất cả các route trong file này đều yêu cầu phải đăng nhập
 router.use(verifyToken);
 
-// ===============================================
-// ===      ROUTES DÙNG CHUNG (ADMIN & QLV)     ===
-// ===============================================
+// =========================================================
+// ===      ROUTES DÙNG CHUNG CHO ADMIN & QUẢN LÝ VÙNG    ===
+// =========================================================
+// Các API này được bảo vệ bởi `verifyRegionManager`, cho phép cả 2 vai trò truy cập.
+// Logic lọc dữ liệu theo vùng sẽ được xử lý bên trong controller.
 
 // --- Quản lý Đơn hàng ---
-router.get('/orders', verifyRegionManager, orderController.getAllOrders);
+router.get('/orders', verifyRegionManager, orderController.getAllOrders); 
 router.get('/orders/admin-count-by-status', verifyRegionManager, orderController.adminCountByStatus);
 
 // --- Quản lý Seller ---
@@ -30,18 +32,20 @@ router.get('/shippers', verifyRegionManager, adminController.getAllShippers);
 router.post('/shippers', verifyRegionManager, adminController.createShipper);
 router.put('/shippers/:id', verifyRegionManager, adminController.updateShipper);
 
-// --- Phê duyệt ---
+// --- Phê duyệt Seller ---
 router.get('/sellers/pending', verifyRegionManager, adminController.getPendingSellers);
 router.post('/sellers/:sellerId/approve', verifyRegionManager, adminController.approveSeller);
 router.post('/sellers/:sellerId/reject', verifyRegionManager, adminController.rejectSeller);
 
+// --- Phê duyệt Sản phẩm ---
 router.get('/products/pending', verifyRegionManager, adminController.getPendingProducts);
 router.post('/products/:productId/approve', verifyRegionManager, adminController.approveProduct);
 router.post('/products/:productId/reject', verifyRegionManager, adminController.rejectProduct);
 
-// --- Dashboard & Tổng quan ---
+// --- Dashboard & Tổng quan Tài chính ---
 router.get('/financial-overview', verifyRegionManager, adminController.getFinancialOverview);
 router.get('/dashboard-counts', verifyRegionManager, adminController.getAdminDashboardCounts);
+router.get('/all-pending-counts', verifyRegionManager, adminController.getAllPendingCounts); // Dùng chung được
 
 // ===============================================
 // ===      ROUTES CHỈ DÀNH CHO ADMIN          ===
@@ -55,13 +59,13 @@ router.post('/region-managers', adminController.createRegionManager);
 router.put('/region-managers/:managerId', adminController.updateRegionManager);
 router.put('/users/:userId/assign-manager', adminController.assignManagerToUser);
 
-// --- Quản lý Cấp cao ---
+// --- Tác vụ Cấp cao ---
 router.patch('/sellers/:sellerId/commission', adminController.updateSellerCommission);
 router.post('/shippers/:id/test-notification', adminController.sendTestNotificationToShipper);
 router.post('/shippers/:id/fake-order', adminController.sendFakeOrderToShipper);
 router.get('/products/pending/count', adminController.countPendingProducts);
 
-// --- Tài chính & Đối soát (Toàn hệ thống) ---
+// --- Tài chính & Đối soát Toàn hệ thống ---
 router.get('/shipper-debt-overview', adminController.getShipperDebtOverview);
 router.get('/remittances/pending-count', adminController.countPendingRemittanceRequests);
 router.patch('/remittance-request/:requestId/process', adminController.processRemittanceRequest);
@@ -72,7 +76,6 @@ router.post('/shippers/:shipperId/pay-salary', adminController.payShipperSalary)
 router.get('/seller-financial-overview', adminController.getSellerFinancialOverview);
 router.get('/sellers/:sellerId/comprehensive-financials', adminController.getSellerComprehensiveFinancials);
 router.post('/sellers/:sellerId/pay', adminController.payToSeller);
-router.get('/all-pending-counts', adminController.getAllPendingCounts);
 router.post('/shippers/:shipperId/remind-debt', adminController.remindShipperToPayDebt);
 
 module.exports = router;
