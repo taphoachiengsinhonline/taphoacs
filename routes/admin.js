@@ -192,7 +192,7 @@ router.patch('/sellers/:sellerId/commission', isAdmin, async (req, res) => {
 // ===============================================
 // ===      QUẢN LÝ SẢN PHẨM (Giữ nguyên)     ===
 // ===============================================
-rrouter.get('/products/pending/count', isAdmin, async (req, res) => {
+router.get('/products/pending/count', isAdmin, async (req, res) => {
     try {
         const count = await Product.countDocuments({ approvalStatus: 'pending_approval' });
         res.json({ count });
