@@ -1293,3 +1293,46 @@ exports.rejectProduct = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
+
+exports.sendTestNotificationToShipper = async (req, res) => {
+  try {
+    const shipper = await User.findById(req.params.id);
+    if (!shipper || !shipper.fcmToken) {
+      return res.status(400).json({ message: 'Shipper không tồn tại hoặc không có FcmToken.' });
+    }
+    await safeNotify(shipper.fcmToken, {
+        title: 'Kiểm tra thông báo', 
+        body: 'Admin đang kiểm tra hệ thống thông báo của bạn.',
+        data: { type: 'test_notification' }
+    });
+    res.json({ status: 'success', message: 'Đã gửi thông báo kiểm tra' });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: `Lỗi server: ${error.message}` });
+  }
+};
+
+/**
+ * [Admin Only] Gửi đơn hàng ảo đến shipper.
+ */
+exports.sendFakeOrderToShipper = async (req, res) => {
+  try {
+    const shipper = await User.findById(req.params.id);
+    if (!shipper || !shipper.fcmToken) {
+      return res.status(400).json({ message: 'Shipper không tồn tại hoặc không có FcmToken.' });
+    }
+    const fakeOrderId = 'FAKE-' + Math.floor(Math.random() * 10000);
+    await safeNotify(shipper.fcmToken, {
+        title: `Đơn hàng mới #${fakeOrderId}`, 
+        body: `Bạn có đơn hàng ảo để kiểm tra hệ thống.`,
+        data: {
+          orderId: fakeOrderId,
+          notificationType: 'newOrderModal',
+          distance: (Math.random() * 5).toFixed(2),
+          shipperView: "true"
+        }
+    });
+    res.json({ status: 'success', message: 'Đã gửi thông báo đơn hàng ảo' });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: `Lỗi server: ${error.message}` });
+  }
+};
