@@ -1244,3 +1244,52 @@ exports.remindShipperToPayDebt = async (req, res) => {
         res.status(500).json({ message: "Lỗi server khi gửi nhắc nhở." });
     }
 };
+exports.approveProduct = async (req, res) => {
+    try {
+        const product = await Product.findById(req.params.productId).populate('seller', 'region');
+        if (!product) {
+            return res.status(404).json({ message: 'Sản phẩm không tồn tại' });
+        }
+        // Kiểm tra quyền của QLV
+        if (req.user.role === 'region_manager' && product.seller.region?.toString() !== req.user.region.toString()) {
+            return res.status(403).json({ message: 'Bạn không có quyền duyệt sản phẩm này.' });
+        }
+        
+        product.approvalStatus = 'approved';
+        product.rejectionReason = undefined; // Xóa lý do từ chối cũ nếu có
+        await product.save();
+        res.json({ message: 'Đã phê duyệt sản phẩm', product });
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+};
+
+/**
+ * [Admin & QLV] Từ chối sản phẩm.
+ * QLV chỉ được từ chối sản phẩm của seller trong vùng.
+ */
+// <<< HÀM BỊ THIẾU NẰM Ở ĐÂY >>>
+exports.rejectProduct = async (req, res) => {
+    try {
+        const { reason } = req.body;
+        if (!reason) {
+            return res.status(400).json({ message: 'Cần có lý do từ chối' });
+        }
+
+        const product = await Product.findById(req.params.productId).populate('seller', 'region');
+        if (!product) {
+            return res.status(404).json({ message: 'Sản phẩm không tồn tại' });
+        }
+        // Kiểm tra quyền của QLV
+        if (req.user.role === 'region_manager' && product.seller.region?.toString() !== req.user.region.toString()) {
+            return res.status(403).json({ message: 'Bạn không có quyền từ chối sản phẩm này.' });
+        }
+        
+        product.approvalStatus = 'rejected';
+        product.rejectionReason = reason;
+        await product.save();
+        res.json({ message: 'Đã từ chối sản phẩm', product });
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+};
