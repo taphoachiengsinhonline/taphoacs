@@ -1,4 +1,4 @@
-// File: backend/routes/admin.js (PHIÊN BẢN TÁI CẤU TRÚC CUỐI CÙNG)
+// File: backend/routes/admin.js (PHIÊN BẢN CUỐI CÙNG, AN TOÀN NHẤT)
 
 const express = require('express');
 const router = express.Router();
@@ -14,68 +14,69 @@ const orderController = require('../controllers/orderController');
 // Middleware chung: Tất cả các route trong file này đều yêu cầu phải đăng nhập
 router.use(verifyToken);
 
-// =========================================================
-// ===      ROUTES DÙNG CHUNG CHO ADMIN & QUẢN LÝ VÙNG    ===
-// =========================================================
-// Các API này được bảo vệ bởi `verifyRegionManager`, cho phép cả 2 vai trò truy cập.
-// Logic lọc dữ liệu theo vùng sẽ được xử lý bên trong controller.
-
-// --- Quản lý Đơn hàng ---
+// ===============================================
+// ===      QUẢN LÝ ĐƠN HÀNG (Dùng chung)      ===
+// ===============================================
 router.get('/orders', verifyRegionManager, orderController.getAllOrders); 
 router.get('/orders/admin-count-by-status', verifyRegionManager, orderController.adminCountByStatus);
 
-// --- Quản lý Seller ---
-router.get('/sellers', verifyRegionManager, adminController.getAllSellers);
-
-// --- Quản lý Shipper ---
+// ===============================================
+// ===      QUẢN LÝ SHIPPER (Dùng chung)       ===
+// ===============================================
 router.get('/shippers', verifyRegionManager, adminController.getAllShippers);
 router.post('/shippers', verifyRegionManager, adminController.createShipper);
 router.put('/shippers/:id', verifyRegionManager, adminController.updateShipper);
 
-// --- Phê duyệt Seller ---
+// ===============================================
+// ===      QUẢN LÝ SELLER (Dùng chung)        ===
+// ===============================================
+router.get('/sellers', verifyRegionManager, adminController.getAllSellers);
 router.get('/sellers/pending', verifyRegionManager, adminController.getPendingSellers);
 router.post('/sellers/:sellerId/approve', verifyRegionManager, adminController.approveSeller);
 router.post('/sellers/:sellerId/reject', verifyRegionManager, adminController.rejectSeller);
 
-// --- Phê duyệt Sản phẩm ---
+// ===============================================
+// ===      QUẢN LÝ SẢN PHẨM (Dùng chung)      ===
+// ===============================================
 router.get('/products/pending', verifyRegionManager, adminController.getPendingProducts);
 router.post('/products/:productId/approve', verifyRegionManager, adminController.approveProduct);
 router.post('/products/:productId/reject', verifyRegionManager, adminController.rejectProduct);
 
-// --- Dashboard & Tổng quan Tài chính ---
+// ===============================================
+// ===      DASHBOARD & TÀI CHÍNH (Dùng chung) ===
+// ===============================================
 router.get('/financial-overview', verifyRegionManager, adminController.getFinancialOverview);
 router.get('/dashboard-counts', verifyRegionManager, adminController.getAdminDashboardCounts);
-router.get('/all-pending-counts', verifyRegionManager, adminController.getAllPendingCounts); // Dùng chung được
+router.get('/all-pending-counts', verifyRegionManager, adminController.getAllPendingCounts);
+router.get('/shipper-financial-overview', verifyRegionManager, adminController.getShipperFinancialOverview);
+router.get('/seller-financial-overview', verifyRegionManager, adminController.getSellerFinancialOverview);
+
 
 // ===============================================
 // ===      ROUTES CHỈ DÀNH CHO ADMIN          ===
 // ===============================================
-// Áp dụng middleware `isAdmin` cho tất cả các route từ đây trở xuống.
-router.use(isAdmin);
 
 // --- Quản lý Hệ thống ---
-router.get('/region-managers', adminController.getRegionManagers);
-router.post('/region-managers', adminController.createRegionManager);
-router.put('/region-managers/:managerId', adminController.updateRegionManager);
-router.put('/users/:userId/assign-manager', adminController.assignManagerToUser);
+router.get('/region-managers', isAdmin, adminController.getRegionManagers);
+router.post('/region-managers', isAdmin, adminController.createRegionManager);
+router.put('/region-managers/:managerId', isAdmin, adminController.updateRegionManager);
+router.put('/users/:userId/assign-manager', isAdmin, adminController.assignManagerToUser);
 
 // --- Tác vụ Cấp cao ---
-router.patch('/sellers/:sellerId/commission', adminController.updateSellerCommission);
-router.post('/shippers/:id/test-notification', adminController.sendTestNotificationToShipper);
-router.post('/shippers/:id/fake-order', adminController.sendFakeOrderToShipper);
-router.get('/products/pending/count', adminController.countPendingProducts);
+router.patch('/sellers/:sellerId/commission', isAdmin, adminController.updateSellerCommission);
+router.post('/shippers/:id/test-notification', isAdmin, adminController.sendTestNotificationToShipper);
+router.post('/shippers/:id/fake-order', isAdmin, adminController.sendFakeOrderToShipper);
+router.get('/products/pending/count', isAdmin, adminController.countPendingProducts);
 
-// --- Tài chính & Đối soát Toàn hệ thống ---
-router.get('/shipper-debt-overview', adminController.getShipperDebtOverview);
-router.get('/remittances/pending-count', adminController.countPendingRemittanceRequests);
-router.patch('/remittance-request/:requestId/process', adminController.processRemittanceRequest);
-router.get('/shipper-financial-overview', adminController.getShipperFinancialOverview);
-router.get('/shippers/:shipperId/financial-details', adminController.getShipperFinancialDetails);
-router.get('/shippers/:shipperId/comprehensive-financials', adminController.getShipperComprehensiveFinancials);
-router.post('/shippers/:shipperId/pay-salary', adminController.payShipperSalary);
-router.get('/seller-financial-overview', adminController.getSellerFinancialOverview);
-router.get('/sellers/:sellerId/comprehensive-financials', adminController.getSellerComprehensiveFinancials);
-router.post('/sellers/:sellerId/pay', adminController.payToSeller);
-router.post('/shippers/:shipperId/remind-debt', adminController.remindShipperToPayDebt);
+// --- Tài chính & Đối soát Chi tiết (Toàn hệ thống) ---
+router.get('/shipper-debt-overview', isAdmin, adminController.getShipperDebtOverview);
+router.get('/remittances/pending-count', isAdmin, adminController.countPendingRemittanceRequests);
+router.patch('/remittance-request/:requestId/process', isAdmin, adminController.processRemittanceRequest);
+router.get('/shippers/:shipperId/financial-details', isAdmin, adminController.getShipperFinancialDetails);
+router.get('/shippers/:shipperId/comprehensive-financials', isAdmin, adminController.getShipperComprehensiveFinancials);
+router.post('/shippers/:shipperId/pay-salary', isAdmin, adminController.payShipperSalary);
+router.get('/sellers/:sellerId/comprehensive-financials', isAdmin, adminController.getSellerComprehensiveFinancials);
+router.post('/sellers/:sellerId/pay', isAdmin, adminController.payToSeller);
+router.post('/shippers/:shipperId/remind-debt', isAdmin, adminController.remindShipperToPayDebt);
 
 module.exports = router;
