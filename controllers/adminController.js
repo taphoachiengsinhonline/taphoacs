@@ -121,6 +121,37 @@ exports.updateShipper = async (req, res) => {
         res.status(500).json({ message: `Lỗi server: ${error.message}` });
     }
 };
+exports.countPendingProducts = async (req, res) => {
+    try {
+        const count = await Product.countDocuments({ approvalStatus: 'pending_approval' });
+        res.json({ count });
+    } catch (error) {
+        console.error('Lỗi đếm sản phẩm chờ duyệt:', error);
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+};
+
+/**
+ * [Admin & QLV] Lấy danh sách sản phẩm chờ duyệt.
+ * QLV chỉ thấy sản phẩm của seller trong vùng.
+ */
+// <<< HÀM BỊ THIẾU NẰM Ở ĐÂY >>>
+exports.getPendingProducts = async (req, res) => {
+    try {
+        const query = { approvalStatus: 'pending_approval' };
+        if (req.user.role === 'region_manager') {
+            // Lấy danh sách ID của các seller trong vùng của QLV
+            const sellersInRegion = await User.find({ role: 'seller', region: req.user.region }).select('_id');
+            const sellerIds = sellersInRegion.map(s => s._id);
+            // Lọc sản phẩm theo danh sách seller ID đó
+            query.seller = { $in: sellerIds };
+        }
+        const pendingProducts = await Product.find(query).populate('seller', 'name');
+        res.json(pendingProducts);
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+};
 
 // ===============================================
 // ===      QUẢN LÝ SELLER                    ===
