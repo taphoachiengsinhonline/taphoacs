@@ -1,241 +1,67 @@
-// routes/admin.js
+// File: backend/routes/admin.js (PHIÊN BẢN SỬA LỖI ĐẦY ĐỦ 100%)
 
 const express = require('express');
 const router = express.Router();
-const User = require('../models/User');
+
+// Middleware
 const { verifyToken, isAdmin } = require('../middlewares/authMiddleware');
-const { verifyRegionManager } = require('../middlewares/regionAuthMiddleware'); // Dùng để cho phép cả Admin và QLV
-const Product = require('../models/Product');
-const { safeNotify } = require('../utils/notificationMiddleware');
+const { verifyRegionManager } = require('../middlewares/regionAuthMiddleware');
+
+// Controllers
 const adminController = require('../controllers/adminController');
-const orderController = require('../controllers/orderController'); // <<< THÊM IMPORT NÀY
+const orderController = require('../controllers/orderController');
 
 // Middleware chung: Tất cả các route trong file này đều yêu cầu phải đăng nhập
 router.use(verifyToken);
 
 // ===============================================
-// ===      QUẢN LÝ ĐƠN HÀNG (Dùng chung)      ===
+// ===      ROUTES DÙNG CHUNG (ADMIN & QLV)     ===
 // ===============================================
-// API này cần cho cả Admin và Quản lý Vùng.
-// Middleware `verifyRegionManager` sẽ cho cả 2 vai trò đi qua.
-// Logic lọc theo vùng sẽ nằm trong controller.
-router.get('/orders', verifyRegionManager, orderController.getAllOrders); 
+
+// --- Quản lý Đơn hàng ---
+router.get('/orders', verifyRegionManager, orderController.getAllOrders);
 router.get('/orders/admin-count-by-status', verifyRegionManager, orderController.adminCountByStatus);
 
-// ===============================================
-// ===      QUẢN LÝ SHIPPER                   ===
-// ===============================================
-
-// Tạo tài khoản shipper mới
-router.post('/shippers', async (req, res) => {
-    try {
-        const { email, password, name, phone, address, shipperProfile } = req.body;
-        const { vehicleType, licensePlate, shippingFeeShareRate, profitShareRate } = shipperProfile || {};
-        if (!email || !password || !name || !phone || !address || !vehicleType || !licensePlate) {
-            return res.status(400).json({ status: 'error', message: 'Vui lòng cung cấp đầy đủ thông tin' });
-        }
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({ status: 'error', message: 'Email đã tồn tại' });
-        }
-        const shipper = new User({
-            email, password: password, name, address, phone, role: 'shipper',
-            shipperProfile: { vehicleType, licensePlate, shippingFeeShareRate, profitShareRate }
-        });
-        await shipper.save();
-        res.status(201).json({ status: 'success', data: shipper });
-    } catch (error) {
-        console.error('Error creating shipper:', error);
-        res.status(500).json({ status: 'error', message: 'Lỗi server: ' + error.message });
-    }
-});
-
-// Lấy danh sách shipper
-router.get('/shippers', async (req, res) => {
-    try {
-        // <<< BẮT ĐẦU SỬA ĐỔI CÂU QUERY NÀY >>>
-        const shippers = await User.find({ role: 'shipper' })
-            .populate('managedBy', 'name') // <<< THÊM DÒNG NÀY ĐỂ LẤY THÔNG TIN NGƯỜI QUẢN LÝ
-            .select('name email address phone location locationUpdatedAt isAvailable shipperProfile managedBy') // <<< THÊM `managedBy` vào select
-            .lean({ virtuals: true });
-        // <<< KẾT THÚC SỬA ĐỔI >>>
-
-        const nowVN = Date.now() + (7 * 60 * 60 * 1000);
-        const processedShippers = shippers.map(shipper => {
-            const updatedAt = shipper.locationUpdatedAt?.getTime() || 0;
-            const diff = nowVN - updatedAt;
-            const isOnline = diff > 0 && diff <= 300000;
-            return { ...shipper, isOnline, lastUpdateSeconds: Math.floor(diff / 1000) };
-        });
-        const onlineCount = processedShippers.filter(s => s.isOnline).length;
-        res.json({ status: 'success', onlineCount, shippers: processedShippers });
-    } catch (error) {
-        console.error('Lỗi lấy danh sách shipper:', error);
-        res.status(500).json({ status: 'error', message: 'Lỗi server: ' + error.message });
-    }
-});
-
-// Cập nhật thông tin shipper
-router.put('/shippers/:id', async (req, res) => {
-    try {
-        const shipperId = req.params.id;
-        const { name, email, phone, address, shipperProfile } = req.body;
-        
-        if (!shipperProfile) {
-            return res.status(400).json({ message: 'Thiếu thông tin shipperProfile.' });
-        }
-
-        // <<< BẮT ĐẦU SỬA LOGIC UPDATE >>>
-        const updateData = {
-            name, 
-            email, 
-            phone, 
-            address,
-            // Cập nhật toàn bộ object shipperProfile
-            shipperProfile: {
-                vehicleType: shipperProfile.vehicleType,
-                licensePlate: shipperProfile.licensePlate,
-                shippingFeeShareRate: shipperProfile.shippingFeeShareRate,
-                profitShareRate: shipperProfile.profitShareRate,
-            }
-        };
-        // <<< KẾT THÚC SỬA LOGIC UPDATE >>>
-
-        const updated = await User.findByIdAndUpdate(shipperId, updateData, { new: true, runValidators: true });
-        if (!updated) return res.status(404).json({ message: 'Không tìm thấy shipper' });
-        res.json({ status: 'success', data: updated });
-    } catch (error) {
-        console.error('Lỗi cập nhật shipper:', error);
-        res.status(500).json({ message: 'Lỗi server: ' + error.message });
-    }
-});
-
-// Gửi thông báo kiểm tra đến shipper
-router.post('/shippers/:id/test-notification', async (req, res) => {
-  try {
-    const shipperId = req.params.id;
-    const shipper = await User.findById(shipperId);
-    if (!shipper) {
-      return res.status(404).json({ status: 'error', message: 'Shipper không tồn tại' });
-    }
-    if (!shipper.fcmToken) {
-      return res.status(400).json({ status: 'error', message: 'Shipper này hiện chưa có token để nhận thông báo.' });
-    }
-
-    // <<< BƯỚC 2: SỬA LẠI HÀM GỌI Ở ĐÂY >>>
-    await safeNotify(shipper.fcmToken, {
-        title: 'Kiểm tra thông báo', 
-        body: 'Admin đang kiểm tra hệ thống thông báo của bạn.',
-        data: { type: 'test_notification' } // Gửi kèm data để app có thể xử lý nếu cần
-    });
-
-    res.json({ status: 'success', message: 'Đã gửi yêu cầu gửi thông báo kiểm tra' });
-  } catch (error) {
-    console.error('Error sending test notification:', error);
-    res.status(500).json({ status: 'error', message: 'Lỗi server: ' + error.message });
-  }
-});
-
-// Gửi đơn hàng ảo đến shipper
-router.post('/shippers/:id/fake-order', async (req, res) => {
-  try {
-    const shipperId = req.params.id;
-    const shipper = await User.findById(shipperId);
-    if (!shipper) {
-      return res.status(404).json({ status: 'error', message: 'Shipper không tồn tại' });
-    }
-    if (!shipper.fcmToken) {
-      return res.status(400).json({ status: 'error', message: 'Shipper này hiện chưa có token để nhận thông báo.' });
-    }
-    const fakeOrderId = 'FAKE-' + Math.floor(Math.random() * 10000);
-    const fakeAddress = '123 Đường kiểm tra, Quận 1, TP.HCM';
-    const fakeAmount = Math.floor(Math.random() * 500000) + 50000;
-    
-    // <<< BƯỚC 3: SỬA LẠI HÀM GỌI Ở ĐÂY >>>
-    await safeNotify(shipper.fcmToken, {
-        title: `Đơn hàng mới #${fakeOrderId}`, 
-        body: `Giao đến: ${fakeAddress} - ${fakeAmount.toLocaleString('vi-VN')}đ`,
-        // Gửi data giống hệt một đơn hàng thật để app có thể hiển thị modal
-        data: {
-          orderId: fakeOrderId,
-          notificationType: 'newOrderModal',
-          distance: (Math.random() * 5).toFixed(2), // Khoảng cách ngẫu nhiên
-          shipperView: "true"
-        }
-    });
-
-    res.json({ status: 'success', message: 'Đã gửi thông báo đơn hàng ảo', order: { id: fakeOrderId, address: fakeAddress, amount: fakeAmount } });
-  } catch (error) {
-    console.error('Error sending fake order:', error);
-    res.status(500).json({ status: 'error', message: 'Lỗi server: ' + error.message });
-  }
-});
-
-// ===============================================
-// ===      QUẢN LÝ SELLER (Giữ nguyên)        ===
-// ===============================================
+// --- Quản lý Seller ---
 router.get('/sellers', verifyRegionManager, adminController.getAllSellers);
-router.patch('/sellers/:sellerId/commission', isAdmin, async (req, res) => {
-    try {
-        const { commissionRate } = req.body;
-        if (commissionRate === undefined || commissionRate < 0 || commissionRate > 100) {
-            return res.status(400).json({ message: 'Chiết khấu không hợp lệ' });
-        }
-        const seller = await User.findByIdAndUpdate(req.params.sellerId, { commissionRate }, { new: true });
-        if (!seller) return res.status(404).json({ message: 'Không tìm thấy seller' });
-        res.json({ message: 'Cập nhật thành công', seller });
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi server' });
-    }
-});
+
+// --- Quản lý Shipper ---
+router.get('/shippers', verifyRegionManager, adminController.getAllShippers);
+router.post('/shippers', verifyRegionManager, adminController.createShipper);
+router.put('/shippers/:id', verifyRegionManager, adminController.updateShipper);
+
+// --- Phê duyệt ---
+router.get('/sellers/pending', verifyRegionManager, adminController.getPendingSellers);
+router.post('/sellers/:sellerId/approve', verifyRegionManager, adminController.approveSeller);
+router.post('/sellers/:sellerId/reject', verifyRegionManager, adminController.rejectSeller);
+
+router.get('/products/pending', verifyRegionManager, adminController.getPendingProducts);
+router.post('/products/:productId/approve', verifyRegionManager, adminController.approveProduct);
+router.post('/products/:productId/reject', verifyRegionManager, adminController.rejectProduct);
+
+// --- Dashboard & Tổng quan ---
+router.get('/financial-overview', verifyRegionManager, adminController.getFinancialOverview);
+router.get('/dashboard-counts', verifyRegionManager, adminController.getAdminDashboardCounts);
 
 // ===============================================
-// ===      QUẢN LÝ SẢN PHẨM (Giữ nguyên)     ===
+// ===      ROUTES CHỈ DÀNH CHO ADMIN          ===
 // ===============================================
-router.get('/products/pending/count', isAdmin, async (req, res) => {
-    try {
-        const count = await Product.countDocuments({ approvalStatus: 'pending_approval' });
-        res.json({ count });
-    } catch (error) {
-        console.error('Lỗi đếm sản phẩm chờ duyệt:', error);
-        res.status(500).json({ message: 'Lỗi server' });
-    }
-});
-router.get('/products/pending', isAdmin, async (req, res) => {
-    try {
-        const pendingProducts = await Product.find({ approvalStatus: 'pending_approval' }).populate('seller', 'name');
-        res.json(pendingProducts);
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi server' });
-    }
-});
-router.post('/products/:productId/approve', isAdmin, async (req, res) => {
-    try {
-        const product = await Product.findByIdAndUpdate(req.params.productId, { approvalStatus: 'approved' }, { new: true });
-        if (!product) return res.status(404).json({ message: 'Sản phẩm không tồn tại' });
-        res.json({ message: 'Đã phê duyệt sản phẩm', product });
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi server' });
-    }
-});
-router.post('/products/:productId/reject', isAdmin, async (req, res) => {
-    try {
-        const { reason } = req.body;
-        if (!reason) return res.status(400).json({ message: 'Cần có lý do từ chối' });
-        const product = await Product.findByIdAndUpdate(req.params.productId, { approvalStatus: 'rejected', rejectionReason: reason }, { new: true });
-        if (!product) return res.status(404).json({ message: 'Sản phẩm không tồn tại' });
-        res.json({ message: 'Đã từ chối sản phẩm', product });
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi server' });
-    }
-});
-
-// =======================================================
-// === CÁC ROUTE KHÁC (Đa số là Admin only)           ===
-// =======================================================
-// Áp dụng `isAdmin` cho tất cả các route từ đây trở xuống
+// Áp dụng middleware `isAdmin` cho tất cả các route từ đây trở xuống.
 router.use(isAdmin);
 
+// --- Quản lý Hệ thống ---
+router.get('/region-managers', adminController.getRegionManagers);
+router.post('/region-managers', adminController.createRegionManager);
+router.put('/region-managers/:managerId', adminController.updateRegionManager);
+router.put('/users/:userId/assign-manager', adminController.assignManagerToUser);
+
+// --- Quản lý Cấp cao ---
+router.patch('/sellers/:sellerId/commission', adminController.updateSellerCommission);
+router.post('/shippers/:id/test-notification', adminController.sendTestNotificationToShipper);
+router.post('/shippers/:id/fake-order', adminController.sendFakeOrderToShipper);
+router.get('/products/pending/count', adminController.countPendingProducts);
+
+// --- Tài chính & Đối soát (Toàn hệ thống) ---
 router.get('/shipper-debt-overview', adminController.getShipperDebtOverview);
 router.get('/remittances/pending-count', adminController.countPendingRemittanceRequests);
 router.patch('/remittance-request/:requestId/process', adminController.processRemittanceRequest);
@@ -247,18 +73,6 @@ router.get('/seller-financial-overview', adminController.getSellerFinancialOverv
 router.get('/sellers/:sellerId/comprehensive-financials', adminController.getSellerComprehensiveFinancials);
 router.post('/sellers/:sellerId/pay', adminController.payToSeller);
 router.get('/all-pending-counts', adminController.getAllPendingCounts);
-router.get('/sellers/pending', adminController.getPendingSellers);
-router.post('/sellers/:sellerId/approve', adminController.approveSeller);
-router.post('/sellers/:sellerId/reject', adminController.rejectSeller);
-router.get('/financial-overview', adminController.getFinancialOverview);
-router.get('/dashboard-counts', adminController.getAdminDashboardCounts);
 router.post('/shippers/:shipperId/remind-debt', adminController.remindShipperToPayDebt);
-router.get('/sellers', verifyToken, adminController.getAllSellers);
-// <<< BẮT ĐẦU THÊM ROUTE CHO QUẢN LÝ VÙNG >>>
-router.get('/region-managers', verifyToken, isAdmin, adminController.getRegionManagers);
-router.post('/region-managers', verifyToken, isAdmin, adminController.createRegionManager);
-router.put('/region-managers/:managerId', verifyToken, isAdmin, adminController.updateRegionManager);
-router.put('/users/:userId/assign-manager', verifyToken, isAdmin, adminController.assignManagerToUser);
-// <<< KẾT THÚC THÊM ROUTE >>>
 
 module.exports = router;
