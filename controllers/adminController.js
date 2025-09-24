@@ -25,6 +25,7 @@ const { safeNotify } = require('../utils/notificationMiddleware');
  */
 exports.createShipper = async (req, res) => {
     try {
+        console.log('[DEBUG] createShipper - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const { email, password, name, phone, address, shipperProfile } = req.body;
         const { vehicleType, licensePlate, shippingFeeShareRate, profitShareRate } = shipperProfile || {};
 
@@ -55,7 +56,7 @@ exports.createShipper = async (req, res) => {
         await shipper.save();
         res.status(201).json({ status: 'success', data: shipper });
     } catch (error) {
-        console.error('Error creating shipper:', error);
+        console.error('[createShipper] Lỗi:', error);
         res.status(500).json({ status: 'error', message: `Lỗi server: ${error.message}` });
     }
 };
@@ -66,6 +67,7 @@ exports.createShipper = async (req, res) => {
  */
 exports.getAllShippers = async (req, res) => {
     try {
+        console.log('[DEBUG] getAllShippers - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         let query = { role: 'shipper' };
         if (req.user.role === 'region_manager' && req.user.region) {
             query.region = req.user.region;
@@ -86,7 +88,7 @@ exports.getAllShippers = async (req, res) => {
         const onlineCount = processedShippers.filter(s => s.isOnline).length;
         res.json({ status: 'success', onlineCount, shippers: processedShippers });
     } catch (error) {
-        console.error('Lỗi lấy danh sách shipper:', error);
+        console.error('[getAllShippers] Lỗi:', error);
         res.status(500).json({ status: 'error', message: `Lỗi server: ${error.message}` });
     }
 };
@@ -97,6 +99,7 @@ exports.getAllShippers = async (req, res) => {
  */
 exports.updateShipper = async (req, res) => {
     try {
+        console.log('[DEBUG] updateShipper - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const shipperId = req.params.id;
         const { name, email, phone, address, shipperProfile } = req.body;
 
@@ -126,7 +129,7 @@ exports.updateShipper = async (req, res) => {
 
         res.json({ status: 'success', data: updated });
     } catch (error) {
-        console.error('Lỗi cập nhật shipper:', error);
+        console.error('[updateShipper] Lỗi:', error);
         res.status(500).json({ message: `Lỗi server: ${error.message}` });
     }
 };
@@ -136,6 +139,7 @@ exports.updateShipper = async (req, res) => {
  */
 exports.sendTestNotificationToShipper = async (req, res) => {
     try {
+        console.log('[DEBUG] sendTestNotificationToShipper - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const shipper = await User.findById(req.params.id);
         if (!shipper || !shipper.fcmToken) {
             return res.status(400).json({ message: 'Shipper không tồn tại hoặc không có FcmToken.' });
@@ -147,6 +151,7 @@ exports.sendTestNotificationToShipper = async (req, res) => {
         });
         res.json({ status: 'success', message: 'Đã gửi thông báo kiểm tra' });
     } catch (error) {
+        console.error('[sendTestNotificationToShipper] Lỗi:', error);
         res.status(500).json({ status: 'error', message: `Lỗi server: ${error.message}` });
     }
 };
@@ -156,6 +161,7 @@ exports.sendTestNotificationToShipper = async (req, res) => {
  */
 exports.sendFakeOrderToShipper = async (req, res) => {
     try {
+        console.log('[DEBUG] sendFakeOrderToShipper - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const shipper = await User.findById(req.params.id);
         if (!shipper || !shipper.fcmToken) {
             return res.status(400).json({ message: 'Shipper không tồn tại hoặc không có FcmToken.' });
@@ -173,6 +179,7 @@ exports.sendFakeOrderToShipper = async (req, res) => {
         });
         res.json({ status: 'success', message: 'Đã gửi thông báo đơn hàng ảo' });
     } catch (error) {
+        console.error('[sendFakeOrderToShipper] Lỗi:', error);
         res.status(500).json({ status: 'error', message: `Lỗi server: ${error.message}` });
     }
 };
@@ -187,6 +194,7 @@ exports.sendFakeOrderToShipper = async (req, res) => {
  */
 exports.countPendingProducts = async (req, res) => {
     try {
+        console.log('[DEBUG] countPendingProducts - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         let query = { approvalStatus: 'pending_approval' };
         if (req.user.role === 'region_manager' && req.user.region) {
             const sellersInRegion = await User.find({ role: 'seller', region: req.user.region }).select('_id');
@@ -196,7 +204,7 @@ exports.countPendingProducts = async (req, res) => {
         const count = await Product.countDocuments(query);
         res.json({ count });
     } catch (error) {
-        console.error('Lỗi đếm sản phẩm chờ duyệt:', error);
+        console.error('[countPendingProducts] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
@@ -207,6 +215,7 @@ exports.countPendingProducts = async (req, res) => {
  */
 exports.getPendingProducts = async (req, res) => {
     try {
+        console.log('[DEBUG] getPendingProducts - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         let query = { approvalStatus: 'pending_approval' };
         if (req.user.role === 'region_manager' && req.user.region) {
             const sellersInRegion = await User.find({ role: 'seller', region: req.user.region }).select('_id');
@@ -216,7 +225,7 @@ exports.getPendingProducts = async (req, res) => {
         const pendingProducts = await Product.find(query).populate('seller', 'name');
         res.json(pendingProducts);
     } catch (error) {
-        console.error('Lỗi lấy danh sách sản phẩm chờ duyệt:', error);
+        console.error('[getPendingProducts] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
@@ -227,6 +236,7 @@ exports.getPendingProducts = async (req, res) => {
  */
 exports.approveProduct = async (req, res) => {
     try {
+        console.log('[DEBUG] approveProduct - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const product = await Product.findById(req.params.productId).populate('seller', 'region');
         if (!product) {
             return res.status(404).json({ message: 'Sản phẩm không tồn tại' });
@@ -239,7 +249,7 @@ exports.approveProduct = async (req, res) => {
         await product.save();
         res.json({ message: 'Đã phê duyệt sản phẩm', product });
     } catch (error) {
-        console.error('Lỗi phê duyệt sản phẩm:', error);
+        console.error('[approveProduct] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
@@ -250,6 +260,7 @@ exports.approveProduct = async (req, res) => {
  */
 exports.rejectProduct = async (req, res) => {
     try {
+        console.log('[DEBUG] rejectProduct - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const { reason } = req.body;
         if (!reason) {
             return res.status(400).json({ message: 'Cần có lý do từ chối' });
@@ -266,7 +277,7 @@ exports.rejectProduct = async (req, res) => {
         await product.save();
         res.json({ message: 'Đã từ chối sản phẩm', product });
     } catch (error) {
-        console.error('Lỗi từ chối sản phẩm:', error);
+        console.error('[rejectProduct] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
@@ -281,6 +292,7 @@ exports.rejectProduct = async (req, res) => {
  */
 exports.getAllSellers = async (req, res) => {
     try {
+        console.log('[DEBUG] getAllSellers - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         let query = { role: 'seller', approvalStatus: 'approved' };
         if (req.user.role === 'region_manager' && req.user.region) {
             query.region = req.user.region;
@@ -291,7 +303,7 @@ exports.getAllSellers = async (req, res) => {
             .select('name email commissionRate managedBy region');
         res.status(200).json(sellers);
     } catch (error) {
-        console.error('Lỗi khi lấy danh sách Sellers:', error);
+        console.error('[getAllSellers] Lỗi:', error);
         res.status(500).json({ message: `Lỗi server: ${error.message}` });
     }
 };
@@ -302,6 +314,7 @@ exports.getAllSellers = async (req, res) => {
  */
 exports.getPendingSellers = async (req, res) => {
     try {
+        console.log('[DEBUG] getPendingSellers - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         let query = { role: 'seller', approvalStatus: 'pending' };
         if (req.user.role === 'region_manager' && req.user.region) {
             query.region = req.user.region;
@@ -309,7 +322,7 @@ exports.getPendingSellers = async (req, res) => {
         const pendingSellers = await User.find(query).sort({ createdAt: -1 });
         res.status(200).json(pendingSellers);
     } catch (error) {
-        console.error('Lỗi lấy danh sách seller chờ duyệt:', error);
+        console.error('[getPendingSellers] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server khi lấy danh sách seller.' });
     }
 };
@@ -320,6 +333,7 @@ exports.getPendingSellers = async (req, res) => {
  */
 exports.approveSeller = async (req, res) => {
     try {
+        console.log('[DEBUG] approveSeller - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const { sellerId } = req.params;
         const seller = await User.findById(sellerId);
         if (!seller || seller.role !== 'seller' || seller.approvalStatus !== 'pending') {
@@ -332,7 +346,7 @@ exports.approveSeller = async (req, res) => {
         await seller.save();
         res.status(200).json({ message: 'Đã phê duyệt Seller thành công.', seller });
     } catch (error) {
-        console.error('Lỗi phê duyệt seller:', error);
+        console.error('[approveSeller] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server khi phê duyệt seller.' });
     }
 };
@@ -343,6 +357,7 @@ exports.approveSeller = async (req, res) => {
  */
 exports.rejectSeller = async (req, res) => {
     try {
+        console.log('[DEBUG] rejectSeller - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const { sellerId } = req.params;
         const { reason } = req.body;
         if (!reason) return res.status(400).json({ message: 'Vui lòng cung cấp lý do từ chối.' });
@@ -358,7 +373,7 @@ exports.rejectSeller = async (req, res) => {
         await seller.save();
         res.status(200).json({ message: 'Đã từ chối Seller.', seller });
     } catch (error) {
-        console.error('Lỗi từ chối seller:', error);
+        console.error('[rejectSeller] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server khi từ chối seller.' });
     }
 };
@@ -368,6 +383,7 @@ exports.rejectSeller = async (req, res) => {
  */
 exports.updateSellerCommission = async (req, res) => {
     try {
+        console.log('[DEBUG] updateSellerCommission - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const { commissionRate } = req.body;
         if (commissionRate === undefined || commissionRate < 0 || commissionRate > 100) {
             return res.status(400).json({ message: 'Chiết khấu không hợp lệ' });
@@ -378,7 +394,7 @@ exports.updateSellerCommission = async (req, res) => {
         await seller.save();
         res.json({ message: 'Cập nhật thành công', seller });
     } catch (error) {
-        console.error('Lỗi cập nhật chiết khấu seller:', error);
+        console.error('[updateSellerCommission] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
@@ -392,12 +408,13 @@ exports.updateSellerCommission = async (req, res) => {
  */
 exports.getRegionManagers = async (req, res) => {
     try {
+        console.log('[DEBUG] getRegionManagers - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const managers = await User.find({ role: 'region_manager' })
             .populate('region', 'name')
             .select('name email phone region regionManagerProfile');
         res.status(200).json(managers);
     } catch (error) {
-        console.error('Lỗi lấy danh sách Quản lý Vùng:', error);
+        console.error('[getRegionManagers] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server khi lấy danh sách Quản lý Vùng.' });
     }
 };
@@ -407,6 +424,7 @@ exports.getRegionManagers = async (req, res) => {
  */
 exports.createRegionManager = async (req, res) => {
     try {
+        console.log('[DEBUG] createRegionManager - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const { name, email, password, phone, regionId, profitShareRate } = req.body;
         if (!name || !email || !password || !phone || !regionId || profitShareRate == null) {
             return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin.' });
@@ -437,7 +455,7 @@ exports.createRegionManager = async (req, res) => {
         delete managerResponse.password;
         res.status(201).json(managerResponse);
     } catch (error) {
-        console.error('Lỗi khi tạo Quản lý Vùng:', error);
+        console.error('[createRegionManager] Lỗi:', error);
         res.status(500).json({ message: `Lỗi server: ${error.message}` });
     }
 };
@@ -447,6 +465,7 @@ exports.createRegionManager = async (req, res) => {
  */
 exports.updateRegionManager = async (req, res) => {
     try {
+        console.log('[DEBUG] updateRegionManager - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const { managerId } = req.params;
         const { name, phone, regionId, profitShareRate } = req.body;
         const updateData = {};
@@ -462,7 +481,7 @@ exports.updateRegionManager = async (req, res) => {
         }
         res.status(200).json(updatedManager);
     } catch (error) {
-        console.error('Lỗi cập nhật Quản lý Vùng:', error);
+        console.error('[updateRegionManager] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server khi cập nhật Quản lý Vùng.' });
     }
 };
@@ -472,6 +491,7 @@ exports.updateRegionManager = async (req, res) => {
  */
 exports.assignManagerToUser = async (req, res) => {
     try {
+        console.log('[DEBUG] assignManagerToUser - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const { userId } = req.params;
         const { managerId } = req.body;
 
@@ -494,7 +514,7 @@ exports.assignManagerToUser = async (req, res) => {
         const updatedUser = await User.findByIdAndUpdate(userId, updateOperation, { new: true });
         res.status(200).json({ message: 'Cập nhật người quản lý thành công!', user: updatedUser });
     } catch (error) {
-        console.error('Lỗi khi gán người quản lý:', error);
+        console.error('[assignManagerToUser] Lỗi:', error);
         res.status(500).json({ message: `Lỗi server: ${error.message}` });
     }
 };
@@ -509,6 +529,7 @@ exports.assignManagerToUser = async (req, res) => {
  */
 exports.getFinancialOverview = async (req, res) => {
     try {
+        console.log('[DEBUG] getFinancialOverview - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         let matchQuery = { status: 'Đã giao' };
         if (req.user.role === 'region_manager' && req.user.region) {
             matchQuery.region = req.user.region;
@@ -655,6 +676,7 @@ exports.getFinancialOverview = async (req, res) => {
  */
 exports.getAdminDashboardCounts = async (req, res) => {
     try {
+        console.log('[DEBUG] getAdminDashboardCounts - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const sellerQuery = { role: 'seller', approvalStatus: 'pending' };
         const productQuery = { approvalStatus: 'pending_approval' };
         if (req.user.role === 'region_manager' && req.user.region) {
@@ -692,6 +714,7 @@ exports.getAdminDashboardCounts = async (req, res) => {
  */
 exports.getShipperDebtOverview = async (req, res) => {
     try {
+        console.log('[DEBUG] getShipperDebtOverview - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         let query = { role: 'shipper' };
         if (req.user.role === 'region_manager' && req.user.region) {
             query.region = req.user.region;
@@ -747,6 +770,7 @@ exports.getShipperDebtOverview = async (req, res) => {
  */
 exports.countPendingRemittanceRequests = async (req, res) => {
     try {
+        console.log('[DEBUG] countPendingRemittanceRequests - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const count = await RemittanceRequest.countDocuments({ status: 'pending' });
         res.status(200).json({ count });
     } catch (error) {
@@ -759,6 +783,7 @@ exports.countPendingRemittanceRequests = async (req, res) => {
  * [Admin Only] Xử lý yêu cầu nộp tiền của shipper.
  */
 exports.processRemittanceRequest = async (req, res) => {
+    console.log('[DEBUG] processRemittanceRequest - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
     const { requestId } = req.params;
     const { action, adminNotes } = req.body;
     const adminId = req.user._id;
@@ -865,7 +890,7 @@ exports.processRemittanceRequest = async (req, res) => {
                     }
                 }
             } catch (e) {
-                console.error('Lỗi khi gửi thông báo xử lý nộp tiền cho shipper:', e);
+                console.error('[processRemittanceRequest] Lỗi khi gửi thông báo:', e);
             }
         })();
 
@@ -884,6 +909,7 @@ exports.processRemittanceRequest = async (req, res) => {
  */
 exports.payShipperSalary = async (req, res) => {
     try {
+        console.log('[DEBUG] payShipperSalary - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const { shipperId } = req.params;
         const { amount, notes } = req.body;
         const adminId = req.user._id;
@@ -943,6 +969,7 @@ exports.payShipperSalary = async (req, res) => {
  */
 exports.getShipperFinancialDetails = async (req, res) => {
     try {
+        console.log('[DEBUG] getShipperFinancialDetails - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const { shipperId } = req.params;
         const { month, year } = req.query;
 
@@ -1018,6 +1045,7 @@ exports.getShipperFinancialDetails = async (req, res) => {
  */
 exports.getShipperFinancialOverview = async (req, res) => {
     try {
+        console.log('[DEBUG] getShipperFinancialOverview - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         let query = { role: 'shipper' };
         if (req.user.role === 'region_manager' && req.user.region) {
             query.region = req.user.region;
@@ -1074,6 +1102,7 @@ exports.getShipperFinancialOverview = async (req, res) => {
  */
 exports.getSellerFinancialOverview = async (req, res) => {
     try {
+        console.log('[DEBUG] getSellerFinancialOverview - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         let query = { role: 'seller', approvalStatus: 'approved' };
         if (req.user.role === 'region_manager' && req.user.region) {
             query.region = req.user.region;
@@ -1114,6 +1143,7 @@ exports.getSellerFinancialOverview = async (req, res) => {
  */
 exports.getSellerComprehensiveFinancials = async (req, res) => {
     try {
+        console.log('[DEBUG] getSellerComprehensiveFinancials - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const { sellerId } = req.params;
         const sellerObjectId = new mongoose.Types.ObjectId(sellerId);
 
@@ -1179,6 +1209,7 @@ exports.getSellerComprehensiveFinancials = async (req, res) => {
  */
 exports.payToSeller = async (req, res) => {
     try {
+        console.log('[DEBUG] payToSeller - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const { sellerId } = req.params;
         const { amount, notes } = req.body;
 
@@ -1240,6 +1271,7 @@ exports.payToSeller = async (req, res) => {
  */
 exports.getAllPendingCounts = async (req, res) => {
     try {
+        console.log('[DEBUG] getAllPendingCounts - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const productQuery = { approvalStatus: 'pending_approval' };
         if (req.user.role === 'region_manager' && req.user.region) {
             const sellersInRegion = await User.find({ role: 'seller', region: req.user.region }).select('_id');
