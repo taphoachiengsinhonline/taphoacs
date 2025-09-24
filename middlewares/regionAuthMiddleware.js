@@ -1,17 +1,34 @@
-// middlewares/regionAuthMiddleware.js
+// File: backend/middlewares/regionAuthMiddleware.js
+const User = require('../models/User');
 
-const verifyRegionManager = (req, res, next) => {
-    if (req.user.role !== 'region_manager' && req.user.role !== 'admin') {
-        return res.status(403).json({ message: 'Không có quyền truy cập.' });
+const verifyRegionManager = async (req, res, next) => {
+    try {
+        // Giả định req.user đã được gán từ verifyToken
+        if (!req.user || !req.user._id) {
+            return res.status(401).json({ message: 'Phiên đăng nhập không hợp lệ' });
+        }
+
+        // Cho phép cả admin và region_manager
+        if (!['admin', 'region_manager'].includes(req.user.role)) {
+            return res.status(403).json({ message: 'Yêu cầu quyền Quản trị viên hoặc Quản lý Vùng' });
+        }
+
+        // Cập nhật lastActive
+        const user = await User.findById(req.user._id);
+        if (!user) {
+            return res.status(404).json({ message: 'Không tìm thấy người dùng' });
+        }
+
+        user.lastActive = new Date();
+        await user.save();
+        console.log('[DEBUG] Saved lastActive for user', user._id, ':', user.lastActive);
+
+        req.user = user; // Cập nhật req.user với instance đầy đủ
+        next();
+    } catch (error) {
+        console.error('[verifyRegionManager] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server' });
     }
-    // Nếu là admin thì cho qua luôn
-    if (req.user.role === 'admin') {
-        return next();
-    }
-    // Nếu là region_manager, đảm bảo họ có thông tin khu vực
-    if (!req.user.region) {
-        return res.status(403).json({ message: 'Tài khoản của bạn chưa được gán vào khu vực nào.' });
-    }
-    next();
 };
+
 module.exports = { verifyRegionManager };
