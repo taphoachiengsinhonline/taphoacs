@@ -69,10 +69,16 @@ exports.getAllShippers = async (req, res) => {
     try {
         console.log('[DEBUG] getAllShippers - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         let query = { role: 'shipper' };
-        if (req.user.role === 'region_manager' && req.user.region) {
-            // SỬA DÒNG NÀY
-            query.region = new mongoose.Types.ObjectId(req.user.region);
-         }
+
+        // --- BẮT ĐẦU SỬA LOGIC QUAN TRỌNG ---
+        if (req.user.role === 'region_manager') {
+            // QLV sẽ thấy shipper được gán cho họ (managedBy) HOẶC shipper trong vùng của họ
+            query.$or = [
+                { managedBy: req.user._id },
+                { region: req.user.region } 
+            ];
+        }
+        // --- KẾT THÚC SỬA LOGIC ---
 
         const shippers = await User.find(query)
             .populate('managedBy', 'name')
@@ -294,11 +300,15 @@ exports.rejectProduct = async (req, res) => {
 exports.getAllSellers = async (req, res) => {
     try {
         console.log('[DEBUG] getAllSellers - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
-        let query = { role: 'seller', approvalStatus: 'approved' };
+        // Lấy tất cả seller, không lọc trạng thái ở đây để QLV có thể thấy cả seller bị từ chối
+        let query = { role: 'seller' }; 
+
+        // --- BẮT ĐẦU SỬA LOGIC QUAN TRỌNG ---
         if (req.user.role === 'region_manager' && req.user.region) {
-            // SỬA DÒNG NÀY
+            // Ép kiểu ObjectId để đảm bảo truy vấn chính xác
             query.region = new mongoose.Types.ObjectId(req.user.region);
         }
+        // --- KẾT THÚC SỬA LOGIC ---
         const sellers = await User.find(query)
             .populate('managedBy', 'name')
             .populate('region', 'name')
