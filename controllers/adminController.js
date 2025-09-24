@@ -309,10 +309,11 @@ exports.getAllSellers = async (req, res) => {
             query.region = new mongoose.Types.ObjectId(req.user.region);
         }
         // --- KẾT THÚC SỬA LOGIC ---
-        const sellers = await User.find(query)
+       const sellers = await User.find(query)
             .populate('managedBy', 'name')
             .populate('region', 'name')
-            .select('name email commissionRate managedBy region');
+            // Lấy thêm approvalStatus và rejectionReason để hiển thị trên app
+            .select('name email commissionRate managedBy region approvalStatus rejectionReason'); 
         res.status(200).json(sellers);
     } catch (error) {
         console.error('[getAllSellers] Lỗi:', error);
