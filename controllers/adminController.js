@@ -70,20 +70,28 @@ exports.getAllShippers = async (req, res) => {
         console.log('[DEBUG] getAllShippers - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         let query = { role: 'shipper' };
 
-        // --- BẮT ĐẦU SỬA LOGIC QUAN TRỌNG ---
+        // --- BẮT ĐẦU SỬA LỖI KIỂU DỮ LIỆU ---
         if (req.user.role === 'region_manager') {
-            // QLV sẽ thấy shipper được gán cho họ (managedBy) HOẶC shipper trong vùng của họ
+            if (!req.user.region) {
+                // Trường hợp QLV chưa được gán vùng, trả về mảng rỗng
+                return res.json({ status: 'success', onlineCount: 0, shippers: [] });
+            }
+            // Ép kiểu các giá trị string từ token thành ObjectId để query chính xác
             query.$or = [
-                { managedBy: req.user._id },
-                { region: req.user.region } 
+                { managedBy: new mongoose.Types.ObjectId(req.user._id) },
+                { region: new mongoose.Types.ObjectId(req.user.region) }
             ];
         }
-        // --- KẾT THÚC SỬA LOGIC ---
+        // --- KẾT THÚC SỬA LỖI KIỂU DỮ LIỆU ---
+
+        console.log('[DEBUG] Executing shipper query:', JSON.stringify(query)); // Thêm log để kiểm tra câu lệnh query
 
         const shippers = await User.find(query)
             .populate('managedBy', 'name')
             .select('name email address phone location locationUpdatedAt isAvailable shipperProfile managedBy region')
             .lean({ virtuals: true });
+        
+        console.log(`[DEBUG] Found ${shippers.length} shippers matching the criteria.`);
 
         const nowVN = Date.now() + (7 * 60 * 60 * 1000);
         const processedShippers = shippers.map(shipper => {
