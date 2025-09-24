@@ -70,8 +70,9 @@ exports.getAllShippers = async (req, res) => {
         console.log('[DEBUG] getAllShippers - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         let query = { role: 'shipper' };
         if (req.user.role === 'region_manager' && req.user.region) {
-            query.region = req.user.region;
-        }
+            // SỬA DÒNG NÀY
+            query.region = new mongoose.Types.ObjectId(req.user.region);
+         }
 
         const shippers = await User.find(query)
             .populate('managedBy', 'name')
@@ -295,7 +296,8 @@ exports.getAllSellers = async (req, res) => {
         console.log('[DEBUG] getAllSellers - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         let query = { role: 'seller', approvalStatus: 'approved' };
         if (req.user.role === 'region_manager' && req.user.region) {
-            query.region = req.user.region;
+            // SỬA DÒNG NÀY
+            query.region = new mongoose.Types.ObjectId(req.user.region);
         }
         const sellers = await User.find(query)
             .populate('managedBy', 'name')
