@@ -89,6 +89,10 @@ const optionalAuth = async (req, res, next) => {
     }
     next(); // Luôn luôn đi tiếp
 };
+const isAdminOrRegionManager = (req, res, next) => {
+  const { verifyRegionManager } = require('../middlewares/regionAuthMiddleware'); // Import động
+  verifyRegionManager(req, res, next);
+};
 
 
 
@@ -101,4 +105,5 @@ module.exports = {
   isAdminMiddleware: isAdmin,
   verifyAdmin: isAdmin,
   optionalAuth,
+  isAdminOrRegionManager,
 };
