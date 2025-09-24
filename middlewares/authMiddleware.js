@@ -1,75 +1,78 @@
-// File: backend/middlewares/authMiddleware.js
-// PHIÊN BẢN SỬA LỖI - DÙNG toObject() ĐỂ ĐẢM BẢO AN TOÀN
-
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 const verifyToken = async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ message: 'Chưa đăng nhập hoặc thiếu token' });
-  }
-
-  const token = authHeader.slice(7).trim();
-  
-  if (!token) {
-    return res.status(401).json({ message: 'Token không hợp lệ' });
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const authHeader = req.headers.authorization;
     
-    // BƯỚC 1: LẤY TOÀN BỘ USER OBJECT TỪ DB (BAO GỒM CẢ PASSWORD)
-    const user = await User.findById(decoded.userId).select('+password');
-    
-    if (!user) {
-      return res.status(401).json({ message: 'Người dùng không tồn tại' });
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        console.log('[DEBUG] verifyToken - Missing or invalid auth header');
+        return res.status(401).json({ message: 'Chưa đăng nhập hoặc thiếu token' });
     }
+
+    const token = authHeader.slice(7).trim();
     
-    // BƯỚC 2: CHUYỂN THÀNH PLAIN JAVASCRIPT OBJECT VÀ XÓA PASSWORD
-    const userObject = user.toObject();
-    delete userObject.password;
-    
-    // BƯỚC 3: GÁN OBJECT SẠCH VÀO req.user
-    req.user = userObject;
-    
-    next();
-  } catch (err) {
-      if (err.name === 'TokenExpiredError') {
-        return res.status(401).json({ message: 'Phiên đăng nhập đã hết hạn' });
-      }
-      return res.status(401).json({ message: 'Token không hợp lệ hoặc sai' });
-  }
+    if (!token) {
+        console.log('[DEBUG] verifyToken - Empty token');
+        return res.status(401).json({ message: 'Token không hợp lệ' });
+    }
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // Lấy user từ DB, giữ nguyên instance Mongoose
+        const user = await User.findById(decoded.userId).select('+password');
+        if (!user) {
+            console.log('[DEBUG] verifyToken - User not found:', decoded.userId);
+            return res.status(401).json({ message: 'Người dùng không tồn tại' });
+        }
+        
+        // Gán instance User vào req.user (không dùng toObject)
+        req.user = user;
+        console.log('[DEBUG] verifyToken - User:', user._id, 'Role:', user.role, 'Region:', user.region);
+        
+        next();
+    } catch (err) {
+        console.error('[verifyToken] Lỗi:', err);
+        if (err.name === 'TokenExpiredError') {
+            return res.status(401).json({ message: 'Phiên đăng nhập đã hết hạn' });
+        }
+        return res.status(401).json({ message: 'Token không hợp lệ hoặc sai' });
+    }
 };
 
 const isAdmin = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
-    next();
-  } else {
-    return res.status(403).json({ message: 'Yêu cầu quyền Quản trị viên' });
-  }
+    if (req.user && req.user.role === 'admin') {
+        console.log('[DEBUG] isAdmin - User is admin:', req.user._id);
+        next();
+    } else {
+        console.log('[DEBUG] isAdmin - User not admin:', req.user?.role);
+        return res.status(403).json({ message: 'Yêu cầu quyền Quản trị viên' });
+    }
 };
 
 const isSeller = (req, res, next) => {
     if (req.user && req.user.role === 'seller') {
+        console.log('[DEBUG] isSeller - User is seller:', req.user._id);
         next();
     } else {
+        console.log('[DEBUG] isSeller - User not seller:', req.user?.role);
         res.status(403).json({ message: 'Yêu cầu quyền Người bán' });
     }
 };
 
-// Hàm protect sẽ được làm nhất quán với verifyToken
 const protect = verifyToken;
 
 const restrictTo = (...roles) => {
-  return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
-    }
-    next();
-  };
+    return (req, res, next) => {
+        if (!req.user || !roles.includes(req.user.role)) {
+            console.log('[DEBUG] restrictTo - User role not allowed:', req.user?.role, 'Required:', roles);
+            return res.status(403).json({ message: 'Bạn không có quyền thực hiện hành động này' });
+        }
+        console.log('[DEBUG] restrictTo - User role allowed:', req.user.role);
+        next();
+    };
 };
+
 const optionalAuth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -79,31 +82,31 @@ const optionalAuth = async (req, res, next) => {
                 const decoded = jwt.verify(token, process.env.JWT_SECRET);
                 const user = await User.findById(decoded.userId).select('-password');
                 if (user) {
-                    req.user = user; // Gán user vào request
+                    req.user = user;
+                    console.log('[DEBUG] optionalAuth - User authenticated:', user._id);
                 }
             } catch (err) {
-                // Bỏ qua lỗi token hết hạn hoặc không hợp lệ, coi như là khách vãng lai
-                console.log('Optional auth: Invalid token, proceeding as guest.');
+                console.log('[DEBUG] optionalAuth - Invalid token, proceeding as guest:', err.message);
             }
         }
     }
-    next(); // Luôn luôn đi tiếp
+    next();
 };
+
 const isAdminOrRegionManager = (req, res, next) => {
-  const { verifyRegionManager } = require('../middlewares/regionAuthMiddleware'); // Import động
-  verifyRegionManager(req, res, next);
+    const { verifyRegionManager } = require('./regionAuthMiddleware');
+    console.log('[DEBUG] isAdminOrRegionManager - Calling verifyRegionManager');
+    verifyRegionManager(req, res, next);
 };
-
-
 
 module.exports = {
-  verifyToken,
-  isAdmin,
-  isSeller,
-  protect,
-  restrictTo,
-  isAdminMiddleware: isAdmin,
-  verifyAdmin: isAdmin,
-  optionalAuth,
-  isAdminOrRegionManager,
+    verifyToken,
+    isAdmin,
+    isSeller,
+    protect,
+    restrictTo,
+    isAdminMiddleware: isAdmin,
+    verifyAdmin: isAdmin,
+    optionalAuth,
+    isAdminOrRegionManager,
 };
