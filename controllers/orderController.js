@@ -592,30 +592,25 @@ exports.getOrderById = async (req, res) => {
 exports.getAllOrders = async (req, res) => {
     try {
         const { status, page = 1, limit = 10 } = req.query;
-        
-        // <<< BẮT ĐẦU LOGIC LỌC THEO VAI TRÒ >>>
+        console.log('[DEBUG] getAllOrders - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const query = {};
         if (status) {
             query.status = status;
         }
-
-        // Nếu người dùng là Quản lý Vùng, chỉ lấy đơn hàng trong vùng của họ
-        if (req.user.role === 'region_manager') {
-            query.region = req.user.region;
+        if (req.user.role === 'region_manager' && req.user.region) {
+            query.region = mongoose.Types.ObjectId(req.user.region);
         }
-        // <<< KẾT THÚC LOGIC LỌC THEO VAI TRÒ >>>
-
-        const options = { 
-            page: parseInt(page, 10), 
-            limit: parseInt(limit, 10), 
-            sort: { 'timestamps.createdAt': -1 }, 
-            populate: { path: 'user', select: 'name' }, 
+        const options = {
+            page: parseInt(page, 10),
+            limit: parseInt(limit, 10),
+            sort: { 'timestamps.createdAt': -1 },
+            populate: { path: 'user', select: 'name' },
         };
         const result = await Order.paginate(query, options);
-        res.json({ 
-            docs: result.docs.map(doc => ({ ...doc.toObject(), timestamps: doc.timestamps })), 
-            totalPages: result.totalPages, 
-            page: result.page 
+        res.json({
+            docs: result.docs.map(doc => ({ ...doc.toObject(), timestamps: doc.timestamps })),
+            totalPages: result.totalPages,
+            page: result.page
         });
     } catch (err) {
         console.error('[getAllOrders] error:', err);
@@ -698,18 +693,14 @@ exports.cancelOrder = async (req, res) => {
 
 exports.adminCountByStatus = async (req, res) => {
     try {
-        // <<< BẮT ĐẦU LOGIC LỌC THEO VAI TRÒ >>>
+        console.log('[DEBUG] adminCountByStatus - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const matchQuery = {};
-
-        // Nếu người dùng là Quản lý Vùng, chỉ đếm đơn hàng trong vùng của họ
-        if (req.user.role === 'region_manager') {
-            matchQuery.region = req.user.region; // Chú ý: cần convert sang ObjectId nếu `req.user.region` là string
+        if (req.user.role === 'region_manager' && req.user.region) {
+            matchQuery.region = mongoose.Types.ObjectId(req.user.region);
         }
-        // <<< KẾT THÚC LOGIC LỌC THEO VAI TRÒ >>>
-
-        const counts = await Order.aggregate([ 
+        const counts = await Order.aggregate([
             { $match: matchQuery },
-            { $group: { _id: '$status', count: { $sum: 1 } } } 
+            { $group: { _id: '$status', count: { $sum: 1 } } }
         ]);
         const result = { 'pending': 0, 'confirmed': 0, 'shipped': 0, 'delivered': 0, 'canceled': 0 };
         counts.forEach(item => {
@@ -725,7 +716,6 @@ exports.adminCountByStatus = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server khi đếm đơn hàng' });
     }
 };
-
 exports.requestOrderTransfer = async (req, res) => {
     const { id: orderId } = req.params;
     const shipperId = req.user._id;
