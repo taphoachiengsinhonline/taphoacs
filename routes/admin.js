@@ -57,7 +57,7 @@ router.get('/seller-financial-overview', verifyRegionManager, adminController.ge
 // ===============================================
 
 // --- Quản lý Hệ thống ---
-router.get('/region-managers', isAdmin, adminController.getRegionManagers);
+router.get('/region-managers', verifyRegionManager, adminController.getRegionManagers);
 router.post('/region-managers', isAdmin, adminController.createRegionManager);
 router.put('/region-managers/:managerId', isAdmin, adminController.updateRegionManager);
 router.put('/users/:userId/assign-manager', isAdmin, adminController.assignManagerToUser);
