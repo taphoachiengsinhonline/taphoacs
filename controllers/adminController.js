@@ -26,7 +26,8 @@ const { safeNotify } = require('../utils/notificationMiddleware');
 exports.createShipper = async (req, res) => {
     try {
         console.log('[DEBUG] createShipper - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
-        const { email, password, name, phone, address, shipperProfile } = req.body;
+        // Sửa lại: Admin có thể gửi regionId, QLV thì không
+        const { email, password, name, phone, address, shipperProfile, regionId } = req.body;
         const { vehicleType, licensePlate, shippingFeeShareRate, profitShareRate } = shipperProfile || {};
 
         if (!email || !password || !name || !phone || !address || !vehicleType || !licensePlate) {
@@ -37,18 +38,30 @@ exports.createShipper = async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'Email đã tồn tại' });
         }
 
-        // Xác định vùng và người quản lý cho shipper mới
-        const regionToAssign = req.user.region;
-        const managerToAssign = req.user.role === 'region_manager' ? req.user._id : null;
+        // --- BẮT ĐẦU SỬA LOGIC GÁN VÙNG VÀ QUẢN LÝ ---
+        let regionToAssign = null;
+        let managerToAssign = null;
+
+        if (req.user.role === 'region_manager') {
+            regionToAssign = req.user.region; // Lấy vùng từ chính QLV
+            managerToAssign = req.user._id;   // Gán QLV làm người quản lý
+        } else if (req.user.isAdmin) {
+            if (!regionId) {
+                return res.status(400).json({ status: 'error', message: 'Admin cần chọn một khu vực để tạo Shipper.' });
+            }
+            regionToAssign = regionId; // Admin có thể chọn vùng bất kỳ
+            managerToAssign = null;    // Shipper do Admin tạo không có người quản lý trực tiếp
+        }
 
         if (!regionToAssign) {
-            return res.status(400).json({ status: 'error', message: 'Tài khoản của bạn chưa được gán khu vực để tạo Shipper.' });
+            return res.status(400).json({ status: 'error', message: 'Không thể xác định khu vực để tạo Shipper.' });
         }
+        // --- KẾT THÚC SỬA LOGIC GÁN VÙNG VÀ QUẢN LÝ ---
 
         const shipper = new User({
             email, password, name, address, phone,
             role: 'shipper',
-            approvalStatus: 'approved', // Do admin/QLV tạo nên được duyệt luôn
+            approvalStatus: 'approved',
             shipperProfile: { vehicleType, licensePlate, shippingFeeShareRate, profitShareRate },
             region: regionToAssign,
             managedBy: managerToAssign
