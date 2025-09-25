@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
-const { protect } = require('../middlewares/authMiddleware'); // Sử dụng protect
+const { protect, verifyToken } = require('../middlewares/authMiddleware'); // Sử dụng protect
 
 // =======================================================
 // === ROUTE CÔNG KHAI (Public Route)                  ===
