@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const orderController = require('../controllers/orderController');
 const { verifyToken, isAdminMiddleware } = require('../middlewares/authMiddleware');
+const { verifyRegionManager } = require('../middlewares/regionAuthMiddleware');
 
 // === CÁC ROUTE CỤ THỂ (phải đặt trước route động /:id) ===
 
