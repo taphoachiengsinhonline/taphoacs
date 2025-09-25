@@ -288,3 +288,35 @@ exports.updateAvatar = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server.' });
     }
 };
+
+
+exports.updateUserRegion = async (req, res) => {
+    try {
+        const { regionId } = req.body;
+        const userId = req.user._id;
+
+        if (!regionId) {
+            return res.status(400).json({ message: 'Vui lòng chọn một khu vực.' });
+        }
+
+        // Cập nhật và populate lại thông tin user để trả về
+        const updatedUser = await User.findByIdAndUpdate(
+            userId,
+            { $set: { region: regionId } },
+            { new: true, runValidators: true }
+        ).populate('region', 'name'); // Populate để trả về cả tên vùng
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: 'Không tìm thấy người dùng.' });
+        }
+
+        res.status(200).json({
+            message: 'Cập nhật khu vực thành công!',
+            user: updatedUser
+        });
+
+    } catch (error) {
+        console.error("Lỗi khi cập nhật khu vực người dùng:", error);
+        res.status(500).json({ message: 'Lỗi server.' });
+    }
+};
