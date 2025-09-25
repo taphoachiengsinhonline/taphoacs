@@ -34,6 +34,7 @@ router.get('/sellers', verifyRegionManager, adminController.getAllSellers);
 router.get('/sellers/pending', verifyRegionManager, adminController.getPendingSellers);
 router.post('/sellers/:sellerId/approve', verifyRegionManager, adminController.approveSeller);
 router.post('/sellers/:sellerId/reject', verifyRegionManager, adminController.rejectSeller);
+router.patch('/sellers/:sellerId/commission', verifyRegionManager, adminController.updateSellerCommission);
 
 // ===============================================
 // ===      QUẢN LÝ SẢN PHẨM (Dùng chung)      ===
@@ -63,7 +64,7 @@ router.put('/region-managers/:managerId', isAdmin, adminController.updateRegionM
 router.put('/users/:userId/assign-manager', isAdmin, adminController.assignManagerToUser);
 
 // --- Tác vụ Cấp cao ---
-router.patch('/sellers/:sellerId/commission', isAdmin, adminController.updateSellerCommission);
+
 router.post('/shippers/:id/test-notification', isAdmin, adminController.sendTestNotificationToShipper);
 router.post('/shippers/:id/fake-order', isAdmin, adminController.sendFakeOrderToShipper);
 router.get('/products/pending/count', isAdmin, adminController.countPendingProducts);
