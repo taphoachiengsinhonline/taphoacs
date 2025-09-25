@@ -13,7 +13,7 @@ router.get('/count-by-status', verifyToken,      orderController.countOrdersBySt
 
 // Admin:
 router.get('/',           verifyToken, isAdminMiddleware, orderController.getAllOrders);
-router.get('/admin-count-by-status', verifyToken, isAdminMiddleware, orderController.adminCountByStatus);
+router.get('/admin-count-by-status', [verifyToken, verifyRegionManager], orderController.adminCountByStatus);
 
 // Shipper:
 router.get('/shippers/orders', verifyToken, orderController.getShipperOrders);
