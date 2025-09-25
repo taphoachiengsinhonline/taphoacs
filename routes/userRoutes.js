@@ -40,5 +40,5 @@ router.delete('/notifications/:id', userController.deleteNotification);
 
 // === GỢI Ý CÁ NHÂN HÓA ===
 router.get('/me/recommendations', userController.getPersonalizedRecommendations);
-
+router.put('/me/region', verifyToken, userController.updateUserRegion);
 module.exports = router;
