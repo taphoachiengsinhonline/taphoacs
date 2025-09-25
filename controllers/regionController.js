@@ -76,3 +76,46 @@ exports.deleteRegion = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server khi xóa khu vực.' });
     }
 };
+
+// Lấy danh sách khu vực mà một vị trí cụ thể nằm trong đó
+exports.getAvailableRegionsAtLocation = async (req, res) => {
+    try {
+        const { latitude, longitude } = req.body;
+
+        if (latitude == null || longitude == null) {
+            return res.status(400).json({ message: 'Vui lòng cung cấp tọa độ latitude và longitude.' });
+        }
+
+        // Sử dụng $geoIntersects để tìm các vùng (polygons) chứa điểm của người dùng
+        // Đây là cách chính xác nhất khi làm việc với bán kính
+        const availableRegions = await Region.find({
+            isActive: true,
+            center: {
+                $geoWithin: {
+                    // Tạo một vòng tròn từ tâm và bán kính của mỗi Region document
+                    // và kiểm tra xem điểm của user có nằm trong đó không
+                    $centerSphere: [ 
+                        [longitude, latitude], // Tọa độ của user
+                        1 / 6378.1 // Bán kính 1 mét, chúng ta sẽ dùng radius của document
+                    ]
+                }
+            }
+        });
+
+        // Lọc lại một lần nữa bằng geolib để đảm bảo độ chính xác
+        const geolib = require('geolib');
+        const finalRegions = availableRegions.filter(region => {
+            const distance = geolib.getDistance(
+                { latitude, longitude },
+                { latitude: region.center.coordinates[1], longitude: region.center.coordinates[0] }
+            );
+            return distance <= region.radius;
+        });
+
+        res.status(200).json(finalRegions);
+
+    } catch (error) {
+        console.error("Lỗi khi tìm khu vực khả dụng:", error);
+        res.status(500).json({ message: "Lỗi server khi tìm khu vực." });
+    }
+};
