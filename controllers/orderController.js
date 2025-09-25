@@ -598,7 +598,7 @@ exports.getAllOrders = async (req, res) => {
             query.status = status;
         }
         if (req.user.role === 'region_manager' && req.user.region) {
-            query.region = mongoose.Types.ObjectId(req.user.region);
+            query.region = new mongoose.Types.ObjectId(req.user.region);
         }
         const options = {
             page: parseInt(page, 10),
@@ -696,7 +696,7 @@ exports.adminCountByStatus = async (req, res) => {
         console.log('[DEBUG] adminCountByStatus - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const matchQuery = {};
         if (req.user.role === 'region_manager' && req.user.region) {
-            matchQuery.region = mongoose.Types.ObjectId(req.user.region);
+            matchQuery.region = new mongoose.Types.ObjectId(req.user.region);
         }
         const counts = await Order.aggregate([
             { $match: matchQuery },
