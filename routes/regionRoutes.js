@@ -18,5 +18,7 @@ router.get('/', [verifyToken, verifyRegionManager], regionController.getAllRegio
 router.post('/', [verifyToken, isAdmin], regionController.createRegion);
 router.put('/:regionId', [verifyToken, isAdmin], regionController.updateRegion);
 router.delete('/:regionId', [verifyToken, isAdmin], regionController.deleteRegion);
+// Route này cho phép user đã đăng nhập tìm các khu vực khả dụng
+router.post('/available-at-location', verifyToken, regionController.getAvailableRegionsAtLocation);
 
 module.exports = router;
