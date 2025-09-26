@@ -143,25 +143,53 @@ exports.createProduct = async (req, res) => {
     (async () => {
         try {
             const seller = await User.findById(req.user._id).select('name');
-            const admins = await User.find({ role: 'admin', fcmToken: { $exists: true, $ne: null } });
-            if (admins.length > 0) {
+            if (!seller) return;
+
+            // 1. Tìm tất cả Admin
+            const admins = await User.find({ role: 'admin' });
+            
+            // 2. Tìm Quản lý Vùng của khu vực này (nếu có)
+            const regionManager = await User.findOne({ 
+                role: 'region_manager', 
+                region: savedProduct.region 
+            });
+
+            // 3. Gộp tất cả người nhận thông báo lại
+            let recipients = [...admins];
+            if (regionManager) {
+                // Tránh trường hợp admin cũng là QLV và bị trùng
+                if (!recipients.find(r => r._id.equals(regionManager._id))) {
+                    recipients.push(regionManager);
+                }
+            }
+
+            if (recipients.length > 0) {
                 const title = "Sản phẩm mới chờ duyệt";
-                const body = `${seller.name} vừa đăng sản phẩm mới: "${savedProduct.name}".`;
-                const notifications = admins.map(admin => ({
-                    user: admin._id, title, message: body, type: 'product',
-                    data: { productId: savedProduct._id.toString(), screen: 'ProductApproval' }
-                }));
-                await Notification.insertMany(notifications);
-                for (const admin of admins) {
-                    await safeNotify(admin.fcmToken, {
-                        title, body,
+                const body = `${seller.name} vừa đăng SP mới: "${savedProduct.name}".`;
+                
+                const notificationPromises = recipients.map(recipient => {
+                    // a. Lưu thông báo vào DB
+                    const dbNotification = Notification.create({
+                        user: recipient._id, title, message: body, type: 'product',
                         data: { productId: savedProduct._id.toString(), screen: 'ProductApproval' }
                     });
-                }
-                console.log(`[Product] Đã gửi thông báo duyệt sản phẩm đến ${admins.length} admin.`);
+
+                    // b. Gửi push notification nếu có token
+                    let pushNotification = Promise.resolve();
+                    if (recipient.fcmToken) {
+                        pushNotification = safeNotify(recipient.fcmToken, {
+                            title, body,
+                            data: { productId: savedProduct._id.toString(), screen: 'ProductApproval' }
+                        });
+                    }
+                    return Promise.all([dbNotification, pushNotification]);
+                });
+                
+                await Promise.all(notificationPromises);
+                console.log(`[Product] Đã gửi thông báo duyệt sản phẩm đến ${recipients.length} người (Admin/QLV).`);
             }
         } catch (notificationError) {
-            console.error("[Product] Lỗi khi gửi thông báo cho admin:", notificationError);
+            console.error("[Product] Lỗi khi gửi thông báo cho admin/QLV:", notificationError);
         }
     })();
 
