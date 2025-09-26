@@ -262,6 +262,36 @@ exports.updateProduct = async (req, res) => {
         product.approvalStatus = 'pending_approval';
         product.rejectionReason = '';
         console.log(`[Product Update] Seller ${req.user._id} đã thay đổi thông tin quan trọng. Chuyển về chờ duyệt.`);
+        (async () => {
+          try {
+              // Logic gửi thông báo tương tự như hàm createProduct
+              const seller = await User.findById(req.user._id).select('name');
+              const admins = await User.find({ role: 'admin' });
+              const regionManager = await User.findOne({ role: 'region_manager', region: product.region });
+              
+              let recipients = [...admins];
+              if (regionManager && !recipients.find(r => r._id.equals(regionManager._id))) {
+                  recipients.push(regionManager);
+              }
+
+              if (recipients.length > 0) {
+                  const title = "Sản phẩm cần duyệt lại";
+                  const body = `${seller.name} đã sửa đổi SP "${product.name}" và cần duyệt lại.`;
+                  
+                  const promises = recipients.map(r => Promise.all([
+                      Notification.create({
+                          user: r._id, title, message: body, type: 'product',
+                          data: { productId: product._id.toString(), screen: 'ProductApproval' }
+                      }),
+                      r.fcmToken ? safeNotify(r.fcmToken, { title, body, data: { productId: product._id.toString(), screen: 'ProductApproval' } }) : Promise.resolve()
+                  ]));
+                  
+                  await Promise.all(promises);
+                  console.log(`[Product Update] Đã gửi thông báo duyệt lại sản phẩm đến ${recipients.length} người.`);
+              }
+          } catch (e) { console.error("[Product Update] Lỗi gửi thông báo duyệt lại:", e); }
+        })();
+        // --- KẾT THÚC THÊM LOGIC ---
       } else {
         console.log(`[Product Update] Seller ${req.user._id} chỉ thay đổi thông tin không quan trọng. Không cần duyệt lại.`);
       }
