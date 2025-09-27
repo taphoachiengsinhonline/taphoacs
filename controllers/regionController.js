@@ -86,33 +86,47 @@ exports.getAvailableRegionsAtLocation = async (req, res) => {
             return res.status(400).json({ message: 'Vui lòng cung cấp tọa độ latitude và longitude.' });
         }
 
-        // Sử dụng $geoIntersects để tìm các vùng (polygons) chứa điểm của người dùng
-        // Đây là cách chính xác nhất khi làm việc với bán kính
-        const availableRegions = await Region.find({
-            isActive: true,
-            center: {
-                $geoWithin: {
-                    // Tạo một vòng tròn từ tâm và bán kính của mỗi Region document
-                    // và kiểm tra xem điểm của user có nằm trong đó không
-                    $centerSphere: [ 
-                        [longitude, latitude], // Tọa độ của user
-                        1 / 6378.1 // Bán kính 1 mét, chúng ta sẽ dùng radius của document
-                    ]
+        console.log(`[DEBUG Regions] Tìm kiếm vùng tại vị trí: [${longitude}, ${latitude}]`);
+
+        // --- BẮT ĐẦU SỬA LOGIC QUAN TRỌNG ---
+        // Sử dụng aggregation pipeline để tìm và lọc một cách hiệu quả.
+        const availableRegions = await Region.aggregate([
+            {
+                // Bước 1: Tìm tất cả các vùng đang hoạt động có tâm gần với vị trí của người dùng.
+                // $geoNear là toán tử mạnh mẽ nhất cho việc này.
+                $geoNear: {
+                    near: {
+                        type: 'Point',
+                        coordinates: [parseFloat(longitude), parseFloat(latitude)]
+                    },
+                    // distanceField sẽ tạo ra một trường mới tên là 'distance' trong mỗi document
+                    // chứa khoảng cách từ tâm vùng đến vị trí người dùng (tính bằng mét).
+                    distanceField: 'distance', 
+                    query: { isActive: true }, // Chỉ tìm các vùng đang hoạt động
+                    spherical: true
+                }
+            },
+            {
+                // Bước 2: Lọc kết quả. Chỉ giữ lại những vùng mà khoảng cách (distance)
+                // nhỏ hơn hoặc bằng bán kính (radius) của chính vùng đó.
+                $match: {
+                    $expr: {
+                        $lte: ['$distance', '$radius']
+                    }
+                }
+            },
+            {
+                // (Tùy chọn) Sắp xếp các vùng tìm được theo khoảng cách, vùng gần nhất lên đầu.
+                $sort: {
+                    distance: 1
                 }
             }
-        });
+        ]);
+        // --- KẾT THÚC SỬA LOGIC QUAN TRỌNG ---
 
-        // Lọc lại một lần nữa bằng geolib để đảm bảo độ chính xác
-        const geolib = require('geolib');
-        const finalRegions = availableRegions.filter(region => {
-            const distance = geolib.getDistance(
-                { latitude, longitude },
-                { latitude: region.center.coordinates[1], longitude: region.center.coordinates[0] }
-            );
-            return distance <= region.radius;
-        });
+        console.log(`[DEBUG Regions] Tìm thấy ${availableRegions.length} vùng khả dụng.`);
 
-        res.status(200).json(finalRegions);
+        res.status(200).json(availableRegions);
 
     } catch (error) {
         console.error("Lỗi khi tìm khu vực khả dụng:", error);
