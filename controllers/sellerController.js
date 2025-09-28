@@ -484,3 +484,38 @@ exports.updateActivity = async (req, res) => {
         res.status(500).json({ message: 'Server error.' });
     }
 };
+
+exports.toggleShopPauseState = async (req, res) => {
+    try {
+        const sellerId = req.user._id;
+        // Lấy trạng thái mới từ body request, mặc định là false nếu không có
+        const { isPaused } = req.body;
+
+        if (typeof isPaused !== 'boolean') {
+            return res.status(400).json({ message: "Trạng thái không hợp lệ. Vui lòng gửi true hoặc false." });
+        }
+
+        const updatedSeller = await User.findByIdAndUpdate(
+            sellerId,
+            { $set: { 'shopProfile.isPaused': isPaused } },
+            { new: true }
+        ).select('shopProfile.isPaused'); // Chỉ cần lấy lại trường đã cập nhật
+
+        if (!updatedSeller) {
+            return res.status(404).json({ message: "Không tìm thấy người bán." });
+        }
+
+        const message = isPaused 
+            ? "Cửa hàng đã được tạm ngưng. Các sản phẩm của bạn sẽ không hiển thị với khách hàng."
+            : "Cửa hàng đã được mở bán trở lại!";
+
+        res.status(200).json({
+            message,
+            isPaused: updatedSeller.shopProfile.isPaused
+        });
+
+    } catch (error) {
+        console.error("Lỗi khi thay đổi trạng thái cửa hàng:", error);
+        res.status(500).json({ message: "Lỗi server." });
+    }
+};
