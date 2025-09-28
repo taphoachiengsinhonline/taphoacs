@@ -24,10 +24,8 @@ exports.getAllProducts = async (req, res) => {
 
         if (sellerId) {
             filter.seller = sellerId;
-        } else {
-            if (req.user && req.user.region) {
-                filter.region = req.user.region;
-            }
+        } else if (req.user && req.user.region) {
+            filter.region = req.user.region;
         }
 
         if (category && category !== 'Tất cả') {
@@ -35,16 +33,31 @@ exports.getAllProducts = async (req, res) => {
             filter.category = { $in: ids };
         }
 
-        let query = Product.find(filter).populate('category').sort({ createdAt: -1 });
-        if (limit) query = query.limit(parseInt(limit));
+        // --- BẮT ĐẦU SỬA LOGIC QUAN TRỌNG ---
+        // Sử dụng .populate() để lấy thông tin seller, bao gồm cả shopProfile
+        let query = Product.find(filter)
+            .populate('category')
+            .populate({
+                path: 'seller',
+                select: 'name shopProfile' // Lấy tên và shopProfile (chứa isPaused)
+            })
+            .sort({ createdAt: -1 });
+
+        if (limit) {
+            query = query.limit(parseInt(limit));
+        }
         
         let products = await query.exec();
         
+        // Logic lọc sản phẩm hết hàng vẫn giữ nguyên
+        // Lưu ý: KHÔNG lọc sản phẩm của shop đang tạm ngưng ở đây nữa
         if (!sellerId) {
             products = products.filter(p => p.totalStock > 0 || p.requiresConsultation === true);
         }
         
         res.json(products);
+        // --- KẾT THÚC SỬA LOGIC ---
+
     } catch (err) {
         console.error('❌ Lỗi khi lấy sản phẩm:', err);
         res.status(500).json({ error: err.message });
