@@ -14,6 +14,9 @@ const generateTokens = (userId) => {
 
 // Xử lý đăng nhập
 exports.login = async (req, res) => {
+   console.log("--- DEBUG LOGIN REQUEST ---");
+  console.log("Request Body:", req.body);
+  console.log("---------------------------");
   try {
     const { email, password, client_type } = req.body;
     
