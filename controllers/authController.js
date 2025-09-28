@@ -21,9 +21,8 @@ exports.login = async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
     }
 
-    // Lấy user và populate cả region để gửi về client
     const user = await User.findOne({ email: email.toLowerCase().trim() })
-        .populate('region', 'name') // <<< SỬA LỖI QUAN TRỌNG Ở ĐÂY
+        .populate('region', 'name')
         .select('+password +role +phone +address +name +email +avatar +shopProfile +shipperProfile +commissionRate +paymentInfo +approvalStatus +rejectionReason');
 
     if (!user) {
@@ -36,39 +35,45 @@ exports.login = async (req, res) => {
       return res.status(401).json({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
     }
 
-    // Kiểm tra trạng thái phê duyệt
-    if (user.role === 'seller' || user.role === 'shipper') {
+    if ((user.role === 'seller' || user.role === 'shipper') && user.approvalStatus !== 'approved') {
         if (user.approvalStatus === 'pending') {
-            return res.status(403).json({ 
-                status: 'error', 
-                message: 'Tài khoản của bạn đang chờ quản trị viên phê duyệt.' 
-            });
+            return res.status(403).json({ status: 'error', message: 'Tài khoản của bạn đang chờ phê duyệt.' });
         }
         if (user.approvalStatus === 'rejected') {
-            return res.status(403).json({ 
-                status: 'error', 
-                message: `Tài khoản của bạn đã bị từ chối. Lý do: ${user.rejectionReason || 'Không có'}` 
-            });
+            return res.status(403).json({ status: 'error', message: `Tài khoản của bạn đã bị từ chối. Lý do: ${user.rejectionReason || 'Không có'}` });
         }
     }
 
-    // Kiểm tra quyền truy cập ứng dụng
+    // --- BẮT ĐẦU SỬA LOGIC KIỂM TRA QUYỀN TRUY CẬP (PHIÊN BẢN HOÀN CHỈNH) ---
     const allowedRoles = {
       customer: ['customer', 'admin', 'region_manager'],
       shipper: ['shipper'],
       seller: ['seller']
     };
+
+    // Nếu client_type được gửi lên, sử dụng nó. Nếu không, mặc định là 'customer'.
     const requestClientType = client_type || 'customer'; 
-    if (!allowedRoles[requestClientType] || !allowedRoles[requestClientType].includes(user.role)) {
+    const userRole = user.role;
+
+    // Kiểm tra xem client_type có hợp lệ không
+    if (!allowedRoles[requestClientType]) {
+        return res.status(400).json({
+            status: 'error',
+            message: 'Loại ứng dụng không hợp lệ.'
+        });
+    }
+    
+    // Kiểm tra xem vai trò của người dùng có được phép đăng nhập vào loại ứng dụng này không
+    if (!allowedRoles[requestClientType].includes(userRole)) {
         return res.status(403).json({
             status: 'error',
             message: 'Tài khoản của bạn không có quyền truy cập vào ứng dụng này.'
         });
     }
+    // --- KẾT THÚC SỬA LOGIC ---
 
     const { accessToken, refreshToken } = generateTokens(user._id);
     
-    // Tạo response user gọn gàng, không trả về password
     const userResponse = user.toObject();
     delete userResponse.password;
 
