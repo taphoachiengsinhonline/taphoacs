@@ -2,7 +2,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { verifyToken } = require('../middlewares/authMiddleware');
+const { verifyToken, isSeller } = require('../middlewares/authMiddleware');
 const User = require('../models/User'); 
 const financeController = require('../controllers/financeController');
 const sellerController = require('../controllers/sellerController');
@@ -43,5 +43,6 @@ router.patch('/notifications/:notificationId/read', sellerController.markNotific
 router.get('/settings/auto-message', sellerController.getAutoResponseMessage);
 router.put('/settings/auto-message', sellerController.updateAutoResponseMessage);
 router.put('/me/shop-profile', sellerController.updateShopProfile);
+router.put('/me/shop/toggle-pause', verifyToken, isSeller, sellerController.toggleShopPauseState);
 
 module.exports = router;
