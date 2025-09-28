@@ -181,6 +181,10 @@ rejectionReason: String,
     avatar: { type: String, trim: true },
     coverPhoto: { type: String, trim: true },
     lastActive: { type: Date },
+    isPaused: {
+        type: Boolean,
+        default: false
+    },
   },
   sellerProfile: {
       autoResponseMessage: {
