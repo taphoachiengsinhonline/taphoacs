@@ -488,8 +488,8 @@ exports.updateActivity = async (req, res) => {
 exports.toggleShopPauseState = async (req, res) => {
     try {
         const sellerId = req.user._id;
-        // Lấy trạng thái mới từ body request, mặc định là false nếu không có
-        const { isPaused } = req.body;
+        // Lấy thêm pauseNote từ body
+        const { isPaused, pauseNote } = req.body;
 
         if (typeof isPaused !== 'boolean') {
             return res.status(400).json({ message: "Trạng thái không hợp lệ. Vui lòng gửi true hoặc false." });
@@ -497,21 +497,28 @@ exports.toggleShopPauseState = async (req, res) => {
 
         const updatedSeller = await User.findByIdAndUpdate(
             sellerId,
-            { $set: { 'shopProfile.isPaused': isPaused } },
+            { 
+                $set: { 
+                    'shopProfile.isPaused': isPaused,
+                    // Nếu đang tạm ngưng thì lưu ghi chú, nếu mở lại thì xóa ghi chú cũ
+                    'shopProfile.pauseNote': isPaused ? (pauseNote || '') : ''
+                } 
+            },
             { new: true }
-        ).select('shopProfile.isPaused'); // Chỉ cần lấy lại trường đã cập nhật
+        ).select('shopProfile.isPaused shopProfile.pauseNote');
 
         if (!updatedSeller) {
             return res.status(404).json({ message: "Không tìm thấy người bán." });
         }
 
         const message = isPaused 
-            ? "Cửa hàng đã được tạm ngưng. Các sản phẩm của bạn sẽ không hiển thị với khách hàng."
+            ? "Cửa hàng đã được tạm ngưng."
             : "Cửa hàng đã được mở bán trở lại!";
 
         res.status(200).json({
             message,
-            isPaused: updatedSeller.shopProfile.isPaused
+            isPaused: updatedSeller.shopProfile.isPaused,
+            pauseNote: updatedSeller.shopProfile.pauseNote
         });
 
     } catch (error) {
