@@ -185,6 +185,11 @@ rejectionReason: String,
         type: Boolean,
         default: false
     },
+    pauseNote: {
+        type: String,
+        trim: true,
+        default: ''
+    }
   },
   sellerProfile: {
       autoResponseMessage: {
