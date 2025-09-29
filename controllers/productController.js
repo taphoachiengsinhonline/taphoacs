@@ -40,7 +40,7 @@ exports.getAllProducts = async (req, res) => {
             .populate({
                 path: 'seller',
                 // Sửa lại dòng select này
-                select: 'name shopProfile.isPaused shopProfile.pauseNote' 
+                select: 'name shopProfile'
             })
             .sort({ createdAt: -1 });
 
