@@ -39,7 +39,8 @@ exports.getAllProducts = async (req, res) => {
             .populate('category')
             .populate({
                 path: 'seller',
-                select: 'name shopProfile' // Lấy tên và shopProfile (chứa isPaused)
+                // Sửa lại dòng select này
+                select: 'name shopProfile.isPaused shopProfile.pauseNote' 
             })
             .sort({ createdAt: -1 });
 
