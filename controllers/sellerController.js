@@ -486,21 +486,34 @@ exports.updateActivity = async (req, res) => {
 };
 
 exports.toggleShopPauseState = async (req, res) => {
+    // --- BẮT ĐẦU DEBUG BLOCK ---
+    console.log("\n--- [DEBUG] NHẬN ĐƯỢC YÊU CẦU /toggle-pause ---");
+    console.log("Timestamp:", new Date().toISOString());
+    console.log("Request Headers:", JSON.stringify(req.headers, null, 2));
+    console.log("Request Body (RAW):", JSON.stringify(req.body, null, 2));
+    console.log("-------------------------------------------------");
+    // --- KẾT THÚC DEBUG BLOCK ---
+    
     try {
         const sellerId = req.user._id;
-        // Lấy thêm pauseNote từ body
         const { isPaused, pauseNote } = req.body;
 
+        // --- DEBUG CHI TIẾT GIÁ TRỊ isPaused ---
+        console.log(`[DEBUG] Giá trị 'isPaused' nhận được:`, isPaused);
+        console.log(`[DEBUG] Kiểu dữ liệu của 'isPaused':`, typeof isPaused);
+
         if (typeof isPaused !== 'boolean') {
+            console.error("[DEBUG] LỖI: isPaused không phải là kiểu boolean.");
             return res.status(400).json({ message: "Trạng thái không hợp lệ. Vui lòng gửi true hoặc false." });
         }
 
+        console.log("[DEBUG] Trạng thái 'isPaused' hợp lệ. Tiếp tục xử lý...");
+        
         const updatedSeller = await User.findByIdAndUpdate(
             sellerId,
             { 
                 $set: { 
                     'shopProfile.isPaused': isPaused,
-                    // Nếu đang tạm ngưng thì lưu ghi chú, nếu mở lại thì xóa ghi chú cũ
                     'shopProfile.pauseNote': isPaused ? (pauseNote || '') : ''
                 } 
             },
@@ -508,6 +521,7 @@ exports.toggleShopPauseState = async (req, res) => {
         ).select('shopProfile.isPaused shopProfile.pauseNote');
 
         if (!updatedSeller) {
+            console.error("[DEBUG] LỖI: Không tìm thấy seller để cập nhật.");
             return res.status(404).json({ message: "Không tìm thấy người bán." });
         }
 
@@ -515,6 +529,7 @@ exports.toggleShopPauseState = async (req, res) => {
             ? "Cửa hàng đã được tạm ngưng."
             : "Cửa hàng đã được mở bán trở lại!";
 
+        console.log("[DEBUG] Xử lý thành công. Trả về response.");
         res.status(200).json({
             message,
             isPaused: updatedSeller.shopProfile.isPaused,
@@ -522,7 +537,7 @@ exports.toggleShopPauseState = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Lỗi khi thay đổi trạng thái cửa hàng:", error);
+        console.error("[DEBUG] LỖI NGHIÊM TRỌNG trong quá trình xử lý:", error);
         res.status(500).json({ message: "Lỗi server." });
     }
 };
