@@ -16,6 +16,7 @@ router.get('/me', verifyToken, authController.getMe);
 
 // --- CÁC ROUTE VỀ ĐĂNG KÝ ---
 // Đăng ký chung (customer, shipper, etc.)
+router.post('/pre-register-check', registrationController.preRegisterCheck);
 router.post('/register', registrationController.registerUser);
 // Đăng ký chuyên biệt cho Seller
 router.post('/register/seller', registrationController.registerSeller);
