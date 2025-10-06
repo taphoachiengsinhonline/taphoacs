@@ -51,7 +51,7 @@ exports.preRegisterCheck = async (req, res) => {
 exports.registerUser = async (req, res) => {
   try {
     // Thêm idToken vào các trường cần nhận
-    const { name, email, password, address, phone, location, role, idToken } = req.body;
+    const { name, email, password, address, phone, location, role, idToken, fcmToken, shipperProfile } = req.body;
 
     if (!idToken) {
         return res.status(401).json({ message: 'Yêu cầu thiếu mã xác thực điện thoại.' });
