@@ -24,6 +24,25 @@ const { setupOrderCleanupJob } = require('./jobs/orderCleanup');
 const reviewRoutes = require('./routes/reviewRoutes');
 const regionManagerRoutes = require('./routes/regionManagerRoutes');
 const app = express();
+const admin = require('firebase-admin');
+const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+if (serviceAccountKey) {
+  try {
+    // 2. Parse chuỗi JSON thành object
+    const serviceAccount = JSON.parse(serviceAccountKey);
+    
+    // 3. Khởi tạo Firebase Admin
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    console.log('✅ Firebase Admin SDK initialized successfully.');
+  } catch (error) {
+    console.error('❌ Failed to parse or initialize Firebase Admin SDK:', error);
+  }
+} else {
+  console.warn('⚠️ FIREBASE_SERVICE_ACCOUNT_KEY environment variable not set. Firebase Admin features will be disabled.');
+}
+
 
 app.use(cors({
   origin: '*',
@@ -113,6 +132,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Server UP: http://localhost:${PORT}`);
   console.log(`📡 Mode: ${process.env.NODE_ENV || 'development'}`);
 });
+
 
 
 
