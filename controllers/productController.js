@@ -40,7 +40,7 @@ exports.getAllProducts = async (req, res) => {
             .populate({
                 path: 'seller',
                 // Sửa lại dòng select này
-                select: 'name shopProfile'
+                select: 'name shopProfile approvalStatus'
             })
             .sort({ createdAt: -1 });
 
@@ -50,7 +50,10 @@ exports.getAllProducts = async (req, res) => {
         
         let products = await query.exec();
         
-        // Logic lọc sản phẩm hết hàng vẫn giữ nguyên
+        
+        products = products.filter(p => 
+            p.seller?.approvalStatus === 'approved'
+        );
         // Lưu ý: KHÔNG lọc sản phẩm của shop đang tạm ngưng ở đây nữa
         if (!sellerId) {
             products = products.filter(p => p.totalStock > 0 || p.requiresConsultation === true);
