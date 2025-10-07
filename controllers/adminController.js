@@ -25,8 +25,7 @@ const { safeNotify } = require('../utils/notificationMiddleware');
  */
 exports.createShipper = async (req, res) => {
     try {
-        console.log('[DEBUG] createShipper - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
-        // Sửa lại: Admin có thể gửi regionId, QLV thì không
+       // Sửa lại: Admin có thể gửi regionId, QLV thì không
         const { email, password, name, phone, address, shipperProfile, regionId } = req.body;
         const { vehicleType, licensePlate, shippingFeeShareRate, profitShareRate } = shipperProfile || {};
 
@@ -96,15 +95,12 @@ exports.getAllShippers = async (req, res) => {
             ];
         }
         // --- KẾT THÚC SỬA LỖI KIỂU DỮ LIỆU ---
-
-        console.log('[DEBUG] Executing shipper query:', JSON.stringify(query)); // Thêm log để kiểm tra câu lệnh query
-
+        
         const shippers = await User.find(query)
             .populate('managedBy', 'name')
-            .select('name email address phone location locationUpdatedAt isAvailable shipperProfile managedBy region')
+            .populate('region', 'name')
+            .select('name email address phone location locationUpdatedAt isAvailable shipperProfile managedBy region approvalStatus')
             .lean({ virtuals: true });
-        
-        console.log(`[DEBUG] Found ${shippers.length} shippers matching the criteria.`);
 
         const nowVN = Date.now() + (7 * 60 * 60 * 1000);
         const processedShippers = shippers.map(shipper => {
@@ -121,13 +117,42 @@ exports.getAllShippers = async (req, res) => {
     }
 };
 
+
+exports.updateShipperStatus = async (req, res) => {
+    try {
+        const { shipperId } = req.params;
+        const { status } = req.body; // status sẽ là 'locked' hoặc 'approved'
+
+        if (!['locked', 'approved'].includes(status)) {
+            return res.status(400).json({ message: 'Trạng thái không hợp lệ.' });
+        }
+
+        const shipper = await User.findById(shipperId);
+        if (!shipper || shipper.role !== 'shipper') {
+            return res.status(404).json({ message: 'Không tìm thấy shipper.' });
+        }
+
+        // Kiểm tra quyền cho QLV
+        if (req.user.role === 'region_manager' && shipper.region?.toString() !== req.user.region.toString()) {
+            return res.status(403).json({ message: 'Bạn không có quyền thay đổi trạng thái của shipper này.' });
+        }
+
+        shipper.approvalStatus = status;
+        await shipper.save();
+
+        res.status(200).json({ message: `Đã ${status === 'locked' ? 'khóa' : 'mở khóa'} tài khoản thành công.`, shipper });
+
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server khi cập nhật trạng thái shipper.' });
+    }
+};
+
 /**
  * [Admin & QLV] Cập nhật thông tin shipper.
  * QLV chỉ được cập nhật shipper trong vùng của mình.
  */
 exports.updateShipper = async (req, res) => {
     try {
-        console.log('[DEBUG] updateShipper - User:', req.user._id, 'Role:', req.user.role, 'Region:', req.user.region);
         const shipperId = req.params.id;
         const { name, email, phone, address, shipperProfile } = req.body;
 
