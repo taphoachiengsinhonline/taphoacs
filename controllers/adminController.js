@@ -28,7 +28,8 @@ exports.createShipper = async (req, res) => {
         console.log('[DEBUG] createShipper - User:', req.user._id, 'Role:', req.user.role);
         // Lấy dữ liệu từ body
         const { email, password, name, phone, address, shipperProfile } = req.body;
-        const regionIdFromBody = req.body.regionId; // FIX: Đảm bảo lấy từ body
+        // Cố gắng lấy regionId từ body
+        const regionIdFromBody = req.body.regionId;
         
         const { vehicleType, licensePlate, shippingFeeShareRate, profitShareRate } = shipperProfile || {};
 
@@ -41,44 +42,25 @@ exports.createShipper = async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'Email đã tồn tại' });
         }
 
-        // FIX: LOGIC GÁN VÙNG ĐƯỢC CẢI THIỆN
+        // --- BẮT ĐẦU SỬA LOGIC GÁN VÙNG VÀ QUẢN LÝ ---
         let regionToAssign = null;
         let managerToAssign = null;
 
-        console.log('[DEBUG] User role:', req.user.role, 'Region from body:', regionIdFromBody, 'User region:', req.user.region);
-
         if (req.user.role === 'region_manager') {
-            // QLV: dùng region của chính mình
-            if (!req.user.region) {
-                return res.status(400).json({ status: 'error', message: 'Quản lý vùng chưa được gán khu vực. Không thể tạo shipper.' });
-            }
             regionToAssign = req.user.region;
             managerToAssign = req.user._id;
-        } else if (req.user.isAdmin) {
-            // Admin: dùng region từ body
+        } else if (req.user.role === 'admin') {  // Sửa: Sử dụng role === 'admin' thay vì isAdmin để nhất quán và tránh bug flag
+            // Dùng regionId từ body
             if (!regionIdFromBody) { 
                 return res.status(400).json({ status: 'error', message: 'Admin cần chọn một khu vực để tạo Shipper.' });
             }
             regionToAssign = regionIdFromBody;
-            
-            // FIX: Kiểm tra region có tồn tại không
-            const regionExists = await Region.findById(regionIdFromBody);
-            if (!regionExists) {
-                return res.status(400).json({ status: 'error', message: 'Khu vực được chọn không tồn tại.' });
-            }
         }
 
-        // FIX: Kiểm tra cuối cùng
         if (!regionToAssign) {
-            console.error('[createShipper] Không thể xác định khu vực:', {
-                userRole: req.user.role,
-                regionIdFromBody,
-                userRegion: req.user.region
-            });
             return res.status(400).json({ status: 'error', message: 'Không thể xác định khu vực để tạo Shipper.' });
         }
-
-        console.log('[DEBUG] Creating shipper with region:', regionToAssign, 'manager:', managerToAssign);
+        // --- KẾT THÚC SỬA LOGIC GÁN VÙNG VÀ QUẢN LÝ ---
 
         const shipper = new User({
             email, password, name, address, phone,
@@ -88,7 +70,6 @@ exports.createShipper = async (req, res) => {
             region: regionToAssign,
             managedBy: managerToAssign
         });
-        
         await shipper.save();
         res.status(201).json({ status: 'success', data: shipper });
     } catch (error) {
