@@ -162,6 +162,72 @@ exports.updateShipper = async (req, res) => {
     }
 };
 
+
+exports.updateUserRegion = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { regionId } = req.body;
+
+        if (!regionId) {
+            return res.status(400).json({ message: 'Vui lòng chọn một khu vực.' });
+        }
+
+        const regionExists = await Region.findById(regionId);
+        if (!regionExists) {
+            return res.status(404).json({ message: 'Khu vực không tồn tại.' });
+        }
+
+        const updatedUser = await User.findByIdAndUpdate(
+            userId, 
+            { $set: { region: regionId } }, 
+            { new: true }
+        );
+
+        if (!updatedUser) {
+            return res.status(404).json({ message: 'Không tìm thấy người dùng.' });
+        }
+        res.status(200).json({ message: 'Cập nhật khu vực thành công!', user: updatedUser });
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server khi cập nhật khu vực.' });
+    }
+};
+
+/**
+ * [Admin & QLV] Cập nhật trạng thái (Khóa/Mở khóa) cho Seller.
+ * QLV chỉ có thể khóa seller trong vùng của mình.
+ */
+exports.updateSellerStatus = async (req, res) => {
+    try {
+        const { sellerId } = req.params;
+        const { status } = req.body; // status sẽ là 'locked' hoặc 'approved'
+
+        if (!['locked', 'approved'].includes(status)) {
+            return res.status(400).json({ message: 'Trạng thái không hợp lệ.' });
+        }
+
+        const seller = await User.findById(sellerId);
+        if (!seller || seller.role !== 'seller') {
+            return res.status(404).json({ message: 'Không tìm thấy seller.' });
+        }
+
+        // Kiểm tra quyền cho QLV
+        if (req.user.role === 'region_manager' && seller.region?.toString() !== req.user.region.toString()) {
+            return res.status(403).json({ message: 'Bạn không có quyền thay đổi trạng thái của seller này.' });
+        }
+
+        seller.approvalStatus = status;
+        await seller.save();
+
+        res.status(200).json({ message: `Đã ${status === 'locked' ? 'khóa' : 'mở khóa'} tài khoản thành công.`, seller });
+
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server khi cập nhật trạng thái seller.' });
+    }
+};
+
+
+
+
 /**
  * [Admin & QLV] Gửi thông báo kiểm tra đến shipper.
  */
