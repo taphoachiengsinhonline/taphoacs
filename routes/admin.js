@@ -26,6 +26,7 @@ router.get('/orders/admin-count-by-status', verifyRegionManager, orderController
 router.get('/shippers', verifyRegionManager, adminController.getAllShippers);
 router.post('/shippers', verifyRegionManager, adminController.createShipper);
 router.put('/shippers/:id', verifyRegionManager, adminController.updateShipper);
+router.patch('/shippers/:shipperId/status', verifyRegionManager, adminController.updateShipperStatus);
 
 // ===============================================
 // ===      QUẢN LÝ SELLER (Dùng chung)        ===
