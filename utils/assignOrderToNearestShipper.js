@@ -68,7 +68,8 @@ async function assignOrderToNearestShipper(orderId, retryCount = 0) {
                         fcmToken: { $exists: true, $ne: null },
                         _id: { $nin: triedShippers.map(id => new mongoose.Types.ObjectId(id)) },
                         // --- BẮT ĐẦU SỬA LỖI ---
-                        region: order.region // <<< CHỈ TÌM SHIPPER CÙNG KHU VỰC VỚI ĐƠN HÀNG
+                        region: order.region, // <<< CHỈ TÌM SHIPPER CÙNG KHU VỰC VỚI ĐƠN HÀNG
+                        approvalStatus: 'approved'
                         // --- KẾT THÚC SỬA LỖI ---
                     },
                     spherical: true,
