@@ -400,7 +400,7 @@ exports.getAllSellers = async (req, res) => {
             .populate('managedBy', 'name')
             .populate('region', 'name')
             // Lấy thêm approvalStatus và rejectionReason để hiển thị trên app
-            .select('name email commissionRate managedBy region approvalStatus rejectionReason'); 
+            .select('name email phone address commissionRate managedBy region approvalStatus shopProfile'); 
         res.status(200).json(sellers);
     } catch (error) {
         console.error('[getAllSellers] Lỗi:', error);
