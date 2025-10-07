@@ -94,7 +94,7 @@ commissionRate: { // <-- THÊM MỚI Ở ĐÂY
 },
 approvalStatus: {
         type: String,
-        enum: ['pending', 'approved', 'rejected', 'banned'],
+        enum: ['pending', 'approved', 'rejected', 'locked'],
         default: 'approved' // Mặc định là 'approved' cho các tài khoản cũ và shipper/admin
     },
 rejectionReason: String,
