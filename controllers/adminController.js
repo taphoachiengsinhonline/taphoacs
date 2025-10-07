@@ -25,13 +25,18 @@ const { safeNotify } = require('../utils/notificationMiddleware');
  */
 exports.createShipper = async (req, res) => {
     try {
-       // Sửa lại: Admin có thể gửi regionId, QLV thì không
-        const { email, password, name, phone, address, shipperProfile, regionId } = req.body;
+        console.log('[DEBUG] createShipper - User:', req.user._id, 'Role:', req.user.role);
+        // Lấy dữ liệu từ body
+        const { email, password, name, phone, address, shipperProfile } = req.body;
+        // Cố gắng lấy regionId từ cả body và query string
+        const regionIdFromBody = req.body.regionId;
+        
         const { vehicleType, licensePlate, shippingFeeShareRate, profitShareRate } = shipperProfile || {};
 
         if (!email || !password || !name || !phone || !address || !vehicleType || !licensePlate) {
             return res.status(400).json({ status: 'error', message: 'Vui lòng cung cấp đầy đủ thông tin' });
         }
+        
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(400).json({ status: 'error', message: 'Email đã tồn tại' });
@@ -42,14 +47,14 @@ exports.createShipper = async (req, res) => {
         let managerToAssign = null;
 
         if (req.user.role === 'region_manager') {
-            regionToAssign = req.user.region; // Lấy vùng từ chính QLV
-            managerToAssign = req.user._id;   // Gán QLV làm người quản lý
+            regionToAssign = req.user.region;
+            managerToAssign = req.user._id;
         } else if (req.user.isAdmin) {
-            if (!regionId) {
+            // Dùng regionId từ body
+            if (!regionIdFromBody) { 
                 return res.status(400).json({ status: 'error', message: 'Admin cần chọn một khu vực để tạo Shipper.' });
             }
-            regionToAssign = regionId; // Admin có thể chọn vùng bất kỳ
-            managerToAssign = null;    // Shipper do Admin tạo không có người quản lý trực tiếp
+            regionToAssign = regionIdFromBody;
         }
 
         if (!regionToAssign) {
