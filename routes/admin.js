@@ -35,6 +35,8 @@ router.get('/sellers/pending', verifyRegionManager, adminController.getPendingSe
 router.post('/sellers/:sellerId/approve', verifyRegionManager, adminController.approveSeller);
 router.post('/sellers/:sellerId/reject', verifyRegionManager, adminController.rejectSeller);
 router.patch('/sellers/:sellerId/commission', verifyRegionManager, adminController.updateSellerCommission);
+router.put('/users/:userId/region', isAdmin, adminController.updateUserRegion); // Chỉ admin được đổi vùng
+router.patch('/sellers/:sellerId/status', verifyRegionManager, adminController.updateSellerStatus); // Cả 2 đều có thể khóa
 
 // ===============================================
 // ===      QUẢN LÝ SẢN PHẨM (Dùng chung)      ===
