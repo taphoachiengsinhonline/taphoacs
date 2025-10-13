@@ -655,6 +655,67 @@ exports.assignManagerToUser = async (req, res) => {
  * [Admin & QLV] Lấy tổng quan tài chính.
  * Admin thấy toàn hệ thống, QLV chỉ thấy vùng của mình.
  */
+exports.getRegionManagerFinancials = async (req, res) => {
+    try {
+        console.log('[DEBUG] getRegionManagerFinancials - Admin:', req.user._id);
+
+        // Bước 1: Lấy tất cả các QLV và thông tin cần thiết của họ
+        const regionManagers = await User.find({ role: 'region_manager' })
+            .populate('region', 'name')
+            .select('name email phone region regionManagerProfile')
+            .lean();
+
+        if (regionManagers.length === 0) {
+            return res.status(200).json([]);
+        }
+
+        const managerIds = regionManagers.map(m => m._id);
+
+        // Bước 2: Dùng Aggregation để tính toán trên collection 'orders'
+        // Tính tổng doanh thu và tổng lợi nhuận được chia cho mỗi QLV
+        const financialStats = await Order.aggregate([
+            {
+                // Chỉ lấy các đơn hàng đã giao và có người nhận lợi nhuận là một trong các QLV
+                $match: {
+                    status: 'Đã giao',
+                    profitRecipient: { $in: managerIds }
+                }
+            },
+            {
+                // Gom nhóm theo người nhận lợi nhuận (profitRecipient)
+                $group: {
+                    _id: '$profitRecipient', // Gom nhóm theo ID của QLV
+                    totalManagedOrders: { $sum: 1 }, // Đếm số đơn hàng
+                    // Tính tổng doanh thu từ các đơn hàng này
+                    totalRevenueFromOrders: { $sum: '$total' }, 
+                    // Tính tổng lợi nhuận mà QLV thực nhận
+                    totalProfitShare: { $sum: '$recipientProfit' } 
+                }
+            }
+        ]);
+
+        // Bước 3: Gộp dữ liệu tài chính vào danh sách QLV
+        const statsMap = new Map(financialStats.map(stat => [stat._id.toString(), stat]));
+
+        const results = regionManagers.map(manager => {
+            const managerStats = statsMap.get(manager._id.toString());
+            return {
+                ...manager,
+                totalManagedOrders: managerStats?.totalManagedOrders || 0,
+                totalRevenueFromOrders: managerStats?.totalRevenueFromOrders || 0,
+                totalProfitShare: managerStats?.totalProfitShare || 0,
+            };
+        });
+
+        res.status(200).json(results);
+
+    } catch (error) {
+        console.error('[getRegionManagerFinancials] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server khi lấy dữ liệu tài chính QLV.' });
+    }
+};
+
+
 exports.getFinancialOverview = async (req, res) => {
     try {
         
