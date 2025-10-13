@@ -82,5 +82,6 @@ router.post('/shippers/:shipperId/pay-salary', isAdmin, adminController.payShipp
 router.get('/sellers/:sellerId/comprehensive-financials', isAdmin, adminController.getSellerComprehensiveFinancials);
 router.post('/sellers/:sellerId/pay', isAdmin, adminController.payToSeller);
 router.post('/shippers/:shipperId/remind-debt', isAdmin, adminController.remindShipperToPayDebt);
+router.get('/region-manager-financials', isAdmin, adminController.getRegionManagerFinancials);
 
 module.exports = router;
