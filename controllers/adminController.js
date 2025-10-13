@@ -659,8 +659,8 @@ exports.assignManagerToUser = async (req, res) => {
 exports.getRegionManagerFinancials = async (req, res) => {
     try {
         const regionManagers = await User.find({ role: 'region_manager' })
-            .select('name email regionManagerProfile')
-            .lean();
+            .populate('region', 'name') // <<< QUAN TRỌNG
+            .select('name email regionManagerProfile region');
         if (regionManagers.length === 0) return res.status(200).json([]);
 
         const managerIds = regionManagers.map(m => m._id);
@@ -694,12 +694,14 @@ exports.getRegionManagerFinancials = async (req, res) => {
             const totalProfit = allTimeMap.get(managerIdStr) || 0;
             const totalPaid = paymentMap.get(managerIdStr) || 0;
             
+            const managerObject = manager.toObject();
+
             return {
-                ...manager,
+                ...managerObject,
                 thisMonthProfit: thisMonthMap.get(managerIdStr) || 0,
                 totalProfit: totalProfit,
                 totalPaid: totalPaid,
-                debt: totalProfit - totalPaid, // Công nợ còn lại
+                debt: totalProfit - totalPaid,
             };
         });
 
