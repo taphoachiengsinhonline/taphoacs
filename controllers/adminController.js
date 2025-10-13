@@ -544,7 +544,7 @@ exports.getRegionManagers = async (req, res) => {
         res.status(200).json(managers);
     } catch (error) {
         console.error('[getRegionManagers] Lỗi:', error);
-        res.status(500).json({ message: 'Lỗi server khi lấy danh sách Quản lý Vùng.' });
+        res.status(500).json({ message: 'Lỗi server khi lấy danh sách Quản lý Khu vực.' });
     }
 };
 
@@ -606,12 +606,12 @@ exports.updateRegionManager = async (req, res) => {
         }
         const updatedManager = await User.findByIdAndUpdate(managerId, updateData, { new: true });
         if (!updatedManager) {
-            return res.status(404).json({ message: 'Không tìm thấy Quản lý Vùng.' });
+            return res.status(404).json({ message: 'Không tìm thấy Quản lý Khu vực.' });
         }
         res.status(200).json(updatedManager);
     } catch (error) {
         console.error('[updateRegionManager] Lỗi:', error);
-        res.status(500).json({ message: 'Lỗi server khi cập nhật Quản lý Vùng.' });
+        res.status(500).json({ message: 'Lỗi server khi cập nhật Quản lý Khu vực.' });
     }
 };
 
