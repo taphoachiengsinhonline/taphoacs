@@ -760,7 +760,8 @@ exports.payToRegionManager = async (req, res) => {
             return res.status(400).json({ message: 'Số tiền thanh toán không hợp lệ.' });
         }
         
-        const manager = await User.findById(managerId);
+        // Dùng .select() để lấy cả fcmToken
+        const manager = await User.findById(managerId).select('name fcmToken');
         if (!manager || manager.role !== 'region_manager') {
             return res.status(404).json({ message: 'Không tìm thấy Quản lý Vùng.' });
         }
@@ -773,8 +774,40 @@ exports.payToRegionManager = async (req, res) => {
         });
         await newPayment.save();
 
-        // (Tùy chọn) Gửi thông báo cho QLV
-        // ...
+        // --- BẮT ĐẦU LOGIC GỬI THÔNG BÁO CHO QLV ---
+        (async () => {
+            try {
+                const title = "Bạn vừa nhận được thanh toán";
+                const message = `Admin vừa thanh toán cho bạn số tiền lợi nhuận là ${amount.toLocaleString('vi-VN')}đ.`;
+
+                // 1. Lưu thông báo vào database
+                await Notification.create({
+                    user: manager._id,
+                    title: title,
+                    message: message,
+                    type: 'finance',
+                    data: {
+                        screen: 'FinancialOverview', // Điều hướng QLV đến màn hình tổng quan tài chính của họ
+                        paymentId: newPayment._id.toString()
+                    }
+                });
+
+                // 2. Gửi push notification nếu QLV có fcmToken
+                if (manager.fcmToken) {
+                    await safeNotify(manager.fcmToken, {
+                        title: title,
+                        body: message,
+                        data: {
+                            screen: 'FinancialOverview'
+                        }
+                    });
+                }
+                 console.log(`[Payment] Đã gửi thông báo thanh toán đến QLV ${manager.name}`);
+            } catch (notificationError) {
+                console.error("[Payment] Lỗi khi gửi thông báo cho QLV:", notificationError);
+            }
+        })();
+        // --- KẾT THÚC LOGIC GỬI THÔNG BÁO ---
 
         res.status(201).json({ message: 'Đã ghi nhận thanh toán thành công!', payment: newPayment });
 
