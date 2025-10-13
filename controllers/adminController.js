@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Region = require('../models/Region');
 const Remittance = require('../models/Remittance');
 const Order = require('../models/Order');
+const RegionManagerPayment = require('../models/RegionManagerPayment');
 const Payout = require('../models/PayoutRequest');
 const LedgerEntry = require('../models/LedgerEntry');
 const moment = require('moment-timezone');
@@ -14,6 +15,7 @@ const SalaryPayment = require('../models/SalaryPayment');
 const Product = require('../models/Product');
 const Notification = require('../models/Notification');
 const { safeNotify } = require('../utils/notificationMiddleware');
+const moment = require('moment-timezone');
 
 // ===============================================
 // ===      QUẢN LÝ SHIPPER (Admin & QLV)      ===
@@ -657,61 +659,129 @@ exports.assignManagerToUser = async (req, res) => {
  */
 exports.getRegionManagerFinancials = async (req, res) => {
     try {
-        console.log('[DEBUG] getRegionManagerFinancials - Admin:', req.user._id);
-
-        // Bước 1: Lấy tất cả các QLV và thông tin cần thiết của họ
         const regionManagers = await User.find({ role: 'region_manager' })
-            .populate('region', 'name')
-            .select('name email phone region regionManagerProfile')
+            .select('name email regionManagerProfile')
             .lean();
-
-        if (regionManagers.length === 0) {
-            return res.status(200).json([]);
-        }
+        if (regionManagers.length === 0) return res.status(200).json([]);
 
         const managerIds = regionManagers.map(m => m._id);
 
-        // Bước 2: Dùng Aggregation để tính toán trên collection 'orders'
-        // Tính tổng doanh thu và tổng lợi nhuận được chia cho mỗi QLV
-        const financialStats = await Order.aggregate([
-            {
-                // Chỉ lấy các đơn hàng đã giao và có người nhận lợi nhuận là một trong các QLV
-                $match: {
-                    status: 'Đã giao',
-                    profitRecipient: { $in: managerIds }
-                }
-            },
-            {
-                // Gom nhóm theo người nhận lợi nhuận (profitRecipient)
-                $group: {
-                    _id: '$profitRecipient', // Gom nhóm theo ID của QLV
-                    totalManagedOrders: { $sum: 1 }, // Đếm số đơn hàng
-                    // Tính tổng doanh thu từ các đơn hàng này
-                    totalRevenueFromOrders: { $sum: '$total' }, 
-                    // Tính tổng lợi nhuận mà QLV thực nhận
-                    totalProfitShare: { $sum: '$recipientProfit' } 
-                }
-            }
+        const thisMonthStart = moment().tz('Asia/Ho_Chi_Minh').startOf('month').toDate();
+        
+        const [allTimeStats, thisMonthStats, paymentStats] = await Promise.all([
+            // Tính toán tổng lợi nhuận từ trước đến nay
+            Order.aggregate([
+                { $match: { status: 'Đã giao', profitRecipient: { $in: managerIds } } },
+                { $group: { _id: '$profitRecipient', totalProfitShare: { $sum: '$recipientProfit' } } }
+            ]),
+            // Tính toán lợi nhuận chỉ trong tháng này
+            Order.aggregate([
+                { $match: { status: 'Đã giao', profitRecipient: { $in: managerIds }, 'timestamps.deliveredAt': { $gte: thisMonthStart } } },
+                { $group: { _id: '$profitRecipient', thisMonthProfit: { $sum: '$recipientProfit' } } }
+            ]),
+            // Tính tổng số tiền đã thanh toán
+            RegionManagerPayment.aggregate([
+                { $match: { regionManager: { $in: managerIds } } },
+                { $group: { _id: '$regionManager', totalPaid: { $sum: '$amount' } } }
+            ])
         ]);
 
-        // Bước 3: Gộp dữ liệu tài chính vào danh sách QLV
-        const statsMap = new Map(financialStats.map(stat => [stat._id.toString(), stat]));
+        const allTimeMap = new Map(allTimeStats.map(s => [s._id.toString(), s.totalProfitShare]));
+        const thisMonthMap = new Map(thisMonthStats.map(s => [s._id.toString(), s.thisMonthProfit]));
+        const paymentMap = new Map(paymentStats.map(s => [s._id.toString(), s.totalPaid]));
 
         const results = regionManagers.map(manager => {
-            const managerStats = statsMap.get(manager._id.toString());
+            const managerIdStr = manager._id.toString();
+            const totalProfit = allTimeMap.get(managerIdStr) || 0;
+            const totalPaid = paymentMap.get(managerIdStr) || 0;
+            
             return {
                 ...manager,
-                totalManagedOrders: managerStats?.totalManagedOrders || 0,
-                totalRevenueFromOrders: managerStats?.totalRevenueFromOrders || 0,
-                totalProfitShare: managerStats?.totalProfitShare || 0,
+                thisMonthProfit: thisMonthMap.get(managerIdStr) || 0,
+                totalProfit: totalProfit,
+                totalPaid: totalPaid,
+                debt: totalProfit - totalPaid, // Công nợ còn lại
             };
         });
 
         res.status(200).json(results);
-
     } catch (error) {
         console.error('[getRegionManagerFinancials] Lỗi:', error);
-        res.status(500).json({ message: 'Lỗi server khi lấy dữ liệu tài chính QLV.' });
+        res.status(500).json({ message: 'Lỗi server.' });
+    }
+};
+
+/**
+ * [Admin Only] Lấy chi tiết tài chính theo tháng của một QLV
+ * === HÀM MỚI ===
+ */
+exports.getRegionManagerMonthlyDetails = async (req, res) => {
+    try {
+        const { managerId } = req.params;
+        const managerObjectId = new mongoose.Types.ObjectId(managerId);
+
+        // Lấy tất cả các tháng mà QLV có lợi nhuận
+        const monthlyProfits = await Order.aggregate([
+            { $match: { status: 'Đã giao', profitRecipient: managerObjectId } },
+            { 
+                $group: { 
+                    _id: { 
+                        year: { $year: { date: '$timestamps.deliveredAt', timezone: 'Asia/Ho_Chi_Minh' } },
+                        month: { $month: { date: '$timestamps.deliveredAt', timezone: 'Asia/Ho_Chi_Minh' } }
+                    },
+                    monthlyProfit: { $sum: '$recipientProfit' },
+                    orderCount: { $sum: 1 }
+                } 
+            },
+            { $sort: { '_id.year': -1, '_id.month': -1 } }
+        ]);
+        
+        // Lấy tất cả các khoản thanh toán cho QLV này
+        const payments = await RegionManagerPayment.find({ regionManager: managerObjectId }).lean();
+        const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+
+        res.status(200).json({ monthlyProfits, payments, totalPaid });
+    } catch (error) {
+        console.error('[getRegionManagerMonthlyDetails] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server.' });
+    }
+};
+
+/**
+ * [Admin Only] Thanh toán lợi nhuận cho Quản lý Vùng
+ * === HÀM MỚI ===
+ */
+exports.payToRegionManager = async (req, res) => {
+    try {
+        const { managerId } = req.params;
+        const { amount, notes } = req.body;
+        const adminId = req.user._id;
+
+        if (!amount || amount <= 0) {
+            return res.status(400).json({ message: 'Số tiền thanh toán không hợp lệ.' });
+        }
+        
+        const manager = await User.findById(managerId);
+        if (!manager || manager.role !== 'region_manager') {
+            return res.status(404).json({ message: 'Không tìm thấy Quản lý Vùng.' });
+        }
+        
+        const newPayment = new RegionManagerPayment({
+            regionManager: managerId,
+            amount: amount,
+            notes: notes,
+            paidBy: adminId
+        });
+        await newPayment.save();
+
+        // (Tùy chọn) Gửi thông báo cho QLV
+        // ...
+
+        res.status(201).json({ message: 'Đã ghi nhận thanh toán thành công!', payment: newPayment });
+
+    } catch (error) {
+        console.error('[payToRegionManager] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server.' });
     }
 };
 
