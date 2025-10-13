@@ -83,5 +83,7 @@ router.get('/sellers/:sellerId/comprehensive-financials', isAdmin, adminControll
 router.post('/sellers/:sellerId/pay', isAdmin, adminController.payToSeller);
 router.post('/shippers/:shipperId/remind-debt', isAdmin, adminController.remindShipperToPayDebt);
 router.get('/region-manager-financials', isAdmin, adminController.getRegionManagerFinancials);
+router.get('/region-manager-financials/:managerId', isAdmin, adminController.getRegionManagerMonthlyDetails);
+router.post('/region-manager-financials/:managerId/pay', isAdmin, adminController.payToRegionManager);
 
 module.exports = router;
