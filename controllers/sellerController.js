@@ -1,6 +1,7 @@
 // controllers/sellerController.js
 const Product = require('../models/Product');
 const Order = require('../models/Order');
+const admin = require('firebase-admin');
 const User = require('../models/User');
 const PendingUpdate = require('../models/PendingUpdate');
 const { sendOtpEmail } = require('../utils/mailer');
@@ -191,54 +192,49 @@ exports.updateFcmToken = async (req, res) => {
 
 exports.requestUpdatePaymentInfo = async (req, res) => {
     try {
-        const user = req.user;
         const { bankName, accountHolderName, accountNumber } = req.body;
         if (!bankName || !accountHolderName || !accountNumber) {
             return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin thanh toán.' });
         }
-        if (!user.email) {
-            return res.status(400).json({ message: 'Email không tồn tại trong hồ sơ người dùng.' });
-        }
-        const otp = crypto.randomInt(100000, 999999).toString();
-        await PendingUpdate.deleteMany({ userId: user._id, type: 'paymentInfo' });
-        const pendingUpdate = await PendingUpdate.create({
-            userId: user._id,
-            type: 'paymentInfo',
-            otp,
-            payload: { bankName, accountHolderName, accountNumber },
-            expiresAt: new Date(Date.now() + 5 * 60 * 1000)
-        });
-        const emailSent = await sendOtpEmail(user.email, otp);
-        if (!emailSent) {
-            await PendingUpdate.findByIdAndDelete(pendingUpdate._id);
-            return res.status(500).json({ 
-                message: 'Không thể gửi email xác thực. Vui lòng thử lại sau.' 
-            });
-        }
-        res.status(200).json({ message: `Mã xác thực đã được gửi đến ${user.email}.` });
+        
+        // Chỉ cần trả về thành công để frontend tiếp tục
+        res.status(200).json({ message: `Chuẩn bị gửi mã xác thực đến số điện thoại của bạn.` });
+
     } catch (error) {
         console.error("[Seller Request Update Payment Info] Lỗi:", error.message);
-        res.status(500).json({ message: 'Lỗi server khi yêu cầu cập nhật: ' + error.message });
+        res.status(500).json({ message: 'Lỗi server khi yêu cầu cập nhật.' });
     }
 };
 
+// HÀM NÀY LÀ HÀM QUAN TRỌNG NHẤT
 exports.verifyUpdatePaymentInfo = async (req, res) => {
     try {
         const sellerId = req.user._id;
-        const { otp } = req.body;
-        if (!otp || otp.length !== 6) {
-            return res.status(400).json({ message: 'Vui lòng nhập mã OTP gồm 6 chữ số.' });
+        // Backend sẽ nhận idToken từ Firebase và thông tin thanh toán mới
+        const { idToken, bankName, accountHolderName, accountNumber } = req.body;
+
+        if (!idToken || !bankName || !accountHolderName || !accountNumber) {
+            return res.status(400).json({ message: 'Thiếu thông tin xác thực hoặc dữ liệu cập nhật.' });
         }
-        const pendingRequest = await PendingUpdate.findOne({
-            userId: sellerId,
-            otp,
-            type: 'paymentInfo',
-            expiresAt: { $gt: new Date() }
-        });
-        if (!pendingRequest) {
-            return res.status(400).json({ message: 'Mã OTP không hợp lệ hoặc đã hết hạn.' });
+
+        // Bước 1: Dùng Firebase Admin SDK để xác thực idToken
+        const decodedToken = await admin.auth().verifyIdToken(idToken);
+        const firebasePhoneNumber = decodedToken.phone_number; // Lấy SĐT từ token đã được xác thực
+
+        // Bước 2: Lấy thông tin user từ DB của bạn
+        const user = await User.findById(sellerId);
+        if (!user) {
+            return res.status(404).json({ message: 'Không tìm thấy người dùng.' });
         }
-        const { bankName, accountHolderName, accountNumber } = pendingRequest.payload;
+        
+        // Bước 3: So sánh số điện thoại từ Firebase và DB để đảm bảo chính chủ
+        // Chuẩn hóa SĐT từ DB của bạn về dạng +84...
+        const dbPhoneNumber = `+84${user.phone.slice(-9)}`;
+        if (firebasePhoneNumber !== dbPhoneNumber) {
+            return res.status(403).json({ message: 'Xác thực không thành công. Mã OTP không khớp với số điện thoại đã đăng ký.' });
+        }
+
+        // Bước 4: Nếu tất cả đều khớp, cập nhật thông tin thanh toán
         const updatedUser = await User.findByIdAndUpdate(
             sellerId,
             { $set: { 
@@ -248,14 +244,18 @@ exports.verifyUpdatePaymentInfo = async (req, res) => {
             }},
             { new: true, runValidators: true }
         ).select('-password');
-        await PendingUpdate.findByIdAndDelete(pendingRequest._id);
+        
         res.status(200).json({
             message: 'Cập nhật thông tin thanh toán thành công!',
             user: updatedUser
         });
+
     } catch (error) {
-        console.error("[Seller Verify Update Payment Info] Lỗi:", error.message);
-        res.status(500).json({ message: 'Lỗi server khi xác thực OTP: ' + error.message });
+        console.error("[Seller Verify Update Payment Info] Lỗi:", error);
+        if (error.code === 'auth/id-token-expired' || error.code === 'auth/argument-error') {
+            return res.status(401).json({ message: 'Mã xác thực không hợp lệ hoặc đã hết hạn.' });
+        }
+        res.status(500).json({ message: 'Lỗi server khi xác thực.' });
     }
 };
 
