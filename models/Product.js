@@ -91,6 +91,11 @@ const productSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  isOutOfStock: {
+    type: Boolean,
+    default: false,
+  },
+  
   ratingAverage: {
         type: Number,
         default: 0,
@@ -128,5 +133,6 @@ productSchema.virtual('totalStock').get(function() {
 });
 
 module.exports = mongoose.model('Product', productSchema);
+
 
 
