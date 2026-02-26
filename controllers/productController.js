@@ -55,9 +55,9 @@ exports.getAllProducts = async (req, res) => {
             p.seller?.approvalStatus === 'approved'
         );
         // Lưu ý: KHÔNG lọc sản phẩm của shop đang tạm ngưng ở đây nữa
-        if (!sellerId) {
-            products = products.filter(p => p.totalStock > 0 || p.requiresConsultation === true);
-        }
+        //if (!sellerId) {
+        //    products = products.filter(p => p.totalStock > 0 || p.requiresConsultation === true);
+        //}
         
         res.json(products);
         // --- KẾT THÚC SỬA LOGIC ---
@@ -128,7 +128,7 @@ exports.createProduct = async (req, res) => {
     const { 
         name, price, stock, category, description, images, 
         saleTimeFrames, barcode, weight, 
-        variantGroups, variantTable, requiresConsultation
+        variantGroups, variantTable, requiresConsultation,isOutOfStock
     } = req.body;
     
     if (!name || !category || !images?.length || !weight) {
@@ -150,6 +150,7 @@ exports.createProduct = async (req, res) => {
       stock: requiresConsultation || (variantTable && variantTable.length > 0) ? undefined : stock,
       category, description, images, saleTimeFrames, barcode, weight,
       variantGroups, variantTable, requiresConsultation,
+      isOutOfStock: isOutOfStock || false,
       seller: req.user._id,
       region: req.user.region, // <<< KẾ THỪA REGION TỪ SELLER
       approvalStatus: 'pending_approval'
@@ -244,7 +245,7 @@ exports.updateProduct = async (req, res) => {
     const { 
         name, price, stock, category, description, images, 
         saleTimeFrames, barcode, weight, 
-        variantGroups, variantTable, requiresConsultation
+        variantGroups, variantTable, requiresConsultation,isOutOfStock
     } = req.body;
 
     product.name = name;
@@ -257,6 +258,7 @@ exports.updateProduct = async (req, res) => {
     product.variantGroups = variantGroups;
     product.variantTable = variantTable;
     product.requiresConsultation = requiresConsultation;
+    product.isOutOfStock = isOutOfStock || false;
     
     if (requiresConsultation || (variantTable && variantTable.length > 0)) {
       product.price = undefined;
