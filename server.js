@@ -106,7 +106,7 @@ app.use('/api/v1/payouts', payoutRoutes);
 app.use('/api/v1/seller-orders', sellerOrderRoutes);
 app.use('/api/v1/regions', regionRoutes);
 app.use('/api/v1/reviews', reviewRoutes);
-app.use('/api/v1/region-manager', regionManagerRoutes);
+//app.use('/api/v1/region-manager', regionManagerRoutes);
 
 // 404 Handler
 app.use((req, res, next) => {
@@ -134,6 +134,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Server UP: http://localhost:${PORT}`);
   console.log(`📡 Mode: ${process.env.NODE_ENV || 'development'}`);
 });
+
 
 
 
