@@ -233,32 +233,31 @@ exports.updateProduct = async (req, res) => {
       return res.status(403).json({ message: 'Bạn không có quyền sửa sản phẩm này.' });
     }
 
+    // ĐÃ SỬA: Chỉ lưu lại các giá trị Tên, Mô tả, Danh mục, Ảnh. Không lưu Thời gian bán nữa.
     const oldValues = {
       name: product.name,
       description: product.description,
       category: product.category.toString(),
       images: JSON.stringify(product.images.sort()),
-      // Lưu lại giá trị cũ của saleTimeFrames để so sánh
-      saleTimeFrames: JSON.stringify(product.saleTimeFrames), 
     };
 
     const { 
         name, price, stock, category, description, images, 
         saleTimeFrames, barcode, weight, 
-        variantGroups, variantTable, requiresConsultation,isOutOfStock
+        variantGroups, variantTable, requiresConsultation, isOutOfStock
     } = req.body;
 
     product.name = name;
     product.description = description;
     product.images = images;
-    product.saleTimeFrames = saleTimeFrames;
+    product.saleTimeFrames = saleTimeFrames; // Cập nhật thoải mái
     product.barcode = barcode;
     product.weight = weight;
     product.category = category;
     product.variantGroups = variantGroups;
-    product.variantTable = variantTable;
+    product.variantTable = variantTable; // Cập nhật kho thoải mái
     product.requiresConsultation = requiresConsultation;
-    product.isOutOfStock = isOutOfStock || false;
+    product.isOutOfStock = isOutOfStock || false; // Cập nhật nút hết hàng thoải mái
     
     if (requiresConsultation || (variantTable && variantTable.length > 0)) {
       product.price = undefined;
@@ -269,18 +268,19 @@ exports.updateProduct = async (req, res) => {
     }
 
     if (req.user.role === 'seller') {
+      // ĐÃ SỬA: Bỏ điều kiện JSON.stringify(product.saleTimeFrames) !== oldValues.saleTimeFrames
       const hasSignificantChange = 
         product.name !== oldValues.name ||
         product.description !== oldValues.description ||
         product.category.toString() !== oldValues.category ||
-        JSON.stringify(product.images.sort()) !== oldValues.images ||
-        // Thêm điều kiện kiểm tra sự thay đổi của saleTimeFrames
-        JSON.stringify(product.saleTimeFrames) !== oldValues.saleTimeFrames;
+        JSON.stringify(product.images.sort()) !== oldValues.images;
 
       if (hasSignificantChange) {
         product.approvalStatus = 'pending_approval';
         product.rejectionReason = '';
         console.log(`[Product Update] Seller ${req.user._id} đã thay đổi thông tin quan trọng. Chuyển về chờ duyệt.`);
+        
+        // GIỮ NGUYÊN 100% LOGIC THÔNG BÁO CỦA BẠN
         (async () => {
           try {
               // Logic gửi thông báo tương tự như hàm createProduct
@@ -311,8 +311,9 @@ exports.updateProduct = async (req, res) => {
           } catch (e) { console.error("[Product Update] Lỗi gửi thông báo duyệt lại:", e); }
         })();
         // --- KẾT THÚC THÊM LOGIC ---
+
       } else {
-        console.log(`[Product Update] Seller ${req.user._id} chỉ thay đổi thông tin không quan trọng. Không cần duyệt lại.`);
+        console.log(`[Product Update] Seller ${req.user._id} chỉ thay đổi thông tin không quan trọng (Giá/Kho/Thời gian). Không cần duyệt lại.`);
       }
     }
 
