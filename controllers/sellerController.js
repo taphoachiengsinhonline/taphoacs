@@ -454,19 +454,25 @@ exports.updateShopProfile = async (req, res) => {
         const { shopDescription, avatar, coverPhoto } = req.body;
 
         const updateData = {};
-        if (shopDescription) updateData['shopProfile.shopDescription'] = shopDescription;
-        if (avatar) updateData['shopProfile.avatar'] = avatar;
-        if (coverPhoto) updateData['shopProfile.coverPhoto'] = coverPhoto;
+        
+        // SỬA: Dùng !== undefined để cho phép seller cập nhật chuỗi rỗng (xoá mô tả)
+        if (shopDescription !== undefined) updateData['shopProfile.shopDescription'] = shopDescription;
+        if (avatar !== undefined) updateData['shopProfile.avatar'] = avatar;
+        if (coverPhoto !== undefined) updateData['shopProfile.coverPhoto'] = coverPhoto;
 
         if (Object.keys(updateData).length === 0) {
             return res.status(400).json({ message: 'Không có thông tin nào để cập nhật.' });
         }
 
-        const updatedSeller = await User.findByIdAndUpdate(sellerId, { $set: updateData }, { new: true });
+        const updatedSeller = await User.findByIdAndUpdate(
+            sellerId, 
+            { $set: updateData }, 
+            { new: true }
+        );
 
         res.status(200).json({
             message: 'Cập nhật thông tin cửa hàng thành công!',
-            user: updatedSeller // Trả về user đã cập nhật để client refresh context
+            user: updatedSeller 
         });
 
     } catch (error) {
