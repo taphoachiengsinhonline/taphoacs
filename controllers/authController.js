@@ -55,22 +55,27 @@ exports.login = async (req, res) => {
     const requestClientType = client_type || 'customer'; 
     const userRole = user.role;
 
-    // Kiểm tra xem client_type có hợp lệ không
-    if (!allowedRoles[requestClientType]) {
-        return res.status(400).json({
-            status: 'error',
-            message: 'Loại ứng dụng không hợp lệ.'
-        });
+    // 1. Trường hợp request gửi từ App Shipper riêng biệt (có truyền client_type: 'shipper')
+    if (client_type === 'shipper') {
+        if (userRole !== 'shipper') {
+            return res.status(403).json({
+                status: 'error',
+                message: 'Chỉ tài khoản Tài xế (Shipper) mới được đăng nhập vào ứng dụng này.'
+            });
+        }
+    } 
+    // 2. Trường hợp request gửi từ Super App (Khách + Seller + Admin)
+    else {
+        // CẤM Shipper đăng nhập vào Super App
+        if (userRole === 'shipper') {
+            return res.status(403).json({
+                status: 'error',
+                message: 'Tài khoản của bạn là Shipper. Vui lòng đăng nhập trên App dành riêng cho Tài xế.'
+            });
+        }
+        // Tất cả các role còn lại (customer, seller, admin, region_manager) đều được đi tiếp qua cửa này!
     }
-    
-    // Kiểm tra xem vai trò của người dùng có được phép đăng nhập vào loại ứng dụng này không
-    if (!allowedRoles[requestClientType].includes(userRole)) {
-        return res.status(403).json({
-            status: 'error',
-            message: 'Tài khoản của bạn không có quyền truy cập vào ứng dụng này.'
-        });
-    }
-    // --- KẾT THÚC SỬA LOGIC ---
+
 
     const { accessToken, refreshToken } = generateTokens(user._id);
     
