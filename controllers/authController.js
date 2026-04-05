@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const voucherController = require('./voucherController'); // Đảm bảo đường dẫn đúng
+const { sendOtpEmail } = require('../utils/mailer');
 
 // Hàm tạo Access + Refresh token (có thể tái sử dụng)
 const generateTokens = (userId) => {
@@ -140,5 +141,48 @@ exports.getMe = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ status: 'error', message: 'Lỗi server' });
+    }
+};
+
+// Thêm import này lên đầu file nếu chưa có:
+// const { sendOtpEmail } = require('../utils/mailer');
+
+exports.forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ message: 'Vui lòng cung cấp email.' });
+
+        const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password');
+        if (!user) return res.status(404).json({ message: 'Không tìm thấy tài khoản với email này.' });
+
+        // Tạo mật khẩu mới ngẫu nhiên (6 chữ số)
+        const newTempPassword = Math.floor(100000 + Math.random() * 900000).toString();
+        
+        // Gửi email
+        const mailSubject = "Khôi phục mật khẩu - Bách Hóa Giao Ngay";
+        const mailContent = `
+            <h2>Xin chào ${user.name},</h2>
+            <p>Hệ thống đã nhận được yêu cầu khôi phục mật khẩu của bạn.</p>
+            <p>Mật khẩu mới tạm thời của bạn là: <strong>${newTempPassword}</strong></p>
+            <p>Vui lòng đăng nhập bằng mật khẩu này và đổi lại mật khẩu mới trong phần Tài khoản của bạn để đảm bảo an toàn.</p>
+        `;
+        
+        // Giả sử bạn đang dùng hàm sendOtpEmail (hoặc hàm gửi mail chung) trong thư mục mailer
+        // Nếu hàm sendOtpEmail của bạn chỉ nhận 2 tham số (email, otp), bạn có thể gửi thẳng newTempPassword
+        const isSent = await sendOtpEmail(user.email, newTempPassword); 
+        
+        if (!isSent) {
+            return res.status(500).json({ message: 'Không thể gửi email. Vui lòng thử lại sau.' });
+        }
+
+        // Chỉ lưu mật khẩu mới vào DB nếu đã gửi mail thành công
+        user.password = newTempPassword; // Mongoose middleware sẽ tự động hash nó
+        await user.save();
+
+        res.status(200).json({ message: 'Đã gửi mật khẩu mới vào email của bạn.' });
+
+    } catch (error) {
+        console.error('[forgotPassword] Lỗi:', error);
+        res.status(500).json({ message: 'Lỗi server khi khôi phục mật khẩu.' });
     }
 };
