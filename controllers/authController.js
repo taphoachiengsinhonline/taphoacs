@@ -169,7 +169,7 @@ exports.forgotPassword = async (req, res) => {
         
         // Giả sử bạn đang dùng hàm sendOtpEmail (hoặc hàm gửi mail chung) trong thư mục mailer
         // Nếu hàm sendOtpEmail của bạn chỉ nhận 2 tham số (email, otp), bạn có thể gửi thẳng newTempPassword
-        const isSent = await sendOtpEmail(user.email, newTempPassword); 
+        const isSent = await sendOtpEmail(user.email, newTempPassword, 'forgot_password');
         
         if (!isSent) {
             return res.status(500).json({ message: 'Không thể gửi email. Vui lòng thử lại sau.' });
