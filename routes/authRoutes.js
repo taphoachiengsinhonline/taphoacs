@@ -21,6 +21,8 @@ router.post('/register', registrationController.registerUser);
 // Đăng ký chuyên biệt cho Seller
 router.post('/register/seller', registrationController.registerSeller);
 
+router.post('/forgot-password', authController.forgotPassword);
+
 // --- ROUTE TIỆN ÍCH (không cần xác thực) ---
 // API này không cần xác thực, ai cũng có thể gọi để xem các vùng hoạt động
 router.get('/regions', async (req, res) => {
