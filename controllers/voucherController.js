@@ -32,27 +32,26 @@ exports.getAvailableVouchers = async (req, res) => {
     try {
         const now = new Date();
 
-        // 1. Lấy tất cả voucher đang hoạt động, nổi bật, còn hạn, còn lượt
-        const availableVouchers = await Voucher.find({
+        // 1. Lấy tất cả voucher còn hạn và đang kích hoạt (bỏ điều kiện isFeatured để an toàn)
+        const allActiveVouchers = await Voucher.find({
             isActive: true,
-            isFeatured: true,
-            expiryDate: { $gt: now },
-            $expr: { $lt: ["$currentCollects", "$maxCollects"] }
+            expiryDate: { $gt: now }
         });
 
-        // 2. NẾU LÀ KHÁCH VÃNG LAI (Chưa đăng nhập) -> Trả về toàn bộ danh sách
+        // 2. Lọc bỏ các voucher đã hết lượt thu thập
+        const availableVouchers = allActiveVouchers.filter(v => v.currentCollects < v.maxCollects);
+
+        // 3. NẾU LÀ KHÁCH VÃNG LAI -> TRẢ VỀ LUÔN TOÀN BỘ VOUCHER
         if (!req.user) {
             return res.status(200).json(availableVouchers);
         }
 
-        // 3. NẾU ĐÃ ĐĂNG NHẬP -> Lọc bỏ những voucher người này đã thu thập
+        // 4. NẾU ĐÃ ĐĂNG NHẬP -> Lọc bỏ những voucher khách này đã thu thập rồi
         const userId = req.user._id;
-        
-        // Lấy ID của các voucher người dùng đã thu thập
         const collectedVoucherDocs = await UserVoucher.find({ user: userId }).select('voucher -_id');
         const collectedVoucherIds = new Set(collectedVoucherDocs.map(uv => uv.voucher.toString()));
 
-        // Lọc ra những voucher người dùng CHƯA thu thập
+        // Những voucher nào không nằm trong tập hợp đã thu thập thì giữ lại
         const finalVouchers = availableVouchers.filter(v => !collectedVoucherIds.has(v._id.toString()));
 
         res.status(200).json(finalVouchers);
