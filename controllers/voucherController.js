@@ -30,10 +30,9 @@ exports.createBulkVouchers = async (req, res) => {
 
 exports.getAvailableVouchers = async (req, res) => {
     try {
-        const userId = req.user._id; // Lấy từ protect middleware
         const now = new Date();
 
-        // Lấy tất cả voucher nổi bật, còn hạn, còn lượt
+        // 1. Lấy tất cả voucher đang hoạt động, nổi bật, còn hạn, còn lượt
         const availableVouchers = await Voucher.find({
             isActive: true,
             isFeatured: true,
@@ -41,6 +40,14 @@ exports.getAvailableVouchers = async (req, res) => {
             $expr: { $lt: ["$currentCollects", "$maxCollects"] }
         });
 
+        // 2. NẾU LÀ KHÁCH VÃNG LAI (Chưa đăng nhập) -> Trả về toàn bộ danh sách
+        if (!req.user) {
+            return res.status(200).json(availableVouchers);
+        }
+
+        // 3. NẾU ĐÃ ĐĂNG NHẬP -> Lọc bỏ những voucher người này đã thu thập
+        const userId = req.user._id;
+        
         // Lấy ID của các voucher người dùng đã thu thập
         const collectedVoucherDocs = await UserVoucher.find({ user: userId }).select('voucher -_id');
         const collectedVoucherIds = new Set(collectedVoucherDocs.map(uv => uv.voucher.toString()));
