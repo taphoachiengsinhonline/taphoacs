@@ -59,10 +59,14 @@ exports.createReview = async (req, res) => {
         if (order.isReviewed === true) {
             return res.status(400).json({ message: "Bạn đã đánh giá đơn hàng này rồi." });
         }
+        
+        // ĐÃ SỬA: Đảm bảo order có thời gian giao hàng hợp lệ trước khi tính toán
+        if (!order.timestamps || !order.timestamps.deliveredAt) {
+            return res.status(400).json({ message: "Đơn hàng chưa có dữ liệu thời gian giao hàng hợp lệ." });
+        }
+
         const deliveredAt = moment(order.timestamps.deliveredAt);
-        // Lấy thời điểm hiện tại
         const now = moment();
-        // Tính số ngày đã trôi qua
         const daysSinceDelivery = now.diff(deliveredAt, 'days');
 
         if (daysSinceDelivery > 7) {
