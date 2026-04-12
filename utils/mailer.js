@@ -1,33 +1,37 @@
-// File: utils/mailer.js
+// File: backend/utils/mailer.js
+const nodemailer = require('nodemailer');
 
-const sgMail = require('@sendgrid/mail');
-
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+// Khởi tạo bộ gửi mail bằng Gmail
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD // Dùng Mật khẩu ứng dụng (16 ký tự), không dùng mật khẩu Gmail
+    }
+});
 
 /**
  * Hàm gửi email đa năng (Hỗ trợ cả OTP và Quên mật khẩu)
- * @param {string} to - Email người nhận
- * @param {string} code - Mã OTP hoặc Mật khẩu mới
- * @param {string} type - Loại email: 'otp_payment' hoặc 'forgot_password'
  */
 const sendOtpEmail = async (to, code, type = 'otp_payment') => {
     try {
-        console.log(`Sending email to ${to} with code ${code} (Type: ${type})`);
+        console.log(`Đang gửi email đến ${to} với code ${code} (Type: ${type})`);
         
         let subject = '';
         let htmlContent = '';
 
-        // Tùy biến nội dung dựa trên 'type'
         if (type === 'forgot_password') {
             subject = 'Khôi phục mật khẩu - Bách Hoá Giao Ngay';
             htmlContent = `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                    <h2 style="color: #333;">Khôi Phục Mật Khẩu</h2>
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #333; text-align: center;">Khôi Phục Mật Khẩu</h2>
                     <p>Xin chào,</p>
                     <p>Hệ thống đã nhận được yêu cầu khôi phục mật khẩu của bạn.</p>
                     <p>Mật khẩu mới tạm thời của bạn là:</p>
-                    <h3 style="color: #FF424E; font-size: 24px; text-align: center; letter-spacing: 5px;">${code}</h3>
-                    <p>Vui lòng đăng nhập bằng mật khẩu này và đổi lại mật khẩu mới trong phần Tài khoản của bạn để đảm bảo an toàn.</p>
+                    <div style="background-color: #f9f9f9; padding: 15px; text-align: center; border-radius: 5px; margin: 20px 0;">
+                        <h3 style="color: #FF424E; font-size: 28px; margin: 0; letter-spacing: 5px;">${code}</h3>
+                    </div>
+                    <p>Vui lòng đăng nhập bằng mật khẩu này và <strong>đổi lại mật khẩu mới</strong> trong phần Tài khoản của bạn để đảm bảo an toàn.</p>
                     <p>Nếu bạn không yêu cầu đổi mật khẩu, vui lòng liên hệ ngay với bộ phận hỗ trợ.</p>
                     <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
                     <p>Trân trọng,<br><strong>Đội ngũ Bách Hoá Giao Ngay</strong></p>
@@ -35,14 +39,15 @@ const sendOtpEmail = async (to, code, type = 'otp_payment') => {
                 </div>
             `;
         } else {
-            // Mặc định là OTP cập nhật thanh toán (Giữ nguyên code cũ của bạn)
             subject = 'Mã OTP Xác Thực Cập Nhật Thông Tin Thanh Toán';
             htmlContent = `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                    <h2 style="color: #333;">Xác Thực OTP</h2>
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #333; text-align: center;">Xác Thực OTP</h2>
                     <p>Xin chào,</p>
                     <p>Bạn đã yêu cầu cập nhật thông tin thanh toán. Mã OTP của bạn là:</p>
-                    <h3 style="color: #4CAF50; font-size: 24px; text-align: center; letter-spacing: 5px;">${code}</h3>
+                    <div style="background-color: #f9f9f9; padding: 15px; text-align: center; border-radius: 5px; margin: 20px 0;">
+                        <h3 style="color: #4CAF50; font-size: 28px; margin: 0; letter-spacing: 5px;">${code}</h3>
+                    </div>
                     <p>Mã này có hiệu lực trong 5 phút. Vui lòng nhập mã vào ứng dụng để xác nhận.</p>
                     <p>Nếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email.</p>
                     <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
@@ -52,24 +57,20 @@ const sendOtpEmail = async (to, code, type = 'otp_payment') => {
             `;
         }
 
-        const msg = {
-            to,
-            from: {
-                email: process.env.GMAIL_USER, // hotro.bachhoagiaongay@gmail.com
-                name: 'Bách Hoá Giao Ngay'
-            },
+        const mailOptions = {
+            from: `"Bách Hoá Giao Ngay" <${process.env.GMAIL_USER}>`, // Tên người gửi
+            to: to,
             subject: subject,
             html: htmlContent
         };
 
-        await sgMail.send(msg);
-        console.log('Email sent successfully via SendGrid');
+        // Bắt đầu gửi
+        const info = await transporter.sendMail(mailOptions);
+        console.log('✅ Email gửi thành công qua Gmail Nodemailer:', info.messageId);
         return true;
+
     } catch (error) {
-        console.error('Error sending email via SendGrid:', error);
-        if (error.response) {
-            console.error('SendGrid error details:', error.response.body);
-        }
+        console.error('❌ Lỗi khi gửi email qua Nodemailer:', error);
         return false;
     }
 };
