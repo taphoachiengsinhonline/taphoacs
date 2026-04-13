@@ -3,6 +3,7 @@ const Category = require('../models/Category');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { safeNotify } = require('../utils/notificationMiddleware');
+const safeNotifyV2 = require('../utils/safeNotifyV2');
 const Order = require('../models/Order');
 const mongoose = require('mongoose');
 
@@ -15,7 +16,6 @@ const getAllChildCategoryIds = async (parentId) => {
     }
     return allIds;
 };
-
 
 exports.getAllProducts = async (req, res) => {
     try {
@@ -33,13 +33,10 @@ exports.getAllProducts = async (req, res) => {
             filter.category = { $in: ids };
         }
 
-        // --- BẮT ĐẦU SỬA LOGIC QUAN TRỌNG ---
-        // Sử dụng .populate() để lấy thông tin seller, bao gồm cả shopProfile
         let query = Product.find(filter)
             .populate('category')
             .populate({
                 path: 'seller',
-                // Sửa lại dòng select này
                 select: 'name shopProfile approvalStatus'
             })
             .sort({ createdAt: -1 });
@@ -47,28 +44,20 @@ exports.getAllProducts = async (req, res) => {
         if (limit) {
             query = query.limit(parseInt(limit));
         }
-        
+
         let products = await query.exec();
-        
-        
-        products = products.filter(p => 
+
+        products = products.filter(p =>
             p.seller?.approvalStatus === 'approved'
         );
-        // Lưu ý: KHÔNG lọc sản phẩm của shop đang tạm ngưng ở đây nữa
-        //if (!sellerId) {
-        //    products = products.filter(p => p.totalStock > 0 || p.requiresConsultation === true);
-        //}
-        
-        res.json(products);
-        // --- KẾT THÚC SỬA LOGIC ---
 
+        res.json(products);
     } catch (err) {
         console.error('❌ Lỗi khi lấy sản phẩm:', err);
         res.status(500).json({ error: err.message });
     }
 };
 
-// --- HÀM 2: LẤY SẢN PHẨM BÁN CHẠY NHẤT ---
 exports.getBestSellers = async (req, res) => {
     try {
         const limit = parseInt(req.query.limit, 10) || 10;
@@ -96,237 +85,249 @@ exports.getBestSellers = async (req, res) => {
     }
 };
 
-
 exports.getProductById = async (req, res) => {
-  try {
-    const product = await Product.findById(req.params.id)
-        .populate('category')
-        .populate('seller', 'name shopProfile.avatar shopProfile.lastActive');
+    try {
+        const product = await Product.findById(req.params.id)
+            .populate('category')
+            .populate('seller', 'name shopProfile.avatar shopProfile.lastActive');
 
-    if (!product) {
-      return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+        if (!product) {
+            return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+        }
+
+        console.log("--- DEBUG: Dữ liệu sản phẩm từ DB (getProductById) ---");
+        console.log("Rating Quantity:", product.ratingQuantity);
+        console.log("Rating Average:", product.ratingAverage);
+        console.log("----------------------------------------------------");
+
+        res.json(product);
+    } catch (err) {
+        console.error('❌ Lỗi khi lấy chi tiết sản phẩm:', err);
+        res.status(500).json({ message: 'Lỗi server' });
     }
-
-    // --- BẮT ĐẦU SỬA ---
-    // Log để kiểm tra dữ liệu thô từ DB
-    console.log("--- DEBUG: Dữ liệu sản phẩm từ DB (getProductById) ---");
-    console.log("Rating Quantity:", product.ratingQuantity);
-    console.log("Rating Average:", product.ratingAverage);
-    console.log("----------------------------------------------------");
-    // --- KẾT THÚC SỬA ---
-
-    res.json(product);
-  } catch (err) {
-    console.error('❌ Lỗi khi lấy chi tiết sản phẩm:', err);
-    res.status(500).json({ message: 'Lỗi server' });
-  }
 };
 
-
 exports.createProduct = async (req, res) => {
-  try {
-    const { 
-        name, price, stock, category, description, images, 
-        saleTimeFrames, barcode, weight, 
-        variantGroups, variantTable, requiresConsultation,isOutOfStock
-    } = req.body;
-    
-    if (!name || !category || !images?.length || !weight) {
-      return res.status(400).json({ message: 'Thiếu thông tin cơ bản: Tên, danh mục, ảnh, trọng lượng.' });
-    }
+    try {
+        const {
+            name, price, stock, category, description, images,
+            saleTimeFrames, barcode, weight,
+            variantGroups, variantTable, requiresConsultation, isOutOfStock
+        } = req.body;
 
-    if (!requiresConsultation) {
-        if (variantTable && variantTable.length > 0) {
-        } else {
-            if (price == null || stock == null) {
-                return res.status(400).json({ message: 'Sản phẩm không cần tư vấn phải có giá và kho.' });
-            }
+        if (!name || !category || !images?.length || !weight) {
+            return res.status(400).json({ message: 'Thiếu thông tin cơ bản: Tên, danh mục, ảnh, trọng lượng.' });
         }
-    }
-    
-    const newProduct = new Product({
-      name,
-      price: requiresConsultation || (variantTable && variantTable.length > 0) ? undefined : price,
-      stock: requiresConsultation || (variantTable && variantTable.length > 0) ? undefined : stock,
-      category, description, images, saleTimeFrames, barcode, weight,
-      variantGroups, variantTable, requiresConsultation,
-      isOutOfStock: isOutOfStock || false,
-      seller: req.user._id,
-      region: req.user.region, // <<< KẾ THỪA REGION TỪ SELLER
-      approvalStatus: 'pending_approval'
-    });
-    
-    const savedProduct = await newProduct.save();
 
-    (async () => {
-        try {
-            const seller = await User.findById(req.user._id).select('name');
-            if (!seller) return;
-
-            // 1. Tìm tất cả Admin
-            const admins = await User.find({ role: 'admin' });
-            
-            // 2. Tìm Quản lý Vùng của khu vực này (nếu có)
-            const regionManager = await User.findOne({ 
-                role: 'region_manager', 
-                region: savedProduct.region 
-            });
-
-            // 3. Gộp tất cả người nhận thông báo lại
-            let recipients = [...admins];
-            if (regionManager) {
-                // Tránh trường hợp admin cũng là QLV và bị trùng
-                if (!recipients.find(r => r._id.equals(regionManager._id))) {
-                    recipients.push(regionManager);
+        if (!requiresConsultation) {
+            if (!(variantTable && variantTable.length > 0)) {
+                if (price == null || stock == null) {
+                    return res.status(400).json({ message: 'Sản phẩm không cần tư vấn phải có giá và kho.' });
                 }
             }
+        }
 
-            if (recipients.length > 0) {
-                const title = "Sản phẩm mới chờ duyệt";
-                const body = `${seller.name} vừa đăng SP mới: "${savedProduct.name}".`;
-                
-                const notificationPromises = recipients.map(recipient => {
-                    // a. Lưu thông báo vào DB
-                    const dbNotification = Notification.create({
-                        user: recipient._id, title, message: body, type: 'product',
-                        data: { productId: savedProduct._id.toString(), screen: 'ProductApproval' }
-                    });
+        const newProduct = new Product({
+            name,
+            price: requiresConsultation || (variantTable && variantTable.length > 0) ? undefined : price,
+            stock: requiresConsultation || (variantTable && variantTable.length > 0) ? undefined : stock,
+            category, description, images, saleTimeFrames, barcode, weight,
+            variantGroups, variantTable, requiresConsultation,
+            isOutOfStock: isOutOfStock || false,
+            seller: req.user._id,
+            region: req.user.region,
+            approvalStatus: 'pending_approval'
+        });
 
-                    // b. Gửi push notification nếu có token
-                    let pushNotification = Promise.resolve();
-                    if (recipient.fcmToken) {
-                        pushNotification = safeNotify(recipient.fcmToken, {
-                            title, body,
+        const savedProduct = await newProduct.save();
+
+        // Gửi thông báo bất đồng bộ
+        (async () => {
+            try {
+                const seller = await User.findById(req.user._id).select('name');
+                if (!seller) return;
+
+                const admins = await User.find({ role: 'admin' });
+                const regionManager = await User.findOne({
+                    role: 'region_manager',
+                    region: savedProduct.region
+                });
+
+                let recipients = [...admins];
+                if (regionManager && !recipients.find(r => r._id.equals(regionManager._id))) {
+                    recipients.push(regionManager);
+                }
+
+                if (recipients.length > 0) {
+                    const title = "Sản phẩm mới chờ duyệt";
+                    const body = `${seller.name} vừa đăng SP mới: "${savedProduct.name}".`;
+
+                    const notificationPromises = recipients.map(recipient => {
+                        const dbNotification = Notification.create({
+                            user: recipient._id,
+                            title,
+                            message: body,
+                            type: 'product',
                             data: { productId: savedProduct._id.toString(), screen: 'ProductApproval' }
                         });
-                    }
-                    return Promise.all([dbNotification, pushNotification]);
-                });
-                
-                await Promise.all(notificationPromises);
-                console.log(`[Product] Đã gửi thông báo duyệt sản phẩm đến ${recipients.length} người (Admin/QLV).`);
+
+                        const pushPromises = [];
+
+                        if (recipient.fcmToken) {
+                            pushPromises.push(safeNotify(recipient.fcmToken, {
+                                title,
+                                body,
+                                data: { productId: savedProduct._id.toString(), screen: 'ProductApproval' }
+                            }));
+                        }
+
+                        pushPromises.push(safeNotifyV2(recipient._id, {
+                            title,
+                            body,
+                            data: { productId: savedProduct._id.toString(), screen: 'ProductApproval' }
+                        }));
+
+                        return Promise.all([dbNotification, ...pushPromises]);
+                    });
+
+                    await Promise.all(notificationPromises);
+                    console.log(`[Product] Đã gửi thông báo duyệt sản phẩm đến ${recipients.length} người (Admin/QLV).`);
+                }
+            } catch (notificationError) {
+                console.error("[Product] Lỗi khi gửi thông báo cho admin/QLV:", notificationError);
             }
-        } catch (notificationError) {
-            console.error("[Product] Lỗi khi gửi thông báo cho admin/QLV:", notificationError);
+        })();
+
+        res.status(201).json(savedProduct);
+    } catch (err) {
+        console.error('❌ Lỗi khi thêm sản phẩm:', err);
+        if (err.name === 'ValidationError') {
+            return res.status(400).json({ message: err.message });
         }
-    })();
-
-    res.status(201).json(savedProduct);
-
-  } catch (err) {
-    console.error('❌ Lỗi khi thêm sản phẩm:', err);
-    if (err.name === 'ValidationError') {
-        return res.status(400).json({ message: err.message });
+        res.status(500).json({ message: 'Lỗi server khi thêm sản phẩm' });
     }
-    res.status(500).json({ message: 'Lỗi server khi thêm sản phẩm' });
-  }
 };
 
 exports.updateProduct = async (req, res) => {
-  try {
-    const product = await Product.findById(req.params.id);
-    if (!product) {
-      return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+    try {
+        const product = await Product.findById(req.params.id);
+        if (!product) {
+            return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+        }
+
+        if (req.user.role !== 'admin' && product.seller.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Bạn không có quyền sửa sản phẩm này.' });
+        }
+
+        const oldValues = {
+            name: product.name,
+            description: product.description,
+            category: product.category.toString(),
+            images: JSON.stringify(product.images.sort()),
+        };
+
+        const {
+            name, price, stock, category, description, images,
+            saleTimeFrames, barcode, weight,
+            variantGroups, variantTable, requiresConsultation, isOutOfStock
+        } = req.body;
+
+        product.name = name;
+        product.description = description;
+        product.images = images;
+        product.saleTimeFrames = saleTimeFrames;
+        product.barcode = barcode;
+        product.weight = weight;
+        product.category = category;
+        product.variantGroups = variantGroups;
+        product.variantTable = variantTable;
+        product.requiresConsultation = requiresConsultation;
+        product.isOutOfStock = isOutOfStock || false;
+
+        if (requiresConsultation || (variantTable && variantTable.length > 0)) {
+            product.price = undefined;
+            product.stock = undefined;
+        } else {
+            product.price = price;
+            product.stock = stock;
+        }
+
+        if (req.user.role === 'seller') {
+            const hasSignificantChange =
+                product.name !== oldValues.name ||
+                product.description !== oldValues.description ||
+                product.category.toString() !== oldValues.category ||
+                JSON.stringify(product.images.sort()) !== oldValues.images;
+
+            if (hasSignificantChange) {
+                product.approvalStatus = 'pending_approval';
+                product.rejectionReason = '';
+                console.log(`[Product Update] Seller ${req.user._id} đã thay đổi thông tin quan trọng. Chuyển về chờ duyệt.`);
+
+                (async () => {
+                    try {
+                        const seller = await User.findById(req.user._id).select('name');
+                        const admins = await User.find({ role: 'admin' });
+                        const regionManager = await User.findOne({ role: 'region_manager', region: product.region });
+
+                        let recipients = [...admins];
+                        if (regionManager && !recipients.find(r => r._id.equals(regionManager._id))) {
+                            recipients.push(regionManager);
+                        }
+
+                        if (recipients.length > 0) {
+                            const title = "Sản phẩm cần duyệt lại";
+                            const body = `${seller.name} đã sửa đổi SP "${product.name}" và cần duyệt lại.`;
+
+                            const promises = recipients.map(r => {
+                                const dbNotification = Notification.create({
+                                    user: r._id,
+                                    title,
+                                    message: body,
+                                    type: 'product',
+                                    data: { productId: product._id.toString(), screen: 'ProductApproval' }
+                                });
+
+                                const pushPromises = [];
+
+                                if (r.fcmToken) {
+                                    pushPromises.push(safeNotify(r.fcmToken, {
+                                        title,
+                                        body,
+                                        data: { productId: product._id.toString(), screen: 'ProductApproval' }
+                                    }));
+                                }
+
+                                pushPromises.push(safeNotifyV2(r._id, {
+                                    title,
+                                    body,
+                                    data: { productId: product._id.toString(), screen: 'ProductApproval' }
+                                }));
+
+                                return Promise.all([dbNotification, ...pushPromises]);
+                            });
+
+                            await Promise.all(promises);
+                            console.log(`[Product Update] Đã gửi thông báo duyệt lại sản phẩm đến ${recipients.length} người.`);
+                        }
+                    } catch (e) {
+                        console.error("[Product Update] Lỗi gửi thông báo duyệt lại:", e);
+                    }
+                })();
+            } else {
+                console.log(`[Product Update] Seller ${req.user._id} chỉ thay đổi thông tin không quan trọng. Không cần duyệt lại.`);
+            }
+        }
+
+        const updatedProduct = await product.save();
+        res.json(updatedProduct);
+    } catch (err) {
+        console.error('❌ Lỗi khi cập nhật sản phẩm:', err);
+        if (err.name === 'ValidationError') {
+            return res.status(400).json({ message: err.message });
+        }
+        res.status(500).json({ message: 'Lỗi server khi cập nhật sản phẩm' });
     }
-
-    if (req.user.role !== 'admin' && product.seller.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Bạn không có quyền sửa sản phẩm này.' });
-    }
-
-    // ĐÃ SỬA: Chỉ lưu lại các giá trị Tên, Mô tả, Danh mục, Ảnh. Không lưu Thời gian bán nữa.
-    const oldValues = {
-      name: product.name,
-      description: product.description,
-      category: product.category.toString(),
-      images: JSON.stringify(product.images.sort()),
-    };
-
-    const { 
-        name, price, stock, category, description, images, 
-        saleTimeFrames, barcode, weight, 
-        variantGroups, variantTable, requiresConsultation, isOutOfStock
-    } = req.body;
-
-    product.name = name;
-    product.description = description;
-    product.images = images;
-    product.saleTimeFrames = saleTimeFrames; // Cập nhật thoải mái
-    product.barcode = barcode;
-    product.weight = weight;
-    product.category = category;
-    product.variantGroups = variantGroups;
-    product.variantTable = variantTable; // Cập nhật kho thoải mái
-    product.requiresConsultation = requiresConsultation;
-    product.isOutOfStock = isOutOfStock || false; // Cập nhật nút hết hàng thoải mái
-    
-    if (requiresConsultation || (variantTable && variantTable.length > 0)) {
-      product.price = undefined;
-      product.stock = undefined;
-    } else {
-      product.price = price;
-      product.stock = stock;
-    }
-
-    if (req.user.role === 'seller') {
-      // ĐÃ SỬA: Bỏ điều kiện JSON.stringify(product.saleTimeFrames) !== oldValues.saleTimeFrames
-      const hasSignificantChange = 
-        product.name !== oldValues.name ||
-        product.description !== oldValues.description ||
-        product.category.toString() !== oldValues.category ||
-        JSON.stringify(product.images.sort()) !== oldValues.images;
-
-      if (hasSignificantChange) {
-        product.approvalStatus = 'pending_approval';
-        product.rejectionReason = '';
-        console.log(`[Product Update] Seller ${req.user._id} đã thay đổi thông tin quan trọng. Chuyển về chờ duyệt.`);
-        
-        // GIỮ NGUYÊN 100% LOGIC THÔNG BÁO CỦA BẠN
-        (async () => {
-          try {
-              // Logic gửi thông báo tương tự như hàm createProduct
-              const seller = await User.findById(req.user._id).select('name');
-              const admins = await User.find({ role: 'admin' });
-              const regionManager = await User.findOne({ role: 'region_manager', region: product.region });
-              
-              let recipients = [...admins];
-              if (regionManager && !recipients.find(r => r._id.equals(regionManager._id))) {
-                  recipients.push(regionManager);
-              }
-
-              if (recipients.length > 0) {
-                  const title = "Sản phẩm cần duyệt lại";
-                  const body = `${seller.name} đã sửa đổi SP "${product.name}" và cần duyệt lại.`;
-                  
-                  const promises = recipients.map(r => Promise.all([
-                      Notification.create({
-                          user: r._id, title, message: body, type: 'product',
-                          data: { productId: product._id.toString(), screen: 'ProductApproval' }
-                      }),
-                      r.fcmToken ? safeNotify(r.fcmToken, { title, body, data: { productId: product._id.toString(), screen: 'ProductApproval' } }) : Promise.resolve()
-                  ]));
-                  
-                  await Promise.all(promises);
-                  console.log(`[Product Update] Đã gửi thông báo duyệt lại sản phẩm đến ${recipients.length} người.`);
-              }
-          } catch (e) { console.error("[Product Update] Lỗi gửi thông báo duyệt lại:", e); }
-        })();
-        // --- KẾT THÚC THÊM LOGIC ---
-
-      } else {
-        console.log(`[Product Update] Seller ${req.user._id} chỉ thay đổi thông tin không quan trọng (Giá/Kho/Thời gian). Không cần duyệt lại.`);
-      }
-    }
-
-    const updatedProduct = await product.save();
-    res.json(updatedProduct);
-
-  } catch (err) {
-    console.error('❌ Lỗi khi cập nhật sản phẩm:', err);
-    if (err.name === 'ValidationError') {
-      return res.status(400).json({ message: err.message });
-    }
-    res.status(500).json({ message: 'Lỗi server khi cập nhật sản phẩm' });
-  }
 };
 
 exports.deleteProduct = async (req, res) => {
@@ -339,10 +340,11 @@ exports.deleteProduct = async (req, res) => {
         await Product.findByIdAndDelete(req.params.id);
         res.json({ message: 'Đã xoá sản phẩm thành công' });
     } catch (err) {
-    console.error('❌ Lỗi khi xoá sản phẩm:', err);
-    res.status(500).json({ message: 'Lỗi server khi xoá sản phẩm' });
-  }
+        console.error('❌ Lỗi khi xoá sản phẩm:', err);
+        res.status(500).json({ message: 'Lỗi server khi xoá sản phẩm' });
+    }
 };
+
 exports.getProductRecommendations = async (req, res) => {
     try {
         if (!req.user || !req.user.region) {
@@ -353,24 +355,23 @@ exports.getProductRecommendations = async (req, res) => {
         const limit = parseInt(req.query.limit, 10) || 8;
 
         const currentProduct = await Product.findById(productId).lean();
-        if (!currentProduct) { 
-            return res.status(404).json({ message: "Sản phẩm không tồn tại." }); 
+        if (!currentProduct) {
+            return res.status(404).json({ message: "Sản phẩm không tồn tại." });
         }
 
-        // --- Logic cho "Thường mua cùng" ---
-        const ordersWithProduct = await Order.find({ 
-            'items.productId': productId, 
+        const ordersWithProduct = await Order.find({
+            'items.productId': productId,
             status: 'Đã giao',
-            region: regionId 
+            region: regionId
         }, 'items.productId').limit(200).lean();
-        
+
         let companionProductIds = {};
         ordersWithProduct.forEach(order => {
             const productIdsInOrder = order.items.map(item => item.productId.toString());
             if (productIdsInOrder.length > 1) {
                 productIdsInOrder.forEach(id => {
-                    if (id !== productId) { 
-                        companionProductIds[id] = (companionProductIds[id] || 0) + 1; 
+                    if (id !== productId) {
+                        companionProductIds[id] = (companionProductIds[id] || 0) + 1;
                     }
                 });
             }
@@ -379,24 +380,23 @@ exports.getProductRecommendations = async (req, res) => {
         const sortedIds = Object.entries(companionProductIds)
             .sort(([, a], [, b]) => b - a)
             .map(([id]) => new mongoose.Types.ObjectId(id));
-        
+
         let recommendations = [];
         if (sortedIds.length > 0) {
-            recommendations = await Product.find({ 
-                _id: { $in: sortedIds }, 
+            recommendations = await Product.find({
+                _id: { $in: sortedIds },
                 approvalStatus: 'approved',
-                region: regionId 
+                region: regionId
             }).lean();
         }
 
-        // --- Logic cho "Sản phẩm liên quan" để lấp đầy ---
         if (recommendations.length < limit && currentProduct.category) {
             const existingIds = [productId, ...recommendations.map(p => p._id.toString())];
             const additionalProducts = await Product.find({
                 category: currentProduct.category,
                 _id: { $nin: existingIds.map(id => new mongoose.Types.ObjectId(id)) },
                 approvalStatus: 'approved',
-                region: regionId 
+                region: regionId
             }).limit(limit - recommendations.length).lean();
             recommendations.push(...additionalProducts);
         }
@@ -404,7 +404,7 @@ exports.getProductRecommendations = async (req, res) => {
         const finalRecommendations = recommendations
             .filter((p, index, self) => index === self.findIndex((t) => t._id.toString() === p._id.toString()))
             .filter(p => p.totalStock > 0 || p.requiresConsultation === true);
-            
+
         res.json(finalRecommendations);
     } catch (error) {
         console.error('❌ Lỗi khi lấy sản phẩm gợi ý:', error);
