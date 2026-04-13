@@ -7,7 +7,6 @@
   },
   "dependencies": {
     "@react-native-community/datetimepicker": "^6.7.0",
-    "@sendgrid/mail": "^8.1.5",
     "axios": "^1.8.4",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.2",
@@ -26,7 +25,8 @@
     "mongoose": "^7.0.4",
     "mongoose-paginate-v2": "^1.8.0",
     "node-cron": "^4.2.1",
-    "nodemailer": "^7.0.5",
-    "twilio": "^5.2.2"
+    "nodemailer": "^7.0.13",
+    "twilio": "^5.2.2",
+    "web-push": "^3.6.7"
   }
 }
