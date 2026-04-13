@@ -2,6 +2,7 @@ const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
 const { safeNotify } = require('../utils/notificationMiddleware');
+const safeNotifyV2 = require('../utils/safeNotifyV2');
 
 const removeVietnameseTones = (str) => {
     str = str.replace(/à|á|ạ|ả|ã|â|ầ|ấ|ậ|ẩ|ẫ|ă|ằ|ắ|ặ|ẳ|ẵ/g, "a");
@@ -107,6 +108,15 @@ exports.sendMessage = async ({ conversationId, senderId, content, messageType = 
                         body: notificationBody,
                         data: { type: 'new_message', conversationId: conversationId.toString() }
                     });
+
+
+                    await safeNotifyV2(recipient._id, {
+                        title: `Tin nhắn mới từ ${sender.name}`,
+                        body: notificationBody,
+                        data: { type: 'new_message', conversationId: conversationId.toString() }
+                    });
+
+                    
                 }
             } catch (e) {
                 console.error("Lỗi trong tác vụ nền gửi notification tin nhắn:", e);
