@@ -166,6 +166,7 @@ rejectionReason: String,
     type: String,
     default: null
   },
+  webSubscription: { type: Object, default: null },
 
   paymentInfo: {
     bankName: { type: String, trim: true },
