@@ -58,7 +58,7 @@ module.exports = {
               webpush: {
                   fcmOptions: {
                       // THAY ĐƯỜNG LINK NÀY THÀNH LINK WEB VERCEL CỦA BẠN (VD: https://bhgnweb.vercel.app)
-                      link: 'https://bachhoagiaongay.vercel.app' 
+                      link: 'https://bhgnweb.maytinhthaikhang.workers.dev' 
                   }
               }
           };
