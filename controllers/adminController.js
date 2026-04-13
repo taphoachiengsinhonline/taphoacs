@@ -1,4 +1,4 @@
-// File: backend/controllers/adminController.js (PHIÊN BẢN HOÀN CHỈNH, TÁCH RIÊNG LOGIC)
+// File: backend/controllers/adminController.js (PHIÊN BẢN HOÀN CHỈNH, ĐÃ THÊM safeNotifyV2)
 
 // Dependencies
 const User = require('../models/User');
@@ -27,9 +27,7 @@ const safeNotifyV2 = require('../utils/safeNotifyV2');
  */
 exports.createShipper = async (req, res) => {
     try {
-       // Lấy dữ liệu từ body
         const { email, password, name, phone, address, shipperProfile } = req.body;
-        // Cố gắng lấy regionId từ body
         const regionIdFromBody = req.body.regionId;
         
         const { vehicleType, licensePlate, shippingFeeShareRate, profitShareRate } = shipperProfile || {};
@@ -43,16 +41,14 @@ exports.createShipper = async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'Email đã tồn tại' });
         }
 
-        // --- BẮT ĐẦU SỬA LOGIC GÁN VÙNG VÀ QUẢN LÝ ---
         let regionToAssign = null;
         let managerToAssign = null;
 
         if (req.user.role === 'region_manager') {
             regionToAssign = req.user.region;
             managerToAssign = req.user._id;
-        } else if (req.user.role === 'admin') {  // Sửa: Sử dụng role === 'admin' thay vì isAdmin để nhất quán và tránh bug flag
-            // Dùng regionId từ body
-            if (!regionIdFromBody) { 
+        } else if (req.user.role === 'admin') {
+            if (!regionIdFromBody) {
                 return res.status(400).json({ status: 'error', message: 'Admin cần chọn một khu vực để tạo Shipper.' });
             }
             regionToAssign = regionIdFromBody;
@@ -61,7 +57,6 @@ exports.createShipper = async (req, res) => {
         if (!regionToAssign) {
             return res.status(400).json({ status: 'error', message: 'Không thể xác định khu vực để tạo Shipper.' });
         }
-        // --- KẾT THÚC SỬA LOGIC GÁN VÙNG VÀ QUẢN LÝ ---
 
         const shipper = new User({
             email, password, name, address, phone,
@@ -85,21 +80,17 @@ exports.createShipper = async (req, res) => {
  */
 exports.getAllShippers = async (req, res) => {
     try {
-      let query = { role: 'shipper' };
+        let query = { role: 'shipper' };
 
-        // --- BẮT ĐẦU SỬA LỖI KIỂU DỮ LIỆU ---
         if (req.user.role === 'region_manager') {
             if (!req.user.region) {
-                // Trường hợp QLV chưa được gán vùng, trả về mảng rỗng
                 return res.json({ status: 'success', onlineCount: 0, shippers: [] });
             }
-            // Ép kiểu các giá trị string từ token thành ObjectId để query chính xác
             query.$or = [
                 { managedBy: new mongoose.Types.ObjectId(req.user._id) },
                 { region: new mongoose.Types.ObjectId(req.user.region) }
             ];
         }
-        // --- KẾT THÚC SỬA LỖI KIỂU DỮ LIỆU ---
         
         const shippers = await User.find(query)
             .populate('managedBy', 'name')
@@ -122,11 +113,10 @@ exports.getAllShippers = async (req, res) => {
     }
 };
 
-
 exports.updateShipperStatus = async (req, res) => {
     try {
         const { shipperId } = req.params;
-        const { status } = req.body; // status sẽ là 'locked' hoặc 'approved'
+        const { status } = req.body;
 
         if (!['locked', 'approved'].includes(status)) {
             return res.status(400).json({ message: 'Trạng thái không hợp lệ.' });
@@ -137,7 +127,6 @@ exports.updateShipperStatus = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy shipper.' });
         }
 
-        // Kiểm tra quyền cho QLV
         if (req.user.role === 'region_manager' && shipper.region?.toString() !== req.user.region.toString()) {
             return res.status(403).json({ message: 'Bạn không có quyền thay đổi trạng thái của shipper này.' });
         }
@@ -146,7 +135,6 @@ exports.updateShipperStatus = async (req, res) => {
         await shipper.save();
 
         res.status(200).json({ message: `Đã ${status === 'locked' ? 'khóa' : 'mở khóa'} tài khoản thành công.`, shipper });
-
     } catch (error) {
         res.status(500).json({ message: 'Lỗi server khi cập nhật trạng thái shipper.' });
     }
@@ -192,7 +180,6 @@ exports.updateShipper = async (req, res) => {
     }
 };
 
-
 exports.updateUserRegion = async (req, res) => {
     try {
         const { userId } = req.params;
@@ -208,8 +195,8 @@ exports.updateUserRegion = async (req, res) => {
         }
 
         const updatedUser = await User.findByIdAndUpdate(
-            userId, 
-            { $set: { region: regionId } }, 
+            userId,
+            { $set: { region: regionId } },
             { new: true }
         );
 
@@ -229,7 +216,7 @@ exports.updateUserRegion = async (req, res) => {
 exports.updateSellerStatus = async (req, res) => {
     try {
         const { sellerId } = req.params;
-        const { status } = req.body; // status sẽ là 'locked' hoặc 'approved'
+        const { status } = req.body;
 
         if (!['locked', 'approved'].includes(status)) {
             return res.status(400).json({ message: 'Trạng thái không hợp lệ.' });
@@ -240,7 +227,6 @@ exports.updateSellerStatus = async (req, res) => {
             return res.status(404).json({ message: 'Không tìm thấy seller.' });
         }
 
-        // Kiểm tra quyền cho QLV
         if (req.user.role === 'region_manager' && seller.region?.toString() !== req.user.region.toString()) {
             return res.status(403).json({ message: 'Bạn không có quyền thay đổi trạng thái của seller này.' });
         }
@@ -249,36 +235,30 @@ exports.updateSellerStatus = async (req, res) => {
         await seller.save();
 
         res.status(200).json({ message: `Đã ${status === 'locked' ? 'khóa' : 'mở khóa'} tài khoản thành công.`, seller });
-
     } catch (error) {
         res.status(500).json({ message: 'Lỗi server khi cập nhật trạng thái seller.' });
     }
 };
-
-
-
 
 /**
  * [Admin & QLV] Gửi thông báo kiểm tra đến shipper.
  */
 exports.sendTestNotificationToShipper = async (req, res) => {
     try {
-       
         const shipper = await User.findById(req.params.id);
         if (!shipper || !shipper.fcmToken) {
             return res.status(400).json({ message: 'Shipper không tồn tại hoặc không có FcmToken.' });
         }
         await safeNotify(shipper.fcmToken, {
-    title: 'Kiểm tra thông báo',
-    body: 'Admin đang kiểm tra hệ thống thông báo của bạn.',
-    data: { type: 'test_notification' }
-});
-// THÊM MỚI
-await safeNotifyV2(shipper._id, {
-    title: 'Kiểm tra thông báo',
-    body: 'Admin đang kiểm tra hệ thống thông báo của bạn.',
-    data: { type: 'test_notification' }
-});
+            title: 'Kiểm tra thông báo',
+            body: 'Admin đang kiểm tra hệ thống thông báo của bạn.',
+            data: { type: 'test_notification' }
+        });
+        await safeNotifyV2(shipper._id, {
+            title: 'Kiểm tra thông báo',
+            body: 'Admin đang kiểm tra hệ thống thông báo của bạn.',
+            data: { type: 'test_notification' }
+        });
         res.json({ status: 'success', message: 'Đã gửi thông báo kiểm tra' });
     } catch (error) {
         console.error('[sendTestNotificationToShipper] Lỗi:', error);
@@ -291,33 +271,31 @@ await safeNotifyV2(shipper._id, {
  */
 exports.sendFakeOrderToShipper = async (req, res) => {
     try {
-        
         const shipper = await User.findById(req.params.id);
         if (!shipper || !shipper.fcmToken) {
             return res.status(400).json({ message: 'Shipper không tồn tại hoặc không có FcmToken.' });
         }
         const fakeOrderId = 'FAKE-' + Math.floor(Math.random() * 10000);
         await safeNotify(shipper.fcmToken, {
-    title: `Đơn hàng mới #${fakeOrderId}`,
-    body: `Bạn có đơn hàng ảo để kiểm tra hệ thống.`,
-    data: {
-        orderId: fakeOrderId,
-        notificationType: 'newOrderModal',
-        distance: (Math.random() * 5).toFixed(2),
-        shipperView: "true"
-    }
-});
-// THÊM MỚI
-await safeNotifyV2(shipper._id, {
-    title: `Đơn hàng mới #${fakeOrderId}`,
-    body: `Bạn có đơn hàng ảo để kiểm tra hệ thống.`,
-    data: {
-        orderId: fakeOrderId,
-        notificationType: 'newOrderModal',
-        distance: (Math.random() * 5).toFixed(2),
-        shipperView: "true"
-    }
-});
+            title: `Đơn hàng mới #${fakeOrderId}`,
+            body: `Bạn có đơn hàng ảo để kiểm tra hệ thống.`,
+            data: {
+                orderId: fakeOrderId,
+                notificationType: 'newOrderModal',
+                distance: (Math.random() * 5).toFixed(2),
+                shipperView: "true"
+            }
+        });
+        await safeNotifyV2(shipper._id, {
+            title: `Đơn hàng mới #${fakeOrderId}`,
+            body: `Bạn có đơn hàng ảo để kiểm tra hệ thống.`,
+            data: {
+                orderId: fakeOrderId,
+                notificationType: 'newOrderModal',
+                distance: (Math.random() * 5).toFixed(2),
+                shipperView: "true"
+            }
+        });
         res.json({ status: 'success', message: 'Đã gửi thông báo đơn hàng ảo' });
     } catch (error) {
         console.error('[sendFakeOrderToShipper] Lỗi:', error);
@@ -335,7 +313,6 @@ await safeNotifyV2(shipper._id, {
  */
 exports.countPendingProducts = async (req, res) => {
     try {
-       
         let query = { approvalStatus: 'pending_approval' };
         if (req.user.role === 'region_manager' && req.user.region) {
             const sellersInRegion = await User.find({ role: 'seller', region: req.user.region }).select('_id');
@@ -356,7 +333,6 @@ exports.countPendingProducts = async (req, res) => {
  */
 exports.getPendingProducts = async (req, res) => {
     try {
-        
         let query = { approvalStatus: 'pending_approval' };
         if (req.user.role === 'region_manager' && req.user.region) {
             const sellersInRegion = await User.find({ role: 'seller', region: req.user.region }).select('_id');
@@ -377,7 +353,6 @@ exports.getPendingProducts = async (req, res) => {
  */
 exports.approveProduct = async (req, res) => {
     try {
-        
         const product = await Product.findById(req.params.productId).populate('seller', 'region');
         if (!product) {
             return res.status(404).json({ message: 'Sản phẩm không tồn tại' });
@@ -401,7 +376,6 @@ exports.approveProduct = async (req, res) => {
  */
 exports.rejectProduct = async (req, res) => {
     try {
-        
         const { reason } = req.body;
         if (!reason) {
             return res.status(400).json({ message: 'Cần có lý do từ chối' });
@@ -433,21 +407,15 @@ exports.rejectProduct = async (req, res) => {
  */
 exports.getAllSellers = async (req, res) => {
     try {
-        
-        // Lấy tất cả seller, không lọc trạng thái ở đây để QLV có thể thấy cả seller bị từ chối
-        let query = { role: 'seller' }; 
+        let query = { role: 'seller' };
 
-        // --- BẮT ĐẦU SỬA LOGIC QUAN TRỌNG ---
         if (req.user.role === 'region_manager' && req.user.region) {
-            // Ép kiểu ObjectId để đảm bảo truy vấn chính xác
             query.region = new mongoose.Types.ObjectId(req.user.region);
         }
-        // --- KẾT THÚC SỬA LOGIC ---
-       const sellers = await User.find(query)
+        const sellers = await User.find(query)
             .populate('managedBy', 'name')
             .populate('region', 'name')
-            // Lấy thêm approvalStatus và rejectionReason để hiển thị trên app
-            .select('name email phone address commissionRate managedBy region approvalStatus shopProfile'); 
+            .select('name email phone address commissionRate managedBy region approvalStatus shopProfile');
         res.status(200).json(sellers);
     } catch (error) {
         console.error('[getAllSellers] Lỗi:', error);
@@ -461,7 +429,6 @@ exports.getAllSellers = async (req, res) => {
  */
 exports.getPendingSellers = async (req, res) => {
     try {
-        
         let query = { role: 'seller', approvalStatus: 'pending' };
         if (req.user.role === 'region_manager' && req.user.region) {
             query.region = req.user.region;
@@ -480,7 +447,6 @@ exports.getPendingSellers = async (req, res) => {
  */
 exports.approveSeller = async (req, res) => {
     try {
-        
         const { sellerId } = req.params;
         const seller = await User.findById(sellerId);
         if (!seller || seller.role !== 'seller' || seller.approvalStatus !== 'pending') {
@@ -504,7 +470,6 @@ exports.approveSeller = async (req, res) => {
  */
 exports.rejectSeller = async (req, res) => {
     try {
-        
         const { sellerId } = req.params;
         const { reason } = req.body;
         if (!reason) return res.status(400).json({ message: 'Vui lòng cung cấp lý do từ chối.' });
@@ -530,7 +495,6 @@ exports.rejectSeller = async (req, res) => {
  */
 exports.updateSellerCommission = async (req, res) => {
     try {
-        
         const { commissionRate } = req.body;
         if (commissionRate === undefined || commissionRate < 0 || commissionRate > 100) {
             return res.status(400).json({ message: 'Chiết khấu không hợp lệ' });
@@ -555,7 +519,6 @@ exports.updateSellerCommission = async (req, res) => {
  */
 exports.getRegionManagers = async (req, res) => {
     try {
-       
         const managers = await User.find({ role: 'region_manager' })
             .populate('region', 'name')
             .select('name email phone region regionManagerProfile');
@@ -571,7 +534,6 @@ exports.getRegionManagers = async (req, res) => {
  */
 exports.createRegionManager = async (req, res) => {
     try {
-        
         const { name, email, password, phone, regionId, profitShareRate } = req.body;
         if (!name || !email || !password || !phone || !regionId || profitShareRate == null) {
             return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin.' });
@@ -612,7 +574,6 @@ exports.createRegionManager = async (req, res) => {
  */
 exports.updateRegionManager = async (req, res) => {
     try {
-        
         const { managerId } = req.params;
         const { name, phone, regionId, profitShareRate } = req.body;
         const updateData = {};
@@ -638,7 +599,6 @@ exports.updateRegionManager = async (req, res) => {
  */
 exports.assignManagerToUser = async (req, res) => {
     try {
-        
         const { userId } = req.params;
         const { managerId } = req.body;
 
@@ -677,26 +637,22 @@ exports.assignManagerToUser = async (req, res) => {
 exports.getRegionManagerFinancials = async (req, res) => {
     try {
         const regionManagers = await User.find({ role: 'region_manager' })
-            .populate('region', 'name') // <<< QUAN TRỌNG
+            .populate('region', 'name')
             .select('name email regionManagerProfile region');
         if (regionManagers.length === 0) return res.status(200).json([]);
 
         const managerIds = regionManagers.map(m => m._id);
-
         const thisMonthStart = moment().tz('Asia/Ho_Chi_Minh').startOf('month').toDate();
         
         const [allTimeStats, thisMonthStats, paymentStats] = await Promise.all([
-            // Tính toán tổng lợi nhuận từ trước đến nay
             Order.aggregate([
                 { $match: { status: 'Đã giao', profitRecipient: { $in: managerIds } } },
                 { $group: { _id: '$profitRecipient', totalProfitShare: { $sum: '$recipientProfit' } } }
             ]),
-            // Tính toán lợi nhuận chỉ trong tháng này
             Order.aggregate([
                 { $match: { status: 'Đã giao', profitRecipient: { $in: managerIds }, 'timestamps.deliveredAt': { $gte: thisMonthStart } } },
                 { $group: { _id: '$profitRecipient', thisMonthProfit: { $sum: '$recipientProfit' } } }
             ]),
-            // Tính tổng số tiền đã thanh toán
             RegionManagerPayment.aggregate([
                 { $match: { regionManager: { $in: managerIds } } },
                 { $group: { _id: '$regionManager', totalPaid: { $sum: '$amount' } } }
@@ -711,9 +667,7 @@ exports.getRegionManagerFinancials = async (req, res) => {
             const managerIdStr = manager._id.toString();
             const totalProfit = allTimeMap.get(managerIdStr) || 0;
             const totalPaid = paymentMap.get(managerIdStr) || 0;
-            
             const managerObject = manager.toObject();
-
             return {
                 ...managerObject,
                 thisMonthProfit: thisMonthMap.get(managerIdStr) || 0,
@@ -732,30 +686,27 @@ exports.getRegionManagerFinancials = async (req, res) => {
 
 /**
  * [Admin Only] Lấy chi tiết tài chính theo tháng của một QLV
- * === HÀM MỚI ===
  */
 exports.getRegionManagerMonthlyDetails = async (req, res) => {
     try {
         const { managerId } = req.params;
         const managerObjectId = new mongoose.Types.ObjectId(managerId);
 
-        // Lấy tất cả các tháng mà QLV có lợi nhuận
         const monthlyProfits = await Order.aggregate([
             { $match: { status: 'Đã giao', profitRecipient: managerObjectId } },
-            { 
-                $group: { 
-                    _id: { 
+            {
+                $group: {
+                    _id: {
                         year: { $year: { date: '$timestamps.deliveredAt', timezone: 'Asia/Ho_Chi_Minh' } },
                         month: { $month: { date: '$timestamps.deliveredAt', timezone: 'Asia/Ho_Chi_Minh' } }
                     },
                     monthlyProfit: { $sum: '$recipientProfit' },
                     orderCount: { $sum: 1 }
-                } 
+                }
             },
             { $sort: { '_id.year': -1, '_id.month': -1 } }
         ]);
         
-        // Lấy tất cả các khoản thanh toán cho QLV này
         const payments = await RegionManagerPayment.find({ regionManager: managerObjectId }).lean();
         const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
 
@@ -768,7 +719,6 @@ exports.getRegionManagerMonthlyDetails = async (req, res) => {
 
 /**
  * [Admin Only] Thanh toán lợi nhuận cho Quản lý Vùng
- * === HÀM MỚI ===
  */
 exports.payToRegionManager = async (req, res) => {
     try {
@@ -780,7 +730,6 @@ exports.payToRegionManager = async (req, res) => {
             return res.status(400).json({ message: 'Số tiền thanh toán không hợp lệ.' });
         }
         
-        // Dùng .select() để lấy cả fcmToken
         const manager = await User.findById(managerId).select('name fcmToken');
         if (!manager || manager.role !== 'region_manager') {
             return res.status(404).json({ message: 'Không tìm thấy Quản lý Vùng.' });
@@ -794,61 +743,49 @@ exports.payToRegionManager = async (req, res) => {
         });
         await newPayment.save();
 
-        // --- BẮT ĐẦU LOGIC GỬI THÔNG BÁO CHO QLV ---
         (async () => {
             try {
                 const title = "Bạn vừa nhận được thanh toán";
                 const message = `Admin vừa thanh toán cho bạn số tiền lợi nhuận là ${amount.toLocaleString('vi-VN')}đ.`;
 
-                // 1. Lưu thông báo vào database
                 await Notification.create({
                     user: manager._id,
                     title: title,
                     message: message,
                     type: 'finance',
                     data: {
-                        screen: 'FinancialOverview', // Điều hướng QLV đến màn hình tổng quan tài chính của họ
+                        screen: 'FinancialOverview',
                         paymentId: newPayment._id.toString()
                     }
                 });
 
-                // 2. Gửi push notification nếu QLV có fcmToken
-               if (manager.fcmToken) {
-    await safeNotify(manager.fcmToken, {
-        title: title,
-        body: message,
-        data: {
-            screen: 'FinancialOverview'
-        }
-    });
-}
-// THÊM MỚI
-await safeNotifyV2(manager._id, {
-    title: title,
-    body: message,
-    data: {
-        screen: 'FinancialOverview'
-    }
-});
-                 console.log(`[Payment] Đã gửi thông báo thanh toán đến QLV ${manager.name}`);
+                if (manager.fcmToken) {
+                    await safeNotify(manager.fcmToken, {
+                        title: title,
+                        body: message,
+                        data: { screen: 'FinancialOverview' }
+                    });
+                }
+                await safeNotifyV2(manager._id, {
+                    title: title,
+                    body: message,
+                    data: { screen: 'FinancialOverview' }
+                });
+                console.log(`[Payment] Đã gửi thông báo thanh toán đến QLV ${manager.name}`);
             } catch (notificationError) {
                 console.error("[Payment] Lỗi khi gửi thông báo cho QLV:", notificationError);
             }
         })();
-        // --- KẾT THÚC LOGIC GỬI THÔNG BÁO ---
 
         res.status(201).json({ message: 'Đã ghi nhận thanh toán thành công!', payment: newPayment });
-
     } catch (error) {
         console.error('[payToRegionManager] Lỗi:', error);
         res.status(500).json({ message: 'Lỗi server.' });
     }
 };
 
-
 exports.getFinancialOverview = async (req, res) => {
     try {
-        
         let matchQuery = { status: 'Đã giao' };
         if (req.user.role === 'region_manager' && req.user.region) {
             matchQuery.region = req.user.region;
@@ -995,7 +932,6 @@ exports.getFinancialOverview = async (req, res) => {
  */
 exports.getAdminDashboardCounts = async (req, res) => {
     try {
-        
         const sellerQuery = { role: 'seller', approvalStatus: 'pending' };
         const productQuery = { approvalStatus: 'pending_approval' };
         if (req.user.role === 'region_manager' && req.user.region) {
@@ -1033,7 +969,6 @@ exports.getAdminDashboardCounts = async (req, res) => {
  */
 exports.getShipperDebtOverview = async (req, res) => {
     try {
-        
         let query = { role: 'shipper' };
         if (req.user.role === 'region_manager' && req.user.region) {
             query.region = req.user.region;
@@ -1089,7 +1024,6 @@ exports.getShipperDebtOverview = async (req, res) => {
  */
 exports.countPendingRemittanceRequests = async (req, res) => {
     try {
-        
         const count = await RemittanceRequest.countDocuments({ status: 'pending' });
         res.status(200).json({ count });
     } catch (error) {
@@ -1102,7 +1036,6 @@ exports.countPendingRemittanceRequests = async (req, res) => {
  * [Admin Only] Xử lý yêu cầu nộp tiền của shipper.
  */
 exports.processRemittanceRequest = async (req, res) => {
-    
     const { requestId } = req.params;
     const { action, adminNotes } = req.body;
     const adminId = req.user._id;
@@ -1198,24 +1131,17 @@ exports.processRemittanceRequest = async (req, res) => {
                     });
 
                     if (shipper.fcmToken) {
-    await safeNotify(shipper.fcmToken, {
-        title: notificationTitle,
-        body: notificationBody,
-        data: {
-            type: 'remittance_processed',
-            screen: 'Report'
-        }
-    });
-}
-// THÊM MỚI
-await safeNotifyV2(shipper._id, {
-    title: notificationTitle,
-    body: notificationBody,
-    data: {
-        type: 'remittance_processed',
-        screen: 'Report'
-    }
-});
+                        await safeNotify(shipper.fcmToken, {
+                            title: notificationTitle,
+                            body: notificationBody,
+                            data: { type: 'remittance_processed', screen: 'Report' }
+                        });
+                    }
+                    await safeNotifyV2(shipper._id, {
+                        title: notificationTitle,
+                        body: notificationBody,
+                        data: { type: 'remittance_processed', screen: 'Report' }
+                    });
                 }
             } catch (e) {
                 console.error('[processRemittanceRequest] Lỗi khi gửi thông báo:', e);
@@ -1237,7 +1163,6 @@ await safeNotifyV2(shipper._id, {
  */
 exports.payShipperSalary = async (req, res) => {
     try {
-        
         const { shipperId } = req.params;
         const { amount, notes } = req.body;
         const adminId = req.user._id;
@@ -1273,18 +1198,17 @@ exports.payShipperSalary = async (req, res) => {
                     });
 
                     if (shipper.fcmToken) {
-    await safeNotify(shipper.fcmToken, {
-        title,
-        body,
-        data: { type: 'salary_received', screen: 'Report' }
-    });
-}
-// THÊM MỚI
-await safeNotifyV2(shipperId, { // lưu ý: dùng shipperId
-    title,
-    body,
-    data: { type: 'salary_received', screen: 'Report' }
-});
+                        await safeNotify(shipper.fcmToken, {
+                            title,
+                            body,
+                            data: { type: 'salary_received', screen: 'Report' }
+                        });
+                    }
+                    await safeNotifyV2(shipperId, {
+                        title,
+                        body,
+                        data: { type: 'salary_received', screen: 'Report' }
+                    });
                 }
             } catch (notificationError) {
                 console.error('[payShipperSalary] Lỗi khi gửi thông báo:', notificationError);
@@ -1303,7 +1227,6 @@ await safeNotifyV2(shipperId, { // lưu ý: dùng shipperId
  */
 exports.getShipperFinancialDetails = async (req, res) => {
     try {
-        
         const { shipperId } = req.params;
         const { month, year } = req.query;
 
@@ -1379,7 +1302,6 @@ exports.getShipperFinancialDetails = async (req, res) => {
  */
 exports.getShipperFinancialOverview = async (req, res) => {
     try {
-       
         let query = { role: 'shipper' };
         if (req.user.role === 'region_manager' && req.user.region) {
             query.region = req.user.region;
@@ -1436,7 +1358,6 @@ exports.getShipperFinancialOverview = async (req, res) => {
  */
 exports.getSellerFinancialOverview = async (req, res) => {
     try {
-        
         let query = { role: 'seller', approvalStatus: 'approved' };
         if (req.user.role === 'region_manager' && req.user.region) {
             query.region = req.user.region;
@@ -1477,7 +1398,6 @@ exports.getSellerFinancialOverview = async (req, res) => {
  */
 exports.getSellerComprehensiveFinancials = async (req, res) => {
     try {
-        
         const { sellerId } = req.params;
         const sellerObjectId = new mongoose.Types.ObjectId(sellerId);
 
@@ -1543,7 +1463,6 @@ exports.getSellerComprehensiveFinancials = async (req, res) => {
  */
 exports.payToSeller = async (req, res) => {
     try {
-        
         const { sellerId } = req.params;
         const { amount, notes } = req.body;
 
@@ -1581,18 +1500,17 @@ exports.payToSeller = async (req, res) => {
                     });
 
                     if (seller.fcmToken) {
-    await safeNotify(seller.fcmToken, {
-        title,
-        body,
-        data: { type: 'payout_received', screen: 'Finance' }
-    });
-}
-// THÊM MỚI
-await safeNotifyV2(sellerId, {
-    title,
-    body,
-    data: { type: 'payout_received', screen: 'Finance' }
-});
+                        await safeNotify(seller.fcmToken, {
+                            title,
+                            body,
+                            data: { type: 'payout_received', screen: 'Finance' }
+                        });
+                    }
+                    await safeNotifyV2(sellerId, {
+                        title,
+                        body,
+                        data: { type: 'payout_received', screen: 'Finance' }
+                    });
                 }
             } catch (notificationError) {
                 console.error('[payToSeller] Lỗi khi gửi thông báo:', notificationError);
@@ -1611,7 +1529,6 @@ await safeNotifyV2(sellerId, {
  */
 exports.getAllPendingCounts = async (req, res) => {
     try {
-        
         const productQuery = { approvalStatus: 'pending_approval' };
         if (req.user.role === 'region_manager' && req.user.region) {
             const sellersInRegion = await User.find({ role: 'seller', region: req.user.region }).select('_id');
@@ -1733,18 +1650,17 @@ exports.remindShipperToPayDebt = async (req, res) => {
         const notificationBody = message || `Admin yêu cầu bạn nộp khoản công nợ COD còn lại là ${amount.toLocaleString('vi-VN')}đ. Vui lòng hoàn tất sớm.`;
 
         if (shipper.fcmToken) {
-    await safeNotify(shipper.fcmToken, {
-        title: notificationTitle,
-        body: notificationBody,
-        data: { type: 'finance_reminder', screen: 'Report' }
-    });
-}
-// THÊM MỚI
-await safeNotifyV2(shipperId, {
-    title: notificationTitle,
-    body: notificationBody,
-    data: { type: 'finance_reminder', screen: 'Report' }
-});
+            await safeNotify(shipper.fcmToken, {
+                title: notificationTitle,
+                body: notificationBody,
+                data: { type: 'finance_reminder', screen: 'Report' }
+            });
+        }
+        await safeNotifyV2(shipperId, {
+            title: notificationTitle,
+            body: notificationBody,
+            data: { type: 'finance_reminder', screen: 'Report' }
+        });
 
         await Notification.create({
             user: shipperId,
