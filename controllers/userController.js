@@ -320,3 +320,28 @@ exports.updateUserRegion = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server.' });
     }
 };
+
+
+// Cập nhật Web Push Subscription (dành cho web)
+exports.updateWebSubscription = async (req, res) => {
+  try {
+    const { subscription } = req.body;
+    if (!subscription || !subscription.endpoint) {
+      return res.status(400).json({ message: 'Subscription không hợp lệ' });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      { webSubscription: subscription },
+      { new: true }
+    );
+
+    await updatedUser.updateLastActive(); // giữ thói quen cập nhật lastActive
+    res.json({
+      message: 'Cập nhật web subscription thành công',
+    });
+  } catch (error) {
+    console.error('Lỗi update web subscription:', error);
+    res.status(500).json({ message: 'Lỗi server: ' + error.message });
+  }
+};
