@@ -6,6 +6,7 @@ const Order = require('../models/Order'); // Import Order model
 const User = require('../models/User'); // Import User model
 const mongoose = require('mongoose');
 const { sendMessage } = require('../services/messageService');
+const safeNotifyV2 = require('../utils/safeNotifyV2');
 
 // API để Khách hàng hoặc Seller tạo/tìm cuộc trò chuyện
 exports.findOrCreateConversation = async (req, res) => {
@@ -42,14 +43,26 @@ exports.findOrCreateConversation = async (req, res) => {
       const autoMessageContent = sellerData?.sellerProfile?.autoResponseMessage;
 
       if (autoMessageContent && autoMessageContent.trim() !== '') {
-        await sendMessage({
-          conversationId: conversation._id,
-          senderId: sellerId,
-          content: autoMessageContent,
-          messageType: 'text'
-        });
-        console.log(`Đã gửi tin nhắn tự động cho conversation: ${conversation._id}`);
-      }
+  const message = await sendMessage({
+    conversationId: conversation._id,
+    senderId: sellerId,
+    content: autoMessageContent,
+    messageType: 'text'
+  });
+  console.log(`Đã gửi tin nhắn tự động cho conversation: ${conversation._id}`);
+
+  // THÊM MỚI: Gửi thông báo đến customer
+  const seller = await User.findById(sellerId).select('name');
+  await safeNotifyV2(customerId, {
+    title: `Tin nhắn từ ${seller.name}`,
+    body: autoMessageContent.length > 50 ? autoMessageContent.substring(0, 50) + '...' : autoMessageContent,
+    data: {
+      conversationId: conversation._id.toString(),
+      type: 'new_message',
+      senderId: sellerId.toString()
+    }
+  });
+}
     }
     
     res.status(isNewConversation ? 201 : 200).json(conversation);
