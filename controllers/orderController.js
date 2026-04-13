@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const Conversation = require('../models/Conversation');
 const { safeNotify } = require('../utils/notificationMiddleware');
+const safeNotifyV2 = require('../utils/safeNotifyV2');
 const assignOrderToNearestShipper = require('../utils/assignOrderToNearestShipper');
 const { processOrderCompletionForFinance, reverseFinancialEntryForOrder } = require('./financeController');
 const UserVoucher = require('../models/UserVoucher');
@@ -71,14 +72,21 @@ const notifyAdmins = async (order) => {
     try {
         const admins = await User.find({ role: 'admin', fcmToken: { $exists: true, $ne: null } });
         for (const admin of admins) {
+            // Giữ nguyên lệnh cũ
             await safeNotify(admin.fcmToken, {
+                title: '🛒 Đơn hàng mới',
+                body: `#${order._id.toString().slice(-6)} từ ${order.customerName}: ${order.total.toLocaleString()}đ`,
+                data: { orderId: order._id.toString(), shipperView: "true" }
+            });
+            // THÊM MỚI
+            await safeNotifyV2(admin._id, {
                 title: '🛒 Đơn hàng mới',
                 body: `#${order._id.toString().slice(-6)} từ ${order.customerName}: ${order.total.toLocaleString()}đ`,
                 data: { orderId: order._id.toString(), shipperView: "true" }
             });
         }
     } catch (err) {
-        console.error(`[notify admin] error for admin:`, e);
+        console.error(`[notify admin] error:`, err);
     }
 };
 
@@ -288,13 +296,18 @@ exports.acceptOrder = async (req, res) => {
 
                 // --- GỬI THÔNG BÁO CHO CUSTOMER (KHÁCH HÀNG) ---
                 if (order.user && order.user.fcmToken) {
-                    await safeNotify(order.user.fcmToken, { 
-                        title: "Đã tìm thấy người hỗ trợ!", 
-                        body: `Bạn có thể bắt đầu trò chuyện với ${order.consultationSellerId.name}.`,
-                        // Dữ liệu này dành cho App Bán Hàng của khách
-                        data: { type: 'consultation_unlocked', conversationId: conversationId } 
-                    });
-                }
+    await safeNotify(order.user.fcmToken, { 
+        title: "Đã tìm thấy người hỗ trợ!", 
+        body: `Bạn có thể bắt đầu trò chuyện với ${order.consultationSellerId.name}.`,
+        data: { type: 'consultation_unlocked', conversationId: conversationId } 
+    });
+    // THÊM MỚI
+    await safeNotifyV2(order.user._id, {
+        title: "Đã tìm thấy người hỗ trợ!", 
+        body: `Bạn có thể bắt đầu trò chuyện với ${order.consultationSellerId.name}.`,
+        data: { type: 'consultation_unlocked', conversationId: conversationId } 
+    });
+}
                 
                 // --- GỬI THÔNG BÁO CHO SELLER (NGƯỜI BÁN) ---
                 if (order.consultationSellerId) {
@@ -313,12 +326,18 @@ exports.acceptOrder = async (req, res) => {
 
                     // 1. Gửi push notification cho Seller
                     if (order.consultationSellerId.fcmToken) {
-                        await safeNotify(order.consultationSellerId.fcmToken, { 
-                            title: sellerNotificationTitle, 
-                            body: sellerNotificationBody,
-                            data: notificationDataForSeller
-                        });
-                    }
+    await safeNotify(order.consultationSellerId.fcmToken, { 
+        title: sellerNotificationTitle, 
+        body: sellerNotificationBody,
+        data: notificationDataForSeller
+    });
+}
+// THÊM MỚI (đặt ngoài if để đảm bảo có ID)
+await safeNotifyV2(order.consultationSellerId._id, {
+    title: sellerNotificationTitle,
+    body: sellerNotificationBody,
+    data: notificationDataForSeller
+});
                     
                     // 2. Lưu thông báo vào database của Seller
                     await Notification.create({
@@ -358,8 +377,10 @@ exports.acceptOrder = async (req, res) => {
                 const title = 'Shipper đã nhận đơn của bạn!';
                 const message = `Đơn hàng #${order._id.toString().slice(-6)} đang được chuẩn bị.`;
                 if (order.user.fcmToken) {
-                    await safeNotify(order.user.fcmToken, { title, body: message, data: { orderId: order._id.toString(), type: 'order_update' } });
-                }
+    await safeNotify(order.user.fcmToken, { title, body: message, data: { orderId: order._id.toString(), type: 'order_update' } });
+}
+// THÊM MỚI
+await safeNotifyV2(order.user._id, { title, body: message, data: { orderId: order._id.toString(), type: 'order_update' } });
                 await Notification.create({ user: order.user._id, title, message, type: 'order', data: { orderId: order._id.toString() } });
             }
             const sellerIds = [...new Set(order.items.map(item => item.sellerId.toString()))];
@@ -369,8 +390,10 @@ exports.acceptOrder = async (req, res) => {
             for (const seller of sellers) {
                 await Notification.create({ user: seller._id, title: notificationTitle, message: notificationBody, type: 'order_accepted_by_shipper', data: { orderId: order._id.toString(), screen: 'OrderDetail' } });
                 if (seller.fcmToken) {
-                    await safeNotify(seller.fcmToken, { title: notificationTitle, body: notificationBody, data: { orderId: order._id.toString(), type: 'order_accepted_by_shipper', screen: 'OrderDetail' } });
-                }
+    await safeNotify(seller.fcmToken, { title: notificationTitle, body: notificationBody, data: { orderId: order._id.toString(), type: 'order_accepted_by_shipper', screen: 'OrderDetail' } });
+}
+// THÊM MỚI
+await safeNotifyV2(seller._id, { title: notificationTitle, body: notificationBody, data: { orderId: order._id.toString(), type: 'order_accepted_by_shipper', screen: 'OrderDetail' } });
             }
             res.json({ message: 'Nhận đơn thành công', order: updatedOrder });
         }
@@ -432,12 +455,20 @@ exports.updateOrderStatusByShipper = async (req, res) => {
                 });
                 
                 await safeNotify(order.user.fcmToken, {
-                    title, body: message,
-                    data: { 
-                        screen: 'ReviewScreen',
-                        orderId: order._id.toString()
-                    }
-                });
+    title, body: message,
+    data: { 
+        screen: 'ReviewScreen',
+        orderId: order._id.toString()
+    }
+});
+// THÊM MỚI
+await safeNotifyV2(order.user._id, {
+    title, body: message,
+    data: { 
+        screen: 'ReviewScreen',
+        orderId: order._id.toString()
+    }
+});
             }
         } catch(e) { console.error("Lỗi gửi thông báo đánh giá:", e); }
     })();
@@ -467,11 +498,16 @@ exports.updateOrderStatusByShipper = async (req, res) => {
             }
             if (title) {
                 if (order.user.fcmToken) {
-                    await safeNotify(order.user.fcmToken, {
-                        title, body: message,
-                        data: { orderId: updatedOrder._id.toString(), type: 'order_update' }
-                    });
-                }
+    await safeNotify(order.user.fcmToken, {
+        title, body: message,
+        data: { orderId: updatedOrder._id.toString(), type: 'order_update' }
+    });
+}
+// THÊM MỚI
+await safeNotifyV2(order.user._id, {
+    title, body: message,
+    data: { orderId: updatedOrder._id.toString(), type: 'order_update' }
+});
                 await Notification.create({
                     user: order.user._id, title, message, type: 'order',
                     data: { orderId: updatedOrder._id.toString() }
@@ -745,12 +781,18 @@ exports.requestOrderTransfer = async (req, res) => {
             const message = `Shipper cũ của bạn không thể tiếp tục giao đơn hàng #${order._id.toString().slice(-6)}. Chúng tôi đang tìm shipper mới cho bạn.`;
 
             if (customer.fcmToken) {
-                await safeNotify(customer.fcmToken, {
-                    title,
-                    body: message,
-                    data: { orderId: order._id.toString(), type: 'order_transfer_customer' }
-                });
-            }
+    await safeNotify(customer.fcmToken, {
+        title,
+        body: message,
+        data: { orderId: order._id.toString(), type: 'order_transfer_customer' }
+    });
+}
+// THÊM MỚI
+await safeNotifyV2(customer._id, {
+    title,
+    body: message,
+    data: { orderId: order._id.toString(), type: 'order_transfer_customer' }
+});
 
             await Notification.create({
                 user: customer._id,
@@ -763,12 +805,18 @@ exports.requestOrderTransfer = async (req, res) => {
     
         const admins = await User.find({ role: 'admin', fcmToken: { $exists: true } });
         for (const admin of admins) {
-            await safeNotify(admin.fcmToken, {
-                title: 'Chuyển đơn hàng',
-                body: `Shipper ${req.user.name} đã yêu cầu chuyển đơn hàng #${order._id.toString().slice(-6)}.`,
-                data: { orderId: order._id.toString(), type: 'order_transfer_admin' }
-            });
-        }
+    await safeNotify(admin.fcmToken, {
+        title: 'Chuyển đơn hàng',
+        body: `Shipper ${req.user.name} đã yêu cầu chuyển đơn hàng #${order._id.toString().slice(-6)}.`,
+        data: { orderId: order._id.toString(), type: 'order_transfer_admin' }
+    });
+    // THÊM MỚI
+    await safeNotifyV2(admin._id, {
+        title: 'Chuyển đơn hàng',
+        body: `Shipper ${req.user.name} đã yêu cầu chuyển đơn hàng #${order._id.toString().slice(-6)}.`,
+        data: { orderId: order._id.toString(), type: 'order_transfer_admin' }
+    });
+}
 
         res.status(200).json({ message: 'Yêu cầu chuyển đơn thành công. Đơn hàng đang được tìm shipper mới.' });
     } catch (error) {
@@ -847,12 +895,20 @@ exports.confirmPricedOrder = async (req, res) => {
         const notificationBody = `Khách hàng đã đồng ý với báo giá cho đơn hàng #${order._id.toString().slice(-6)}.`;
 
         if (order.consultationSellerId && order.consultationSellerId.fcmToken) {
-            await safeNotify(order.consultationSellerId.fcmToken, {
-                title: notificationTitle,
-                body: `${notificationBody} Vui lòng chuẩn bị hàng để giao.`,
-                data: { orderId: order._id.toString(), type: 'order_confirmed_by_customer' }
-            });
-        }
+    await safeNotify(order.consultationSellerId.fcmToken, {
+        title: notificationTitle,
+        body: `${notificationBody} Vui lòng chuẩn bị hàng để giao.`,
+        data: { orderId: order._id.toString(), type: 'order_confirmed_by_customer' }
+    });
+}
+// THÊM MỚI
+if (order.consultationSellerId) {
+    await safeNotifyV2(order.consultationSellerId._id, {
+        title: notificationTitle,
+        body: `${notificationBody} Vui lòng chuẩn bị hàng để giao.`,
+        data: { orderId: order._id.toString(), type: 'order_confirmed_by_customer' }
+    });
+}
         await Notification.create({
             user: order.consultationSellerId._id,
             title: notificationTitle,
@@ -862,12 +918,20 @@ exports.confirmPricedOrder = async (req, res) => {
         });
 
         if (order.shipper && order.shipper.fcmToken) {
-            await safeNotify(order.shipper.fcmToken, {
-                title: notificationTitle,
-                body: `${notificationBody} Vui lòng bắt đầu quy trình giao hàng.`,
-                data: { orderId: order._id.toString(), type: 'order_confirmed_by_customer' }
-            });
-        }
+    await safeNotify(order.shipper.fcmToken, {
+        title: notificationTitle,
+        body: `${notificationBody} Vui lòng bắt đầu quy trình giao hàng.`,
+        data: { orderId: order._id.toString(), type: 'order_confirmed_by_customer' }
+    });
+}
+// THÊM MỚI
+if (order.shipper) {
+    await safeNotifyV2(order.shipper._id, {
+        title: notificationTitle,
+        body: `${notificationBody} Vui lòng bắt đầu quy trình giao hàng.`,
+        data: { orderId: order._id.toString(), type: 'order_confirmed_by_customer' }
+    });
+}
         await Notification.create({
             user: order.shipper._id,
             title: notificationTitle,
