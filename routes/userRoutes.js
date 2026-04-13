@@ -31,6 +31,7 @@ router.post('/update-location', userController.updateLocation);
 
 // Cập nhật FCM token
 router.post('/update-fcm-token', userController.updateFcmToken);
+router.put('/update-web-subscription', userController.updateWebSubscription);
 
 // === QUẢN LÝ THÔNG BÁO ===
 router.get('/notifications', userController.getUserNotifications);
