@@ -7,6 +7,7 @@ const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const shippingController = require('./shippingController'); // <<< THÊM DÒNG NÀY VÀO ĐÂY
 const { safeNotify } = require('../utils/notificationMiddleware');
+const safeNotifyV2 = require('../utils/safeNotifyV2');
 
 // Seller lấy danh sách yêu cầu tư vấn
 exports.getConsultationRequests = async (req, res) => {
@@ -162,12 +163,17 @@ exports.priceAndUpdateOrder = async (req, res) => {
             const title = "Bạn có báo giá mới";
             const body = `Người bán đã gửi báo giá cho đơn hàng #${order._id.toString().slice(-6)}. Vui lòng vào ứng dụng để xác nhận.`;
             
-            if (customer.fcmToken) {
-                await safeNotify(customer.fcmToken, {
-                    title, body,
-                    data: { orderId: updatedOrder._id.toString(), type: 'new_quote_received' }
-                });
-            }
+           if (customer.fcmToken) {
+    await safeNotify(customer.fcmToken, {
+        title, body,
+        data: { orderId: updatedOrder._id.toString(), type: 'new_quote_received' }
+    });
+}
+// THÊM MỚI
+await safeNotifyV2(customer._id, {
+    title, body,
+    data: { orderId: updatedOrder._id.toString(), type: 'new_quote_received' }
+});
             await Notification.create({
                 user: customer._id, title, message: body, type: 'order',
                 data: { orderId: updatedOrder._id.toString() }
