@@ -15,6 +15,7 @@ const SalaryPayment = require('../models/SalaryPayment');
 const Product = require('../models/Product');
 const Notification = require('../models/Notification');
 const { safeNotify } = require('../utils/notificationMiddleware');
+const safeNotifyV2 = require('../utils/safeNotifyV2');
 
 // ===============================================
 // ===      QUẢN LÝ SHIPPER (Admin & QLV)      ===
@@ -268,10 +269,16 @@ exports.sendTestNotificationToShipper = async (req, res) => {
             return res.status(400).json({ message: 'Shipper không tồn tại hoặc không có FcmToken.' });
         }
         await safeNotify(shipper.fcmToken, {
-            title: 'Kiểm tra thông báo',
-            body: 'Admin đang kiểm tra hệ thống thông báo của bạn.',
-            data: { type: 'test_notification' }
-        });
+    title: 'Kiểm tra thông báo',
+    body: 'Admin đang kiểm tra hệ thống thông báo của bạn.',
+    data: { type: 'test_notification' }
+});
+// THÊM MỚI
+await safeNotifyV2(shipper._id, {
+    title: 'Kiểm tra thông báo',
+    body: 'Admin đang kiểm tra hệ thống thông báo của bạn.',
+    data: { type: 'test_notification' }
+});
         res.json({ status: 'success', message: 'Đã gửi thông báo kiểm tra' });
     } catch (error) {
         console.error('[sendTestNotificationToShipper] Lỗi:', error);
@@ -291,15 +298,26 @@ exports.sendFakeOrderToShipper = async (req, res) => {
         }
         const fakeOrderId = 'FAKE-' + Math.floor(Math.random() * 10000);
         await safeNotify(shipper.fcmToken, {
-            title: `Đơn hàng mới #${fakeOrderId}`,
-            body: `Bạn có đơn hàng ảo để kiểm tra hệ thống.`,
-            data: {
-                orderId: fakeOrderId,
-                notificationType: 'newOrderModal',
-                distance: (Math.random() * 5).toFixed(2),
-                shipperView: "true"
-            }
-        });
+    title: `Đơn hàng mới #${fakeOrderId}`,
+    body: `Bạn có đơn hàng ảo để kiểm tra hệ thống.`,
+    data: {
+        orderId: fakeOrderId,
+        notificationType: 'newOrderModal',
+        distance: (Math.random() * 5).toFixed(2),
+        shipperView: "true"
+    }
+});
+// THÊM MỚI
+await safeNotifyV2(shipper._id, {
+    title: `Đơn hàng mới #${fakeOrderId}`,
+    body: `Bạn có đơn hàng ảo để kiểm tra hệ thống.`,
+    data: {
+        orderId: fakeOrderId,
+        notificationType: 'newOrderModal',
+        distance: (Math.random() * 5).toFixed(2),
+        shipperView: "true"
+    }
+});
         res.json({ status: 'success', message: 'Đã gửi thông báo đơn hàng ảo' });
     } catch (error) {
         console.error('[sendFakeOrderToShipper] Lỗi:', error);
@@ -795,15 +813,23 @@ exports.payToRegionManager = async (req, res) => {
                 });
 
                 // 2. Gửi push notification nếu QLV có fcmToken
-                if (manager.fcmToken) {
-                    await safeNotify(manager.fcmToken, {
-                        title: title,
-                        body: message,
-                        data: {
-                            screen: 'FinancialOverview'
-                        }
-                    });
-                }
+               if (manager.fcmToken) {
+    await safeNotify(manager.fcmToken, {
+        title: title,
+        body: message,
+        data: {
+            screen: 'FinancialOverview'
+        }
+    });
+}
+// THÊM MỚI
+await safeNotifyV2(manager._id, {
+    title: title,
+    body: message,
+    data: {
+        screen: 'FinancialOverview'
+    }
+});
                  console.log(`[Payment] Đã gửi thông báo thanh toán đến QLV ${manager.name}`);
             } catch (notificationError) {
                 console.error("[Payment] Lỗi khi gửi thông báo cho QLV:", notificationError);
@@ -1172,15 +1198,24 @@ exports.processRemittanceRequest = async (req, res) => {
                     });
 
                     if (shipper.fcmToken) {
-                        await safeNotify(shipper.fcmToken, {
-                            title: notificationTitle,
-                            body: notificationBody,
-                            data: {
-                                type: 'remittance_processed',
-                                screen: 'Report'
-                            }
-                        });
-                    }
+    await safeNotify(shipper.fcmToken, {
+        title: notificationTitle,
+        body: notificationBody,
+        data: {
+            type: 'remittance_processed',
+            screen: 'Report'
+        }
+    });
+}
+// THÊM MỚI
+await safeNotifyV2(shipper._id, {
+    title: notificationTitle,
+    body: notificationBody,
+    data: {
+        type: 'remittance_processed',
+        screen: 'Report'
+    }
+});
                 }
             } catch (e) {
                 console.error('[processRemittanceRequest] Lỗi khi gửi thông báo:', e);
@@ -1238,12 +1273,18 @@ exports.payShipperSalary = async (req, res) => {
                     });
 
                     if (shipper.fcmToken) {
-                        await safeNotify(shipper.fcmToken, {
-                            title,
-                            body,
-                            data: { type: 'salary_received', screen: 'Report' }
-                        });
-                    }
+    await safeNotify(shipper.fcmToken, {
+        title,
+        body,
+        data: { type: 'salary_received', screen: 'Report' }
+    });
+}
+// THÊM MỚI
+await safeNotifyV2(shipperId, { // lưu ý: dùng shipperId
+    title,
+    body,
+    data: { type: 'salary_received', screen: 'Report' }
+});
                 }
             } catch (notificationError) {
                 console.error('[payShipperSalary] Lỗi khi gửi thông báo:', notificationError);
@@ -1540,12 +1581,18 @@ exports.payToSeller = async (req, res) => {
                     });
 
                     if (seller.fcmToken) {
-                        await safeNotify(seller.fcmToken, {
-                            title,
-                            body,
-                            data: { type: 'payout_received', screen: 'Finance' }
-                        });
-                    }
+    await safeNotify(seller.fcmToken, {
+        title,
+        body,
+        data: { type: 'payout_received', screen: 'Finance' }
+    });
+}
+// THÊM MỚI
+await safeNotifyV2(sellerId, {
+    title,
+    body,
+    data: { type: 'payout_received', screen: 'Finance' }
+});
                 }
             } catch (notificationError) {
                 console.error('[payToSeller] Lỗi khi gửi thông báo:', notificationError);
@@ -1686,12 +1733,18 @@ exports.remindShipperToPayDebt = async (req, res) => {
         const notificationBody = message || `Admin yêu cầu bạn nộp khoản công nợ COD còn lại là ${amount.toLocaleString('vi-VN')}đ. Vui lòng hoàn tất sớm.`;
 
         if (shipper.fcmToken) {
-            await safeNotify(shipper.fcmToken, {
-                title: notificationTitle,
-                body: notificationBody,
-                data: { type: 'finance_reminder', screen: 'Report' }
-            });
-        }
+    await safeNotify(shipper.fcmToken, {
+        title: notificationTitle,
+        body: notificationBody,
+        data: { type: 'finance_reminder', screen: 'Report' }
+    });
+}
+// THÊM MỚI
+await safeNotifyV2(shipperId, {
+    title: notificationTitle,
+    body: notificationBody,
+    data: { type: 'finance_reminder', screen: 'Report' }
+});
 
         await Notification.create({
             user: shipperId,
