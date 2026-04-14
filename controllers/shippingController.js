@@ -128,3 +128,23 @@ exports.updateFreeShipThreshold = async (req, res) => {
     res.status(500).json({ message: 'Lỗi server' });
   }
 };
+
+// THÊM VÀO DƯỚI CÙNG FILE shippingController.js
+
+exports.calculateFeeEndpoint = async (req, res) => {
+    try {
+        const { customerLocation, itemsTotal } = req.body;
+        
+        if (!customerLocation || !customerLocation.coordinates || itemsTotal === undefined) {
+            return res.status(400).json({ message: "Thiếu tọa độ hoặc tổng tiền để tính phí." });
+        }
+
+        // Gọi hàm nội bộ đã có sẵn của bạn ở phía trên
+        const feeData = await exports.calculateFeeForOrder(customerLocation, itemsTotal);
+        
+        res.status(200).json(feeData);
+    } catch (error) {
+        console.error('[calculateFeeEndpoint] Lỗi:', error);
+        res.status(500).json({ message: error.message || 'Lỗi server khi tính phí vận chuyển.' });
+    }
+};
