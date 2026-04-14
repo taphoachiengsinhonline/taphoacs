@@ -372,3 +372,36 @@ exports.getRatingStats = async (req, res) => {
         res.status(500).json({ message: 'Lỗi server.' });
     }
 };
+
+
+exports.getReviewsForSeller = async (req, res) => {
+    try {
+        const { sellerId } = req.params;
+        const { page = 1, limit = 10, rating } = req.query;
+
+        // Tìm tất cả sản phẩm của seller
+        const products = await Product.find({ seller: sellerId }).select('_id').lean();
+        const productIds = products.map(p => p._id);
+
+        const query = {
+            reviewFor: 'product',
+            targetId: { $in: productIds },
+            comment: { $exists: true, $ne: '' }
+        };
+        if (rating) query.rating = parseInt(rating);
+
+        const options = {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            sort: { createdAt: -1 },
+            populate: { path: 'user', select: 'name avatar' },
+            lean: true
+        };
+
+        const reviews = await Review.paginate(query, options);
+        res.status(200).json(reviews);
+    } catch (error) {
+        console.error('Lỗi lấy đánh giá seller:', error);
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+};
