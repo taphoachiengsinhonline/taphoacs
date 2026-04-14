@@ -187,34 +187,62 @@ exports.createReview = async (req, res) => {
     }
 };
 
+
+// 🟢 THÊM HÀM MỚI: Lấy danh sách đánh giá cho shipper (hỗ trợ filter rating & phân trang)
+exports.getReviewsForShipper = async (req, res) => {
+    try {
+        const { shipperId } = req.params;
+        const { page = 1, limit = 5, rating } = req.query;
+
+        const query = {
+            reviewFor: 'shipper',
+            targetId: shipperId,
+            comment: { $exists: true, $ne: '' }
+        };
+        if (rating) {
+            query.rating = parseInt(rating);
+        }
+
+        const options = {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            sort: { createdAt: -1 },
+            populate: { path: 'user', select: 'name avatar' },
+            lean: true
+        };
+
+        const reviews = await Review.paginate(query, options);
+        res.status(200).json(reviews);
+    } catch (error) {
+        console.error("Lỗi khi lấy danh sách đánh giá shipper:", error);
+        res.status(500).json({ message: "Lỗi server." });
+    }
+};
+
 // Lấy tất cả đánh giá cho một sản phẩm (công khai)
 exports.getReviewsForProduct = async (req, res) => {
     try {
         const { productId } = req.params;
-        const { page = 1, limit = 5 } = req.query;
+        const { page = 1, limit = 5, rating } = req.query;
 
-        // Định nghĩa các tùy chọn cho phân trang
-        const options = {
-            page: parseInt(page),
-            limit: parseInt(limit),
-            sort: { createdAt: -1 }, // Mới nhất lên đầu
-            // Cú pháp populate đúng cho mongoose-paginate-v2
-            populate: {
-                path: 'user', // Tên trường cần populate
-                select: 'name avatar' // Các trường cần lấy từ collection 'users'
-            },
-            lean: true // Tăng hiệu năng bằng cách trả về plain JS objects
-        };
-        
-        // Query để lọc các đánh giá
         const query = {
             reviewFor: 'product',
             targetId: productId,
             comment: { $exists: true, $ne: '' }
         };
+        if (rating) {
+            query.rating = parseInt(rating);
+        }
+
+        const options = {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            sort: { createdAt: -1 },
+            populate: { path: 'user', select: 'name avatar' },
+            lean: true
+        };
 
         const reviews = await Review.paginate(query, options);
-
         res.status(200).json(reviews);
     } catch (error) {
         console.error("Lỗi khi lấy danh sách đánh giá:", error);
