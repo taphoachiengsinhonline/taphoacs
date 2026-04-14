@@ -596,10 +596,22 @@ exports.getOrderById = async (req, res) => {
     try {
         const order = await Order.findById(req.params.id)
             .populate('user', 'name phone')
-            .populate('shipper', 'name phone avatar shipperProfile.vehicleType shipperProfile.licensePlate'); // Thêm avatar vào select
+            .populate('shipper', 'name phone avatar shipperProfile.vehicleType shipperProfile.licensePlate')
+            .populate('seller', 'name email phone shopProfile') // 🟢 THÊM DÒNG NÀY
+            .lean(); // dùng lean để dễ thao tác
 
         if (!order) {
             return res.status(404).json({ message: 'Không tìm thấy đơn hàng' });
+        }
+
+        // Nếu order có nhiều seller từ các item khác nhau, có thể cần populate seller từ items
+        // nhưng trường hợp đơn giản ta chỉ có một seller chính (từ items[0].sellerId)
+        if (!order.seller && order.items && order.items.length > 0) {
+            const firstSellerId = order.items[0].sellerId;
+            if (firstSellerId) {
+                const seller = await User.findById(firstSellerId).select('name email phone shopProfile').lean();
+                order.seller = seller;
+            }
         }
 
         let canView = false;
@@ -612,9 +624,7 @@ exports.getOrderById = async (req, res) => {
         else if (currentUserRole === 'seller' && order.items.some(item => item.sellerId.equals(currentUserId))) canView = true;
 
         if (canView) {
-            let responseOrder = order.toObject({ virtuals: true });
-            responseOrder.timestamps = order.timestamps;
-            responseOrder.shippingFee = order.shippingFeeCustomerPaid || order.shippingFeeActual || 0;
+            const responseOrder = { ...order, timestamps: order.timestamps, shippingFee: order.shippingFeeCustomerPaid || order.shippingFeeActual || 0 };
             res.json(responseOrder);
         } else {
             res.status(403).json({ message: 'Bạn không có quyền truy cập đơn hàng này.' });
