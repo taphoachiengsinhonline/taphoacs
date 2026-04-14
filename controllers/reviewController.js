@@ -169,3 +169,59 @@ exports.getReviewStatusForOrder = async (req, res) => {
         res.status(500).json({ message: "Lỗi server." });
     }
 };
+
+
+// 🟢 THÊM HÀM MỚI: Lấy thống kê số lượng đánh giá theo từng mức sao
+exports.getRatingStats = async (req, res) => {
+    try {
+        const { targetType, targetId } = req.params;
+
+        // Xác định loại đối tượng hợp lệ
+        if (!['shipper', 'product'].includes(targetType)) {
+            return res.status(400).json({ message: 'Loại đối tượng không hợp lệ. Chỉ chấp nhận shipper hoặc product.' });
+        }
+
+        // Aggregate đếm số review theo rating (1-5)
+        const stats = await Review.aggregate([
+            {
+                $match: {
+                    reviewFor: targetType,
+                    targetId: new mongoose.Types.ObjectId(targetId)
+                }
+            },
+            {
+                $group: {
+                    _id: '$rating',
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        // Khởi tạo object đếm 1-5 sao
+        const ratingCounts = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+        let totalReviews = 0;
+        let totalSum = 0;
+
+        stats.forEach(item => {
+            const star = item._id;
+            if (star >= 1 && star <= 5) {
+                ratingCounts[star] = item.count;
+                totalReviews += item.count;
+                totalSum += star * item.count;
+            }
+        });
+
+        const average = totalReviews > 0 ? totalSum / totalReviews : null;
+
+        res.json({
+            targetId,
+            targetType,
+            ratingCounts,
+            totalReviews,
+            average
+        });
+    } catch (error) {
+        console.error('Lỗi khi lấy thống kê đánh giá:', error);
+        res.status(500).json({ message: 'Lỗi server.' });
+    }
+};
