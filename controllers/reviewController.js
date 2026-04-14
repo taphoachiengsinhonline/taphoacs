@@ -272,53 +272,103 @@ exports.getRatingStats = async (req, res) => {
     try {
         const { targetType, targetId } = req.params;
 
-        // Xác định loại đối tượng hợp lệ
-        if (!['shipper', 'product'].includes(targetType)) {
-            return res.status(400).json({ message: 'Loại đối tượng không hợp lệ. Chỉ chấp nhận shipper hoặc product.' });
+        // Xác định loại đối tượng hợp lệ (thêm 'seller')
+        if (!['shipper', 'product', 'seller'].includes(targetType)) {
+            return res.status(400).json({ message: 'Loại đối tượng không hợp lệ. Chỉ chấp nhận shipper, product, hoặc seller.' });
         }
 
-        // Aggregate đếm số review theo rating (1-5)
-        const stats = await Review.aggregate([
-            {
-                $match: {
-                    reviewFor: targetType,
-                    targetId: new mongoose.Types.ObjectId(targetId)
+        let matchCondition = {};
+        let groupIdField = '$_id';
+
+        if (targetType === 'seller') {
+            // Với seller, cần join qua products để lấy tất cả đánh giá sản phẩm của seller đó
+            const stats = await Review.aggregate([
+                { $match: { reviewFor: 'product' } },
+                {
+                    $lookup: {
+                        from: 'products',
+                        localField: 'targetId',
+                        foreignField: '_id',
+                        as: 'product'
+                    }
+                },
+                { $unwind: '$product' },
+                { $match: { 'product.seller': new mongoose.Types.ObjectId(targetId) } },
+                {
+                    $group: {
+                        _id: '$rating',
+                        count: { $sum: 1 }
+                    }
                 }
-            },
-            {
-                $group: {
-                    _id: '$rating',
-                    count: { $sum: 1 }
+            ]);
+
+            // Khởi tạo object đếm 1-5 sao
+            const ratingCounts = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+            let totalReviews = 0;
+            let totalSum = 0;
+
+            stats.forEach(item => {
+                const star = item._id;
+                if (star >= 1 && star <= 5) {
+                    ratingCounts[star] = item.count;
+                    totalReviews += item.count;
+                    totalSum += star * item.count;
                 }
-            }
-        ]);
+            });
 
-        // Khởi tạo object đếm 1-5 sao
-        const ratingCounts = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
-        let totalReviews = 0;
-        let totalSum = 0;
+            const average = totalReviews > 0 ? totalSum / totalReviews : null;
 
-        stats.forEach(item => {
-            const star = item._id;
-            if (star >= 1 && star <= 5) {
-                ratingCounts[star] = item.count;
-                totalReviews += item.count;
-                totalSum += star * item.count;
-            }
-        });
+            // Lấy thông tin rating đã lưu trong shopProfile để đảm bảo đồng bộ
+            const seller = await User.findById(targetId).select('shopProfile.rating shopProfile.ratingQuantity');
+            return res.json({
+                targetId,
+                targetType,
+                ratingCounts,
+                totalReviews: seller?.shopProfile?.ratingQuantity || totalReviews,
+                average: seller?.shopProfile?.rating || average
+            });
+        } else {
+            // Xử lý cho product và shipper như cũ
+            const stats = await Review.aggregate([
+                {
+                    $match: {
+                        reviewFor: targetType,
+                        targetId: new mongoose.Types.ObjectId(targetId)
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$rating',
+                        count: { $sum: 1 }
+                    }
+                }
+            ]);
 
-        const average = totalReviews > 0 ? totalSum / totalReviews : null;
+            const ratingCounts = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+            let totalReviews = 0;
+            let totalSum = 0;
 
-        res.json({
-            targetId,
-            targetType,
-            ratingCounts,
-            totalReviews,
-            average
-        });
+            stats.forEach(item => {
+                const star = item._id;
+                if (star >= 1 && star <= 5) {
+                    ratingCounts[star] = item.count;
+                    totalReviews += item.count;
+                    totalSum += star * item.count;
+                }
+            });
+
+            const average = totalReviews > 0 ? totalSum / totalReviews : null;
+
+            res.json({
+                targetId,
+                targetType,
+                ratingCounts,
+                totalReviews,
+                average
+            });
+        }
     } catch (error) {
         console.error('Lỗi khi lấy thống kê đánh giá:', error);
         res.status(500).json({ message: 'Lỗi server.' });
     }
 };
-
