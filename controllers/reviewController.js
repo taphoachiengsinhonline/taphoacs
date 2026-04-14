@@ -187,6 +187,39 @@ exports.createReview = async (req, res) => {
     }
 };
 
+const canUserViewOrderReviews = async (user, orderId) => {
+    const order = await Order.findById(orderId)
+        .populate('shipper', 'region')
+        .populate('items.sellerId', 'region managedBy');
+    if (!order) return false;
+
+    // Admin toàn quyền
+    if (user.role === 'admin') return true;
+
+    // Region manager chỉ xem được đơn hàng thuộc khu vực mình quản lý
+    if (user.role === 'region_manager' && user.region) {
+        const orderRegion = order.region?.toString();
+        if (orderRegion === user.region.toString()) return true;
+    }
+
+    // Shipper chỉ xem đơn hàng của mình (nếu cần, nhưng màn hình này không dành cho shipper)
+    if (user.role === 'shipper' && order.shipper?._id.equals(user._id)) return true;
+
+    // Seller chỉ xem đơn hàng chứa sản phẩm của mình
+    if (user.role === 'seller') {
+        const isSellerInOrder = order.items.some(item => 
+            item.sellerId?._id.equals(user._id)
+        );
+        if (isSellerInOrder) return true;
+    }
+
+    // Customer chỉ xem đơn hàng của chính họ (nếu cần)
+    if (order.user?.equals(user._id)) return true;
+
+    return false;
+};
+
+
 
 // 🟢 THÊM HÀM MỚI: Lấy danh sách đánh giá cho shipper (hỗ trợ filter rating & phân trang)
 exports.getReviewsForShipper = async (req, res) => {
@@ -402,6 +435,45 @@ exports.getReviewsForSeller = async (req, res) => {
         res.status(200).json(reviews);
     } catch (error) {
         console.error('Lỗi lấy đánh giá seller:', error);
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+};
+
+
+
+// Lấy tất cả reviews của một đơn hàng
+exports.getOrderReviews = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const userId = req.user._id;
+        const user = await User.findById(userId);
+
+        if (!await canUserViewOrderReviews(user, orderId)) {
+            return res.status(403).json({ message: 'Bạn không có quyền xem đánh giá của đơn hàng này.' });
+        }
+
+        const reviews = await Review.find({ orderId })
+            .populate('user', 'name email')
+            .lean();
+
+        // Phân loại reviews theo loại
+        const shipperReview = reviews.find(r => r.reviewFor === 'shipper');
+        const productReviews = reviews.filter(r => r.reviewFor === 'product');
+
+        // Lấy thêm thông tin sản phẩm nếu cần (populate thủ công)
+        const populatedProductReviews = await Promise.all(
+            productReviews.map(async (rev) => {
+                const product = await Product.findById(rev.targetId).select('name images').lean();
+                return { ...rev, product };
+            })
+        );
+
+        res.json({
+            shipperReview: shipperReview || null,
+            productReviews: populatedProductReviews
+        });
+    } catch (error) {
+        console.error('Lỗi lấy đánh giá đơn hàng:', error);
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
