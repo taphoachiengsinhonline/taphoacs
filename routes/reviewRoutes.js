@@ -11,6 +11,7 @@ router.get('/status/:orderId', verifyToken, reviewController.getReviewStatusForO
 router.post('/', verifyToken, reviewController.createReview);
 
 router.get('/stats/:targetType/:targetId', reviewController.getRatingStats);
+router.get('/rating-stats/:targetType/:targetId', reviewController.getRatingStats);
 router.get('/shipper/:shipperId', reviewController.getReviewsForShipper);
 
 module.exports = router;
