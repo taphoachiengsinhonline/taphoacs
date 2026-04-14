@@ -7,6 +7,51 @@ const User = require('../models/User');
 const mongoose = require('mongoose');
 const moment = require('moment-timezone'); 
 
+const updateSellerRatingFromProduct = async (productId) => {
+    try {
+        const product = await Product.findById(productId).select('seller');
+        if (!product || !product.seller) return;
+
+        const sellerId = product.seller;
+
+        const stats = await Review.aggregate([
+            { $match: { reviewFor: 'product' } },
+            {
+                $lookup: {
+                    from: 'products',
+                    localField: 'targetId',
+                    foreignField: '_id',
+                    as: 'product'
+                }
+            },
+            { $unwind: '$product' },
+            { $match: { 'product.seller': new mongoose.Types.ObjectId(sellerId) } },
+            { $group: {
+                _id: '$product.seller',
+                ratingQuantity: { $sum: 1 },
+                ratingAverage: { $avg: '$rating' }
+            }}
+        ]);
+
+        if (stats.length > 0) {
+            const { ratingQuantity, ratingAverage } = stats[0];
+            await User.findByIdAndUpdate(sellerId, {
+                'shopProfile.rating': ratingAverage,
+                'shopProfile.ratingQuantity': ratingQuantity
+            });
+            console.log(`Updated ratings for seller ${sellerId}: ${ratingAverage.toFixed(1)} stars, ${ratingQuantity} reviews.`);
+        } else {
+            await User.findByIdAndUpdate(sellerId, {
+                'shopProfile.rating': null,
+                'shopProfile.ratingQuantity': 0
+            });
+            console.log(`No reviews found for seller ${sellerId}, reset rating.`);
+        }
+    } catch (error) {
+        console.error(`Error updating seller rating from product ${productId}:`, error);
+    }
+};
+
 // Hàm tính toán và cập nhật rating trung bình cho Product hoặc Shipper
 const updateRatings = async (reviewFor, targetId) => {
     try {
@@ -249,50 +294,3 @@ exports.getRatingStats = async (req, res) => {
     }
 };
 
-const updateSellerRatingFromProduct = async (productId) => {
-    try {
-        // Tìm sản phẩm để lấy sellerId
-        const product = await Product.findById(productId).select('seller');
-        if (!product || !product.seller) return;
-
-        const sellerId = product.seller;
-
-        // Aggregate tất cả rating của các sản phẩm thuộc seller này
-        const stats = await Review.aggregate([
-            { $match: { reviewFor: 'product' } },
-            {
-                $lookup: {
-                    from: 'products',
-                    localField: 'targetId',
-                    foreignField: '_id',
-                    as: 'product'
-                }
-            },
-            { $unwind: '$product' },
-            { $match: { 'product.seller': new mongoose.Types.ObjectId(sellerId) } },
-            { $group: {
-                _id: '$product.seller',
-                ratingQuantity: { $sum: 1 },
-                ratingAverage: { $avg: '$rating' }
-            }}
-        ]);
-
-        if (stats.length > 0) {
-            const { ratingQuantity, ratingAverage } = stats[0];
-            await User.findByIdAndUpdate(sellerId, {
-                'shopProfile.rating': ratingAverage,
-                'shopProfile.ratingQuantity': ratingQuantity
-            });
-            console.log(`Updated ratings for seller ${sellerId}: ${ratingAverage.toFixed(1)} stars, ${ratingQuantity} reviews.`);
-        } else {
-            // Nếu không còn review nào, reset về null/0
-            await User.findByIdAndUpdate(sellerId, {
-                'shopProfile.rating': null,
-                'shopProfile.ratingQuantity': 0
-            });
-            console.log(`No reviews found for seller ${sellerId}, reset rating.`);
-        }
-    } catch (error) {
-        console.error(`Error updating seller rating from product ${productId}:`, error);
-    }
-};
