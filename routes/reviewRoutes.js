@@ -10,4 +10,6 @@ router.get('/product/:productId', reviewController.getReviewsForProduct);
 router.get('/status/:orderId', verifyToken, reviewController.getReviewStatusForOrder);
 router.post('/', verifyToken, reviewController.createReview);
 
+router.get('/stats/:targetType/:targetId', reviewController.getRatingStats);
+
 module.exports = router;
