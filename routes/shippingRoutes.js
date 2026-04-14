@@ -8,4 +8,6 @@ router.put('/fees', verifyToken, isAdminMiddleware, shippingController.updateShi
 router.get('/free-ship', verifyToken, shippingController.getFreeShipThreshold);
 router.put('/free-ship', verifyToken, isAdminMiddleware, shippingController.updateFreeShipThreshold);
 
+router.post('/calculate-fee', verifyToken, shippingController.calculateFeeEndpoint);
+
 module.exports = router;
