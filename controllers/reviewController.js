@@ -153,13 +153,21 @@ exports.createReview = async (req, res) => {
             return res.status(400).json({ message: "Tất cả các mục bạn gửi đã được đánh giá trước đó hoặc dữ liệu không hợp lệ." });
         }
 
+        const combinationMap = {};
+            order.items.forEach(item => {
+            if (item.productId) {
+                combinationMap[item.productId.toString()] = item.combination || null;
+                                }
+                             });
+
         const reviewDocsToCreate = newReviewData.map(review => ({
             orderId,
             user: userId,
             reviewFor: review.type,
             targetId: review.targetId,
             rating: review.rating,
-            comment: review.comment
+            comment: review.comment,
+            variantCombination: review.type === 'product' ? combinationMap[review.targetId] || null : null 
         }));
 
         // 🟢 Lưu và lấy lại danh sách review đã tạo (có _id)
