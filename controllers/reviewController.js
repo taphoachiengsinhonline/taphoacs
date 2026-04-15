@@ -6,6 +6,7 @@ const Product = require('../models/Product');
 const User = require('../models/User');
 const mongoose = require('mongoose');
 const moment = require('moment-timezone'); 
+const Notification = require('../models/Notification');
 
 const updateSellerRatingFromProduct = async (productId) => {
     try {
