@@ -114,6 +114,13 @@ exports.createReview = async (req, res) => {
         const userId = req.user._id;
 
         const order = await Order.findById(orderId);
+        const combinationMap = {};
+            order.items.forEach(item => {
+            if (item.productId) {
+                combinationMap[item.productId.toString()] = item.combination || null;
+                                }
+                             });
+        
         if (!order) {
             return res.status(404).json({ message: "Không tìm thấy đơn hàng này." });
         }
@@ -153,12 +160,6 @@ exports.createReview = async (req, res) => {
             return res.status(400).json({ message: "Tất cả các mục bạn gửi đã được đánh giá trước đó hoặc dữ liệu không hợp lệ." });
         }
 
-        const combinationMap = {};
-            order.items.forEach(item => {
-            if (item.productId) {
-                combinationMap[item.productId.toString()] = item.combination || null;
-                                }
-                             });
 
         const reviewDocsToCreate = newReviewData.map(review => ({
             orderId,
