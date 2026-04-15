@@ -7,6 +7,8 @@ const User = require('../models/User');
 const mongoose = require('mongoose');
 const moment = require('moment-timezone'); 
 const Notification = require('../models/Notification');
+const { safeNotify } = require('../utils/notificationMiddleware');
+const safeNotifyV2 = require('../utils/safeNotifyV2'); 
 
 const updateSellerRatingFromProduct = async (productId) => {
     try {
