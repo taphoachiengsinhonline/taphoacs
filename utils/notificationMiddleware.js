@@ -49,19 +49,25 @@ module.exports = {
 
           // Cấu hình tin nhắn cho Firebase
           const message = {
-              token: token,
-              notification: {
-                  title: notificationData.title || 'Thông báo',
-                  body: notificationData.body || notificationData.message || '',
-              },
-              data: stringifiedData,
-              webpush: {
-                  fcmOptions: {
-                      // THAY ĐƯỜNG LINK NÀY THÀNH LINK WEB VERCEL CỦA BẠN (VD: https://bhgnweb.vercel.app)
-                      link: 'https://bhgnweb.maytinhthaikhang.workers.dev' 
-                  }
+            token: token,
+
+            notification: {
+                title: notificationData.title || 'Thông báo',
+                body: notificationData.body || notificationData.message || '',
+            },
+
+            data: stringifiedData,
+  
+            android: {
+                priority: 'high'
+            },
+
+            webpush: {
+                fcmOptions: {
+                    link: 'https://bhgnweb.maytinhthaikhang.workers.dev'
+                }
               }
-          };
+            };
 
           // Dùng Firebase Admin để bắn thẳng tới Web
           const response = await admin.messaging().send(message);
