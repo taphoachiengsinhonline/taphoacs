@@ -7,8 +7,8 @@ const mongoose = require('mongoose');
 const { safeNotify } = require('./notificationMiddleware');
 
 const MAX_RETRY = 5;
-const RETRY_DELAY = 35000;
-const MODAL_TIMEOUT = 30000;
+const RETRY_DELAY = 10000;
+const MODAL_TIMEOUT = 45000;
 
 async function assignOrderToNearestShipper(orderId, retryCount = 0) {
     console.log(`[assignShipper][${orderId}] --- BẮT ĐẦU CHU KỲ ${retryCount} ---`);
