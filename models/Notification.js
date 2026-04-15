@@ -26,7 +26,8 @@ const notificationSchema = new mongoose.Schema({
             'product',
             'general',
             'promotion',
-            'order_accepted_by_shipper' // Thêm type này cho rõ ràng
+            'order_accepted_by_shipper', // Thêm type này cho rõ ràng
+            'product_review'
         ],
         default: 'general'
     },
