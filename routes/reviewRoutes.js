@@ -4,6 +4,11 @@ const router = express.Router();
 const reviewController = require('../controllers/reviewController');
 const { verifyToken } = require('../middlewares/authMiddleware');
 
+router.use((req, res, next) => {
+    console.log(`[REVIEW ROUTER] ${req.method} ${req.originalUrl}`);
+    next();
+});
+
 // Routes cụ thể (không tham số hoặc tham số cố định)
 router.get('/product/:productId', reviewController.getReviewsForProduct);
 router.get('/shipper/:shipperId', reviewController.getReviewsForShipper);
