@@ -114,7 +114,6 @@ exports.createReview = async (req, res) => {
         const userId = req.user._id;
 
         const order = await Order.findById(orderId);
-
         if (!order) {
             return res.status(404).json({ message: "Không tìm thấy đơn hàng này." });
         }
@@ -127,8 +126,6 @@ exports.createReview = async (req, res) => {
         if (order.isReviewed === true) {
             return res.status(400).json({ message: "Bạn đã đánh giá đơn hàng này rồi." });
         }
-        
-        // ĐÃ SỬA: Đảm bảo order có thời gian giao hàng hợp lệ trước khi tính toán
         if (!order.timestamps || !order.timestamps.deliveredAt) {
             return res.status(400).json({ message: "Đơn hàng chưa có dữ liệu thời gian giao hàng hợp lệ." });
         }
@@ -136,20 +133,18 @@ exports.createReview = async (req, res) => {
         const deliveredAt = moment(order.timestamps.deliveredAt);
         const now = moment();
         const daysSinceDelivery = now.diff(deliveredAt, 'days');
-
         if (daysSinceDelivery > 7) {
             return res.status(400).json({ message: "Đã quá 7 ngày kể từ khi nhận hàng, bạn không thể đánh giá đơn hàng này nữa." });
         }
 
-        // Kiểm tra xem có đánh giá nào bị trùng lặp không
         const existingReviews = await Review.find({ orderId, user: userId }).select('targetId');
         const reviewedTargetIds = existingReviews.map(r => r.targetId.toString());
 
         const newReviewData = reviews.filter(review => {
-            if (!review.targetId || !review.rating) return false; // Lọc bỏ dữ liệu không hợp lệ
+            if (!review.targetId || !review.rating) return false;
             if (reviewedTargetIds.includes(review.targetId)) {
                 console.warn(`User ${userId} attempted to re-review target ${review.targetId} in order ${orderId}. Skipping.`);
-                return false; // Bỏ qua nếu đã đánh giá rồi
+                return false;
             }
             return true;
         });
@@ -157,7 +152,7 @@ exports.createReview = async (req, res) => {
         if (newReviewData.length === 0) {
             return res.status(400).json({ message: "Tất cả các mục bạn gửi đã được đánh giá trước đó hoặc dữ liệu không hợp lệ." });
         }
-        
+
         const reviewDocsToCreate = newReviewData.map(review => ({
             orderId,
             user: userId,
@@ -167,19 +162,67 @@ exports.createReview = async (req, res) => {
             comment: review.comment
         }));
 
-        await Review.insertMany(reviewDocsToCreate);
+        // 🟢 Lưu và lấy lại danh sách review đã tạo (có _id)
+        const createdReviews = await Review.insertMany(reviewDocsToCreate);
 
-        // Cập nhật lại rating cho các sản phẩm và shipper liên quan
+        // Cập nhật rating cho product/shipper
         const targetsToUpdate = newReviewData.map(r => ({ type: r.type, id: r.targetId }));
         const uniqueTargets = Array.from(new Map(targetsToUpdate.map(item => [`${item.type}-${item.id}`, item])).values());
-        
         const updatePromises = uniqueTargets.map(target => updateRatings(target.type, target.id));
         await Promise.all(updatePromises);
 
+        // 🟢 Gửi thông báo cho seller (nếu có đánh giá sản phẩm)
+        for (const review of createdReviews) {
+            if (review.reviewFor === 'product') {
+                const product = await Product.findById(review.targetId).populate('seller', 'fcmToken _id name');
+                if (product && product.seller) {
+                    const seller = product.seller;
+                    const notificationTitle = '🔔 Đánh giá mới';
+                    const notificationBody = `Sản phẩm "${product.name}" vừa nhận được đánh giá ${review.rating} sao.`;
+
+                    // Lưu thông báo vào DB
+                    await Notification.create({
+                        user: seller._id,
+                        title: notificationTitle,
+                        message: notificationBody,
+                        type: 'product_review',
+                        data: {
+                            screen: 'ProductDetailForSeller',
+                            productId: product._id.toString(),
+                            reviewId: review._id.toString()
+                        }
+                    });
+
+                    // Gửi push notification
+                    if (seller.fcmToken) {
+                        await safeNotify(seller.fcmToken, {
+                            title: notificationTitle,
+                            body: notificationBody,
+                            data: {
+                                screen: 'ProductDetailForSeller',
+                                productId: product._id.toString(),
+                                reviewId: review._id.toString()
+                            }
+                        });
+                        await safeNotifyV2(seller._id, {
+                            title: notificationTitle,
+                            body: notificationBody,
+                            data: {
+                                screen: 'ProductDetailForSeller',
+                                productId: product._id.toString(),
+                                reviewId: review._id.toString()
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
+        // ✅ Trả về response sau khi hoàn tất mọi thứ
         res.status(201).json({ message: "Cảm ơn bạn đã đánh giá!" });
+
     } catch (error) {
         console.error("Lỗi khi tạo đánh giá:", error);
-        // Xử lý lỗi trùng lặp từ MongoDB index
         if (error.code === 11000) {
             return res.status(400).json({ message: "Một trong các mục bạn đánh giá đã được gửi đi trước đó." });
         }
@@ -474,6 +517,36 @@ exports.getOrderReviews = async (req, res) => {
         });
     } catch (error) {
         console.error('Lỗi lấy đánh giá đơn hàng:', error);
+        res.status(500).json({ message: 'Lỗi server' });
+    }
+};
+
+exports.replyToReview = async (req, res) => {
+    try {
+        const { reviewId } = req.params;
+        const { reply } = req.body;
+        const sellerId = req.user._id;
+
+        const review = await Review.findById(reviewId).populate('targetId');
+        if (!review) return res.status(404).json({ message: 'Không tìm thấy đánh giá' });
+
+        // Kiểm tra quyền: reviewFor phải là 'product' và seller phải là chủ sản phẩm
+        if (review.reviewFor !== 'product') {
+            return res.status(400).json({ message: 'Chỉ có thể phản hồi đánh giá sản phẩm' });
+        }
+
+        const product = await Product.findById(review.targetId);
+        if (!product || !product.seller.equals(sellerId)) {
+            return res.status(403).json({ message: 'Bạn không phải chủ sản phẩm này' });
+        }
+
+        review.sellerReply = reply;
+        review.repliedAt = new Date();
+        await review.save();
+
+        res.json({ message: 'Phản hồi thành công', review });
+    } catch (error) {
+        console.error('Lỗi phản hồi đánh giá:', error);
         res.status(500).json({ message: 'Lỗi server' });
     }
 };
