@@ -208,7 +208,7 @@ if (firstItemSeller && firstItemSeller.managedBy) {
         profitShare = regionManager.regionManagerProfile.profitShareRate;
     }
 }
-                console.log('[createOrder DEBUG] enrichedItems:', JSON.stringify(enrichedItems, null, 2));
+                //console.log('[createOrder DEBUG] enrichedItems:', JSON.stringify(enrichedItems, null, 2));
                 const order = new Order({
                     user: userId, items: enrichedItems, total: finalTotal, customerName, phone, shippingAddress,
                     shippingLocation, paymentMethod: paymentMethod || 'COD', shippingFeeActual: shippingFeeActual,
