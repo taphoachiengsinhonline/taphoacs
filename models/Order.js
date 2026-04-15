@@ -32,7 +32,8 @@ const orderItemSchema = new mongoose.Schema({
     type: Number,
     required: true,
     default: 0,
-  }
+  },
+  combination: { type: String, default: null }
 });
 
 const orderSchema = new mongoose.Schema({
