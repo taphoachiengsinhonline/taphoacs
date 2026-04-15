@@ -32,7 +32,10 @@ const reviewSchema = new mongoose.Schema({
     comment: { // Bình luận
         type: String,
         trim: true
-    }
+    },
+    sellerReply: { type: String, default: null },
+    repliedAt: { type: Date, default: null }
+    
 }, { timestamps: true });
 
 // Ngăn một user đánh giá cùng một sản phẩm/shipper 2 lần cho cùng 1 đơn hàng
