@@ -3,11 +3,19 @@ const nodemailer = require('nodemailer');
 
 // Khởi tạo bộ gửi mail bằng Gmail
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true, // true cho port 465, false cho port 587
     auth: {
         user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD // Dùng Mật khẩu ứng dụng (16 ký tự), không dùng mật khẩu Gmail
-    }
+        pass: process.env.GMAIL_APP_PASSWORD
+    },
+    tls: {
+        rejectUnauthorized: false // chỉ tạm thời nếu có lỗi chứng chỉ
+    },
+    connectionTimeout: 10000, // 10 giây
+    greetingTimeout: 10000,
+    socketTimeout: 15000
 });
 
 /**
