@@ -9,7 +9,7 @@ const { sendOtpEmail } = require('../utils/mailer');
 // Hàm tạo Access + Refresh token (có thể tái sử dụng)
 const generateTokens = (userId) => {
   const accessToken = jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '30m' });
-  const refreshToken = jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
+  const refreshToken = jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '90d' });
   return { accessToken, refreshToken };
 };
 
