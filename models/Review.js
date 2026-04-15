@@ -33,6 +33,7 @@ const reviewSchema = new mongoose.Schema({
         type: String,
         trim: true
     },
+    variantCombination: { type: String, default: null },
     sellerReply: { type: String, default: null },
     repliedAt: { type: Date, default: null }
     
