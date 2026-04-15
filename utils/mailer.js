@@ -4,8 +4,9 @@ const nodemailer = require('nodemailer');
 // Khởi tạo bộ gửi mail bằng Gmail
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 465,
-    secure: true, // true cho port 465, false cho port 587
+    port: 587,
+    secure: false, // true cho port 465, false cho port 587
+    requireTLS: true,
     auth: {
         user: process.env.GMAIL_USER,
         pass: process.env.GMAIL_APP_PASSWORD
