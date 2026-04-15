@@ -531,6 +531,9 @@ exports.getOrderReviews = async (req, res) => {
 };
 
 exports.replyToReview = async (req, res) => {
+    console.log('[replyToReview] Bắt đầu xử lý');
+    console.log('[replyToReview] reviewId:', req.params.reviewId);
+    console.log('[replyToReview] user từ token:', req.user?._id);
     try {
         const { reviewId } = req.params;
         const { reply } = req.body;
