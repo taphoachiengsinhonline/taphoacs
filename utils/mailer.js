@@ -2,7 +2,7 @@
 
 const sendOtpEmail = async (to, code, type = 'otp_payment') => {
     try {
-        console.log(`[Brevo API] Đang gửi email đến ${to} với code ${code} (Type: ${type})`);
+       // console.log(`[Brevo API] Đang gửi email đến ${to} với code ${code} (Type: ${type})`);
 
         let subject = '';
         let htmlContent = '';
