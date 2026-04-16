@@ -45,6 +45,9 @@ exports.updateUserStatus = async (req, res) => {
 // Đổi mật khẩu
 exports.changePassword = async (req, res) => {
     try {
+
+      console.log('=== [BACKEND] req.body NHẬN ĐƯỢC LÀ: ===', req.body);
+
         const { currentPassword, newPassword, confirmPassword } = req.body;
 
         if (!currentPassword || !newPassword || !confirmPassword) {
