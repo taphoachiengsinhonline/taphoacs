@@ -24,7 +24,8 @@ router.post('/status', userController.updateUserStatus); // Sử dụng protect 
 router.put('/me/avatar', userController.updateAvatar);
 
 // Đổi mật khẩu
-router.post('/change-password', userController.changePassword);
+//router.post('/change-password', userController.changePassword);
+router.post('/change-password', verifyToken, userController.changePassword);
 
 // Cập nhật vị trí
 router.post('/update-location', userController.updateLocation);
