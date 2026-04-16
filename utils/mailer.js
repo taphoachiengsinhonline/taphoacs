@@ -1,10 +1,4 @@
 // File: backend/utils/mailer.js
-const SibApiV3Sdk = require('@getbrevo/brevo');
-
-// Khởi tạo client Brevo API
-const defaultClient = SibApiV3Sdk.ApiClient.instance;
-const apiKey = defaultClient.authentications['api-key'];
-apiKey.apiKey = process.env.BREVO_API_KEY; // Sẽ dùng API Key thay vì SMTP Key
 
 const sendOtpEmail = async (to, code, type = 'otp_payment') => {
     try {
@@ -50,17 +44,32 @@ const sendOtpEmail = async (to, code, type = 'otp_payment') => {
             `;
         }
 
-        // Tạo API instance
-        const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
-
-        const sendSmtpEmail = {
-            sender: { email: process.env.BREVO_FROM_EMAIL, name: 'Bách Hoá Giao Ngay' },
+        const payload = {
+            sender: {
+                name: 'Bách Hoá Giao Ngay',
+                email: process.env.BREVO_FROM_EMAIL
+            },
             to: [{ email: to }],
             subject: subject,
             htmlContent: htmlContent
         };
 
-        const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+        const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'api-key': process.env.BREVO_API_KEY
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            console.error('❌ Brevo API Error:', data);
+            return false;
+        }
+
         console.log('✅ Email gửi thành công qua Brevo API. MessageId:', data.messageId);
         return true;
 
